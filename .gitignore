@@ -1,0 +1,25 @@
+# Zależności
+node_modules
+
+# Build
+dist
+*.tsbuildinfo
+
+# Logi
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Środowisko (specyficzne dla maszyny)
+.env
+.env.local
+.env.*.local
+
+# Prompt jest częścią konfiguracji środowiska (system.md zostaje w repo)
+prompts/prompt.md
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
