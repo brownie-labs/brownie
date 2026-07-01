@@ -18,6 +18,9 @@ pnpm-debug.log*
 # Prompt jest częścią konfiguracji środowiska (system.md zostaje w repo)
 prompts/prompt.md
 
+# Katalog roboczy sesji Claude (izolacja od kodu agenta)
+workspace/
+
 # IDE / OS
 .idea/
 .vscode/

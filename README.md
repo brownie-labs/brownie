@@ -30,7 +30,7 @@ zahardkodowane w repo):
 | `CLAUDE_WORKER_PERMISSION_MODE` | `default` / `acceptEdits` / `bypassPermissions` / `plan` | brak |
 | `CLAUDE_WORKER_SESSION_TIMEOUT_MS` | Twardy limit sesji (kill po przekroczeniu) | brak |
 | `CLAUDE_WORKER_STREAM_PARTIAL` | Streaming tekstu token-po-tokenie (`true`/`false`) | `false` |
-| `CLAUDE_WORKER_CWD` | Katalog roboczy sesji | katalog uruchomienia |
+| `CLAUDE_WORKER_CWD` | Katalog roboczy sesji (izolacja od kodu agenta) | `./workspace` |
 | `CLAUDE_CONFIG_DIR` | Osobny katalog konfiguracji Claude Code (inny profil) | brak |
 
 ## Uruchomienie
@@ -48,6 +48,14 @@ Worker uruchamia komendę `claude`. Aby użyć innego profilu Claude Code (osobn
 subskrypcja), ustaw `CLAUDE_CONFIG_DIR` na wybrany katalog konfiguracji — jest on
 przekazywany wprost do procesu Claude (obsługiwane jest `~`). Bez tej zmiennej używana
 jest domyślna konfiguracja Claude Code.
+
+## Izolacja sesji
+
+Każda sesja działa w dedykowanym katalogu roboczym (`./workspace`, tworzonym
+automatycznie). Katalog jest podrzędny wobec kodu agenta, a Claude Code ogranicza
+operacje na plikach do swojego katalogu roboczego i podkatalogów — dzięki temu sesja
+nie sięga do źródeł workera ani nie może modyfikować samej siebie. `workspace/` jest
+w `.gitignore`. Zmień lokalizację przez `CLAUDE_WORKER_CWD`.
 
 ## Prompt i system prompt
 

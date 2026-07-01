@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { access, constants } from "node:fs/promises";
+import { access, constants, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
@@ -32,7 +32,7 @@ const envSchema = z.object({
     .optional(),
   CLAUDE_WORKER_SESSION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv,
-  CLAUDE_WORKER_CWD: z.string().trim().min(1).optional(),
+  CLAUDE_WORKER_CWD: z.string().trim().min(1).default("./workspace"),
 });
 
 export function loadEnvFile(envFile?: string): void {
@@ -62,7 +62,6 @@ export async function loadWorkerConfig(envFile?: string): Promise<WorkerConfig> 
   }
   const env = parsed.data;
 
-  const cwd = env.CLAUDE_WORKER_CWD ? expandHome(env.CLAUDE_WORKER_CWD) : process.cwd();
   const resolvePath = (p: string) =>
     isAbsolute(p) ? p : resolve(process.cwd(), expandHome(p));
   const promptPath = resolvePath(env.CLAUDE_WORKER_PROMPT_FILE);
@@ -73,6 +72,9 @@ export async function loadWorkerConfig(envFile?: string): Promise<WorkerConfig> 
     systemPromptPath,
     "plik system promptu (CLAUDE_WORKER_SYSTEM_PROMPT_FILE)",
   );
+
+  const cwd = resolvePath(env.CLAUDE_WORKER_CWD);
+  await mkdir(cwd, { recursive: true });
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   if (childEnv.CLAUDE_CONFIG_DIR) {
