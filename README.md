@@ -16,12 +16,12 @@ kolejna startuje natychmiast po jej zakończeniu (rytm liczony od startu sesji, 
 
 ```bash
 pnpm install
-pnpm run init      # interaktywnie: pyta o model, interwał i prompt; tworzy .env oraz prompts/prompt.md
+pnpm configure     # interaktywnie: pyta o model, interwał i prompt; tworzy .env oraz prompts/prompt.md
 ```
 
-`init` pyta o model, interwał (w minutach) oraz zadanie workera, a opcjonalnie o osobny
-katalog konfiguracji Claude Code, i zapisuje `.env` oraz `prompts/prompt.md`. Alternatywnie
-możesz utworzyć `.env` ręcznie na bazie `.env.example`.
+`pnpm configure` pyta o model, interwał (w minutach) oraz zadanie workera, a opcjonalnie
+o osobny katalog konfiguracji Claude Code, i zapisuje `.env` oraz `prompts/prompt.md`.
+Alternatywnie możesz utworzyć `.env` ręcznie na bazie `.env.example`.
 
 Konfiguracja jest środowiskowa i trzymana w `.env` (plik jest w `.gitignore`, nic nie jest
 zahardkodowane w repo):
@@ -64,6 +64,6 @@ w `.gitignore`. Zmień lokalizację przez `CLAUDE_WORKER_CWD`.
 
 - `prompts/system.md` — system prompt, wspólny dla wszystkich, wersjonowany w repo.
 - `prompts/prompt.md` — zadanie workera, specyficzne dla środowiska (poza repo,
-  w `.gitignore`). Tworzone przez `pnpm run init` lub ręcznie.
+  w `.gitignore`). Tworzone przez `pnpm configure` lub ręcznie.
 
 Oba pliki są wczytywane przy każdym starcie sesji.
