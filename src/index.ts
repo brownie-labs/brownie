@@ -1,12 +1,16 @@
 import { defineCommand, runMain } from "citty";
 import { loadWorkerConfig } from "./config.js";
 import { runScheduler } from "./scheduler.js";
+import { initCommand } from "./init.js";
 import { logger } from "./logger.js";
 
 const main = defineCommand({
   meta: {
     name: "claude-worker",
     description: "Cyklicznie uruchamia sesje Claude Code (claude -p) w stałym rytmie",
+  },
+  subCommands: {
+    init: initCommand,
   },
   args: {
     "env-file": {
