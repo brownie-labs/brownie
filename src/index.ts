@@ -1,8 +1,6 @@
 import { defineCommand, runMain } from "citty";
-import { loadWorkerConfig } from "./config.js";
-import { runScheduler } from "./scheduler.js";
+import { envFileArg, startCommand, startWorker } from "./start.js";
 import { initCommand } from "./init.js";
-import { logger } from "./logger.js";
 
 const main = defineCommand({
   meta: {
@@ -11,36 +9,10 @@ const main = defineCommand({
   },
   subCommands: {
     init: initCommand,
+    start: startCommand,
   },
-  args: {
-    "env-file": {
-      type: "string",
-      description: "Ścieżka do pliku .env (domyślnie ./.env)",
-    },
-  },
-  async run({ args }) {
-    let config;
-    try {
-      config = await loadWorkerConfig(args["env-file"]);
-    } catch (err) {
-      logger.error(err instanceof Error ? err.message : err);
-      process.exitCode = 1;
-      return;
-    }
-
-    const controller = new AbortController();
-    let shuttingDown = false;
-    const shutdown = (sig: string) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      logger.warn(`Otrzymano ${sig} — zamykanie…`);
-      controller.abort();
-    };
-    process.once("SIGINT", () => shutdown("SIGINT"));
-    process.once("SIGTERM", () => shutdown("SIGTERM"));
-
-    await runScheduler(config, controller.signal);
-  },
+  args: envFileArg,
+  run: ({ args }) => startWorker(args["env-file"]),
 });
 
 runMain(main);
