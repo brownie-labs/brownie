@@ -81,7 +81,7 @@ export const configureCommand = defineCommand({
         configDir = ensureText(
           await consola.prompt("Ścieżka CLAUDE_CONFIG_DIR", {
             type: "text",
-            initial: "~/.claude-work",
+            placeholder: "np. ~/.claude-inny-profil",
           }),
         ).trim();
       }
