@@ -10,9 +10,9 @@
     "dist"
   ],
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/index.ts start",
     "configure": "tsx src/index.ts configure",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/index.ts start",
     "build": "tsup src/index.ts --format esm --clean",
     "typecheck": "tsc --noEmit"
   },

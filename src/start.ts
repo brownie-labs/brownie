@@ -4,14 +4,14 @@ import { runScheduler } from "./scheduler.js";
 import { abortOnSignals } from "./shutdown.js";
 import { logger } from "./logger.js";
 
-export const envFileArg = {
+const envFileArg = {
   "env-file": {
     type: "string",
     description: "Ścieżka do pliku .env (domyślnie ./.env)",
   },
 } satisfies ArgsDef;
 
-export async function startWorker(envFile?: string): Promise<void> {
+async function startWorker(envFile?: string): Promise<void> {
   let config;
   try {
     config = await loadWorkerConfig(envFile);
