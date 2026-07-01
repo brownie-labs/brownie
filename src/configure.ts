@@ -7,16 +7,18 @@ import { logger } from "./logger.js";
 
 const CANCELLED = Symbol("cancelled");
 
-function ensureText<T>(value: T): T {
-  if (typeof value === "symbol") throw CANCELLED;
-  return value;
+function orCancel<T>(value: T): NonNullable<T> {
+  if (value === undefined || value === null || typeof value === "symbol") {
+    throw CANCELLED;
+  }
+  return value as NonNullable<T>;
 }
 
 async function confirmOverwrite(paths: string[]): Promise<boolean> {
   const existing = paths.filter((p) => existsSync(p));
   if (existing.length === 0) return true;
   logger.warn(`Istnieją już pliki:\n${existing.map((p) => `  - ${p}`).join("\n")}`);
-  return ensureText(
+  return orCancel(
     await consola.prompt("Nadpisać?", { type: "confirm", initial: false }),
   );
 }
@@ -45,7 +47,7 @@ export const configureCommand = defineCommand({
         return;
       }
 
-      const model = ensureText(
+      const model = orCancel(
         await consola.prompt("Model sesji", {
           type: "select",
           options: ["haiku", "sonnet", "opus"],
@@ -55,7 +57,7 @@ export const configureCommand = defineCommand({
 
       let intervalMinutes = NaN;
       while (!(intervalMinutes > 0)) {
-        const raw = ensureText(
+        const raw = orCancel(
           await consola.prompt("Interwał w minutach", {
             type: "text",
             initial: "5",
@@ -66,11 +68,11 @@ export const configureCommand = defineCommand({
       }
       const intervalMs = Math.round(intervalMinutes * 60_000);
 
-      const prompt = ensureText(
+      const prompt = orCancel(
         await consola.prompt("Zadanie workera (prompt)", { type: "text" }),
       ).trim();
 
-      const useConfigDir = ensureText(
+      const useConfigDir = orCancel(
         await consola.prompt("Użyć osobnego katalogu konfiguracji Claude (CLAUDE_CONFIG_DIR)?", {
           type: "confirm",
           initial: false,
@@ -78,7 +80,7 @@ export const configureCommand = defineCommand({
       );
       let configDir: string | undefined;
       if (useConfigDir) {
-        configDir = ensureText(
+        configDir = orCancel(
           await consola.prompt("Ścieżka CLAUDE_CONFIG_DIR", {
             type: "text",
             placeholder: "np. ~/.claude-inny-profil",
