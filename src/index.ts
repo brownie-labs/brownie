@@ -1,6 +1,6 @@
 import { defineCommand, runMain } from "citty";
 import { envFileArg, startCommand, startWorker } from "./start.js";
-import { initCommand } from "./init.js";
+import { configureCommand } from "./configure.js";
 
 const main = defineCommand({
   meta: {
@@ -8,7 +8,7 @@ const main = defineCommand({
     description: "Cyklicznie uruchamia sesje Claude Code (claude -p) w stałym rytmie",
   },
   subCommands: {
-    init: initCommand,
+    configure: configureCommand,
     start: startCommand,
   },
   args: envFileArg,

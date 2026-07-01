@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "start": "tsx src/index.ts",
-    "configure": "tsx src/index.ts init",
+    "configure": "tsx src/index.ts configure",
     "dev": "tsx watch src/index.ts",
     "build": "tsup src/index.ts --format esm --clean",
     "typecheck": "tsc --noEmit"

@@ -30,9 +30,9 @@ function buildEnv(model: string, intervalMs: number, configDir?: string): string
   return `${lines.join("\n")}\n`;
 }
 
-export const initCommand = defineCommand({
+export const configureCommand = defineCommand({
   meta: {
-    name: "init",
+    name: "configure",
     description: "Interaktywnie tworzy pliki .env oraz prompts/prompt.md",
   },
   async run() {
