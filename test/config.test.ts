@@ -65,7 +65,7 @@ describe("envSchema", () => {
   it("stosuje wartości domyślne", () => {
     const env = envSchema.parse({});
     expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("haiku");
-    expect(env.CLAUDE_WORKER_MONITOR_INTERVAL_MS).toBe(300_000);
+    expect(env.CLAUDE_WORKER_MONITOR_INTERVAL_MS).toBe(900_000);
     expect(env.CLAUDE_WORKER_MONITOR_PROMPT_FILE).toBe("./prompts/monitor.prompt.md");
     expect(env.CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/monitor.system.md",

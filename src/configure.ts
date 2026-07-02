@@ -30,7 +30,7 @@ async function askIntervalMinutes(): Promise<number> {
   while (!(minutes > 0)) {
     const raw = await ask("Interwał monitora w minutach", {
       type: "text",
-      initial: "5",
+      initial: "15",
     });
     minutes = Number(raw.replace(",", "."));
     if (!(minutes > 0)) logger.warn("Podaj dodatnią liczbę minut.");

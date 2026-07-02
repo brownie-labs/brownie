@@ -29,7 +29,7 @@ export const envSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(5 * 60 * 1000),
+    .default(15 * 60 * 1000),
   CLAUDE_WORKER_MONITOR_PROMPT_FILE: z
     .string()
     .trim()

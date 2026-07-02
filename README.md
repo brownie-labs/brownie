@@ -54,7 +54,7 @@ zahardkodowane w repo):
 | Zmienna                                     | Opis                                                  | Domyślnie                      |
 | ------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
 | `CLAUDE_WORKER_MONITOR_MODEL`               | Model monitora (z założenia tani)                     | `haiku`                        |
-| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                 | `300000` (5 min)               |
+| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                 | `900000` (15 min)              |
 | `CLAUDE_WORKER_MONITOR_PROMPT_FILE`         | Prompt monitora (co obserwować)                       | `./prompts/monitor.prompt.md`  |
 | `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`  | System prompt monitora (definicja roli)               | `./prompts/monitor.system.md`  |
 | `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`  | Twardy limit sesji monitora                           | brak                           |

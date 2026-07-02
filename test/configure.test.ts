@@ -40,12 +40,12 @@ describe("configureCommand", () => {
   });
 
   it("zapisuje .env i prompty obu agentów bez CLAUDE_CONFIG_DIR", async () => {
-    queueAnswers("haiku", "5", "obserwuj Redmine", "opus", "wykonuj rzetelnie", false);
+    queueAnswers("haiku", "15", "obserwuj Redmine", "opus", "wykonuj rzetelnie", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
     expect(env).toContain("CLAUDE_WORKER_MONITOR_MODEL=haiku");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=300000");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=900000");
     expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=opus");
     expect(env).not.toContain("CLAUDE_CONFIG_DIR");
     expect(await readFile(monitorPromptPath, "utf8")).toBe("obserwuj Redmine\n");
