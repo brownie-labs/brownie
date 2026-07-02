@@ -67,34 +67,36 @@ trwała (pole `attempts` w magazynie), więc restart workera nie zeruje licznika
 
 ```bash
 pnpm install
-pnpm configure     # interaktywnie: modele obu agentów, interwał monitora, prompty; tworzy .env i prompts/*.prompt.md
+pnpm configure     # interaktywnie: modele i effort obu agentów, interwał monitora, prompty; tworzy .env i prompts/*.prompt.md
 ```
 
-Kreator prowadzi przez konfigurację obu agentów: model i interwał monitora, co monitor
-ma obserwować, model egzekutora oraz kim jest i jak ma wykonywać zadania; opcjonalnie
-osobny katalog konfiguracji Claude Code. Alternatywnie możesz utworzyć `.env` ręcznie
+Kreator prowadzi przez konfigurację obu agentów: model, effort i interwał monitora, co
+monitor ma obserwować, model i effort egzekutora oraz kim jest i jak ma wykonywać zadania;
+opcjonalnie osobny katalog konfiguracji Claude Code. Alternatywnie możesz utworzyć `.env` ręcznie
 na bazie `.env.example`.
 
 Konfiguracja jest środowiskowa i trzymana w `.env` (plik jest w `.gitignore`, nic nie jest
 zahardkodowane w repo):
 
-| Zmienna                                     | Opis                                                  | Domyślnie                      |
-| ------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
-| `CLAUDE_WORKER_MONITOR_MODEL`               | Model monitora (z założenia tani)                     | `haiku`                        |
-| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                 | `900000` (15 min)              |
-| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`         | Prompt monitora (co obserwować)                       | `./prompts/monitor.prompt.md`  |
-| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`  | System prompt monitora (definicja roli)               | `./prompts/monitor.system.md`  |
-| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`  | Twardy limit sesji monitora                           | brak                           |
-| `CLAUDE_WORKER_EXECUTOR_MODEL`              | Model egzekutora (z założenia mocny)                  | `opus`                         |
-| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`        | Prompt egzekutora (tożsamość, zasady pracy)           | `./prompts/executor.prompt.md` |
-| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE` | System prompt egzekutora (definicja roli)             | `./prompts/executor.system.md` |
-| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS` | Twardy limit sesji egzekutora                         | brak                           |
-| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`      | Maks. liczba prób zadania (błędy przejściowe)         | `3`                            |
-| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`     | Przerwa przed ponowieniem po błędzie przejściowym     | `30000` (30 s)                 |
-| `CLAUDE_WORKER_TASKS_FILE`                  | Trwały magazyn zadań (dedup + historia)               | `./data/tasks.json`            |
-| `CLAUDE_WORKER_STREAM_PARTIAL`              | Streaming tekstu token-po-tokenie (`true`/`false`)    | `true`                         |
-| `CLAUDE_WORKER_CWD`                         | Katalog roboczy sesji (izolacja od kodu agenta)       | `./workspace`                  |
-| `CLAUDE_CONFIG_DIR`                         | Osobny katalog konfiguracji Claude Code (inny profil) | brak                           |
+| Zmienna                                     | Opis                                                    | Domyślnie                      |
+| ------------------------------------------- | ------------------------------------------------------- | ------------------------------ |
+| `CLAUDE_WORKER_MONITOR_MODEL`               | Model monitora (z założenia tani)                       | `haiku`                        |
+| `CLAUDE_WORKER_MONITOR_EFFORT`              | Effort monitora (`low`/`medium`/`high`/`xhigh`/`max`)   | `medium`                       |
+| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                   | `900000` (15 min)              |
+| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`         | Prompt monitora (co obserwować)                         | `./prompts/monitor.prompt.md`  |
+| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`  | System prompt monitora (definicja roli)                 | `./prompts/monitor.system.md`  |
+| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`  | Twardy limit sesji monitora                             | brak                           |
+| `CLAUDE_WORKER_EXECUTOR_MODEL`              | Model egzekutora (z założenia mocny)                    | `opus`                         |
+| `CLAUDE_WORKER_EXECUTOR_EFFORT`             | Effort egzekutora (`low`/`medium`/`high`/`xhigh`/`max`) | `high`                         |
+| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`        | Prompt egzekutora (tożsamość, zasady pracy)             | `./prompts/executor.prompt.md` |
+| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE` | System prompt egzekutora (definicja roli)               | `./prompts/executor.system.md` |
+| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS` | Twardy limit sesji egzekutora                           | brak                           |
+| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`      | Maks. liczba prób zadania (błędy przejściowe)           | `3`                            |
+| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`     | Przerwa przed ponowieniem po błędzie przejściowym       | `30000` (30 s)                 |
+| `CLAUDE_WORKER_TASKS_FILE`                  | Trwały magazyn zadań (dedup + historia)                 | `./data/tasks.json`            |
+| `CLAUDE_WORKER_STREAM_PARTIAL`              | Streaming tekstu token-po-tokenie (`true`/`false`)      | `true`                         |
+| `CLAUDE_WORKER_CWD`                         | Katalog roboczy sesji (izolacja od kodu agenta)         | `./workspace`                  |
+| `CLAUDE_CONFIG_DIR`                         | Osobny katalog konfiguracji Claude Code (inny profil)   | brak                           |
 
 Sesje obu agentów działają zawsze w trybie `bypassPermissions` (na stałe w kodzie) —
 worker jest w pełni autonomiczny i żadne narzędzie nie czeka na zatwierdzenie. Kontrola
