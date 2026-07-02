@@ -4,6 +4,8 @@ import { describeSchedule } from "../active-hours.js";
 import type { WorkerConfig } from "../types.js";
 import { formatInterval } from "./format.js";
 
+const BRAND_COLOR = "#c08457";
+
 function timeoutLabel(sessionTimeoutMs: number | undefined): string {
   return sessionTimeoutMs != null ? ` · timeout=${formatInterval(sessionTimeoutMs)}` : "";
 }
@@ -11,6 +13,12 @@ function timeoutLabel(sessionTimeoutMs: number | undefined): string {
 export function Header({ config }: { config: WorkerConfig }): JSX.Element {
   return (
     <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
+      <Text wrap="truncate-end">
+        <Text color={BRAND_COLOR} bold>
+          🧝 Brownie
+        </Text>
+        <Text dimColor>{"  works while you're not looking"}</Text>
+      </Text>
       <Text wrap="truncate-end">
         <Text color="cyan" bold>
           monitor

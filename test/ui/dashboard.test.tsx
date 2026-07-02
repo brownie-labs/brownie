@@ -38,6 +38,7 @@ describe("Dashboard", () => {
     const { lastFrame, unmount } = render(<Dashboard store={store} config={config} />);
 
     const frame = lastFrame() ?? "";
+    expect(frame).toContain("🧝 Brownie");
     expect(frame).toContain("monitor");
     expect(frame).toContain("model=haiku");
     expect(frame).toContain("interval=5 min");

@@ -16,7 +16,7 @@ import { useNow } from "./use-now.js";
 
 const FALLBACK_COLUMNS = 80;
 const FALLBACK_ROWS = 30;
-const HEADER_HEIGHT = 5;
+const HEADER_HEIGHT = 6;
 
 interface TerminalSize {
   columns: number;
