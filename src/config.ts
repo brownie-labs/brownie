@@ -35,7 +35,11 @@ export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
 export const envSchema = z.object({
   CLAUDE_WORKER_MODEL: z.string().trim().min(1).default("haiku"),
-  CLAUDE_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+  CLAUDE_WORKER_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60 * 1000),
   CLAUDE_WORKER_PROMPT_FILE: z.string().trim().min(1).default("./prompts/prompt.md"),
   CLAUDE_WORKER_SYSTEM_PROMPT_FILE: z
     .string()

@@ -26,15 +26,15 @@ Alternatywnie możesz utworzyć `.env` ręcznie na bazie `.env.example`.
 Konfiguracja jest środowiskowa i trzymana w `.env` (plik jest w `.gitignore`, nic nie jest
 zahardkodowane w repo):
 
-| Zmienna | Opis | Domyślnie |
-|---------|------|-----------|
-| `CLAUDE_WORKER_MODEL` | Model sesji | `haiku` |
-| `CLAUDE_WORKER_INTERVAL_MS` | Interwał między startami sesji (ms) | `300000` (5 min) |
-| `CLAUDE_WORKER_PERMISSION_MODE` | `default` / `acceptEdits` / `bypassPermissions` / `plan` | brak |
-| `CLAUDE_WORKER_SESSION_TIMEOUT_MS` | Twardy limit sesji (kill po przekroczeniu) | brak |
-| `CLAUDE_WORKER_STREAM_PARTIAL` | Streaming tekstu token-po-tokenie (`true`/`false`) | `false` |
-| `CLAUDE_WORKER_CWD` | Katalog roboczy sesji (izolacja od kodu agenta) | `./workspace` |
-| `CLAUDE_CONFIG_DIR` | Osobny katalog konfiguracji Claude Code (inny profil) | brak |
+| Zmienna                            | Opis                                                     | Domyślnie        |
+| ---------------------------------- | -------------------------------------------------------- | ---------------- |
+| `CLAUDE_WORKER_MODEL`              | Model sesji                                              | `haiku`          |
+| `CLAUDE_WORKER_INTERVAL_MS`        | Interwał między startami sesji (ms)                      | `300000` (5 min) |
+| `CLAUDE_WORKER_PERMISSION_MODE`    | `default` / `acceptEdits` / `bypassPermissions` / `plan` | brak             |
+| `CLAUDE_WORKER_SESSION_TIMEOUT_MS` | Twardy limit sesji (kill po przekroczeniu)               | brak             |
+| `CLAUDE_WORKER_STREAM_PARTIAL`     | Streaming tekstu token-po-tokenie (`true`/`false`)       | `false`          |
+| `CLAUDE_WORKER_CWD`                | Katalog roboczy sesji (izolacja od kodu agenta)          | `./workspace`    |
+| `CLAUDE_CONFIG_DIR`                | Osobny katalog konfiguracji Claude Code (inny profil)    | brak             |
 
 ## Uruchomienie
 
@@ -44,6 +44,17 @@ pnpm start --env-file ./inny.env
 ```
 
 Zatrzymanie: `Ctrl+C` (SIGINT) — worker kończy pętlę i ubija ewentualną trwającą sesję.
+
+## Jakość kodu
+
+```bash
+pnpm typecheck    # tsc --noEmit
+pnpm lint         # ESLint (typescript-eslint, type-aware)
+pnpm lint:fix     # ESLint z auto-poprawkami
+pnpm format       # Prettier --write
+pnpm format:check # Prettier --check
+pnpm test         # Vitest
+```
 
 ## Wybór konfiguracji Claude Code
 

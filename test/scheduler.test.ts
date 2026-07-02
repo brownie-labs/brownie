@@ -45,7 +45,9 @@ describe("runScheduler", () => {
 
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.success).toHaveBeenCalledWith(expect.stringContaining("Koniec sesji #1"));
+    expect(mocks.logger.success).toHaveBeenCalledWith(
+      expect.stringContaining("Koniec sesji #1"),
+    );
 
     await vi.advanceTimersByTimeAsync(INTERVAL);
     expect(mocks.runSession).toHaveBeenCalledTimes(2);
@@ -69,14 +71,16 @@ describe("runScheduler", () => {
     await promise;
 
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining("Scheduler zatrzymany"));
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("Scheduler zatrzymany"),
+    );
   });
 
   it("abort w trakcie sesji przerywa i nie loguje sukcesu", async () => {
     const controller = new AbortController();
-    mocks.runSession.mockImplementation(async () => {
+    mocks.runSession.mockImplementation(() => {
       controller.abort();
-      return ok();
+      return Promise.resolve(ok());
     });
     const config = buildConfig({ intervalMs: INTERVAL });
 
@@ -92,9 +96,7 @@ describe("runScheduler", () => {
   });
 
   it("wyjątek z sesji jest łapany, pętla trwa dalej", async () => {
-    mocks.runSession
-      .mockRejectedValueOnce(new Error("crash"))
-      .mockResolvedValue(ok());
+    mocks.runSession.mockRejectedValueOnce(new Error("crash")).mockResolvedValue(ok());
     const controller = new AbortController();
     const config = buildConfig({ intervalMs: INTERVAL });
 
@@ -116,9 +118,7 @@ describe("runScheduler", () => {
   it("przy przekroczonym interwale kolejna sesja startuje natychmiast", async () => {
     mocks.runSession.mockImplementation(
       () =>
-        new Promise<SessionResult>((res) =>
-          setTimeout(() => res(ok()), INTERVAL + 1000),
-        ),
+        new Promise<SessionResult>((res) => setTimeout(() => res(ok()), INTERVAL + 1000)),
     );
     const controller = new AbortController();
     const config = buildConfig({ intervalMs: INTERVAL });
@@ -126,7 +126,9 @@ describe("runScheduler", () => {
     const promise = runScheduler(config, controller.signal);
 
     await vi.advanceTimersByTimeAsync(INTERVAL + 1000);
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining("natychmiast"));
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("natychmiast"),
+    );
     expect(mocks.runSession).toHaveBeenCalledTimes(2);
 
     controller.abort();

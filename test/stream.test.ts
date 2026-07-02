@@ -8,9 +8,7 @@ describe("StreamRenderer", () => {
 
   beforeEach(() => {
     logger = createFakeLogger();
-    stdoutWrite = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
+    stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
@@ -141,7 +139,10 @@ describe("StreamRenderer", () => {
       }),
     );
     r.handleLine(
-      line({ type: "assistant", message: { content: [{ type: "text", text: "koniec" }] } }),
+      line({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "koniec" }] },
+      }),
     );
     expect(stdoutWrite).toHaveBeenCalledWith("\n");
   });

@@ -6,7 +6,7 @@ const SIGNAL: NodeJS.Signals = "SIGUSR2";
 
 describe("abortOnSignals", () => {
   beforeEach(() => {
-    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => undefined);
   });
 
   afterEach(() => {

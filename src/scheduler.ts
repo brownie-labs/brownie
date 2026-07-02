@@ -33,7 +33,9 @@ export async function runScheduler(
   while (!signal.aborted) {
     session += 1;
     const start = Date.now();
-    logger.start(`▶ Start sesji #${session} (komenda=${config.command}, model=${config.model})`);
+    logger.start(
+      `▶ Start sesji #${session} (komenda=${config.command}, model=${config.model})`,
+    );
 
     try {
       const result = await runSession(config, signal);

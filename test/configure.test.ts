@@ -76,7 +76,7 @@ describe("configureCommand", () => {
   it("anulowanie nie zapisuje żadnych plików", async () => {
     const cancelled = new Error("anulowano");
     cancelled.name = "ConsolaPromptCancelledError";
-    vi.spyOn(consola, "prompt").mockRejectedValueOnce(cancelled as never);
+    vi.spyOn(consola, "prompt").mockRejectedValueOnce(cancelled);
 
     await expect(runConfigure()).resolves.toBeUndefined();
     expect(existsSync(envPath)).toBe(false);
@@ -85,7 +85,7 @@ describe("configureCommand", () => {
 
   it("odmowa nadpisania istniejących plików kończy bez zmian", async () => {
     await writeFile(envPath, "STARE=1\n", "utf8");
-    vi.spyOn(consola, "prompt").mockResolvedValueOnce(false as never);
+    vi.spyOn(consola, "prompt").mockResolvedValueOnce(false);
 
     await runConfigure();
 

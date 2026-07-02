@@ -19,12 +19,19 @@ pnpm start --env-file ./inny.env  # inny plik konfiguracji
 pnpm dev                          # tsx watch (auto-restart przy zmianach)
 pnpm build                        # tsup → dist/ (ESM), binarka claude-worker
 pnpm typecheck                    # tsc --noEmit
+pnpm lint                         # eslint . (typescript-eslint, reguły type-aware)
+pnpm lint:fix                     # eslint . --fix
+pnpm format                       # prettier --write .
+pnpm format:check                 # prettier --check .
 pnpm test                         # vitest run (testy jednostkowe + integracyjne)
 pnpm test:watch                   # vitest w trybie watch
 pnpm test:coverage                # vitest run --coverage (raport v8)
 ```
 
-Brak lintera w repo. Weryfikacja poprawności = `pnpm typecheck` **i** `pnpm test`.
+Weryfikacja poprawności = `pnpm typecheck`, `pnpm lint` **i** `pnpm test`.
+Linter: ESLint (flat config `eslint.config.js`) + typescript-eslint w trybie
+type-aware; formatter: Prettier (`eslint-config-prettier` wyłącza reguły stylistyczne
+kolidujące z Prettierem).
 Testy: Vitest, katalog `test/` (lustrzany do `src/`), atrapa binarki `claude`
 w `test/fixtures/claude` emitująca stream-json. Manager pakietów to **pnpm**
 (jest `pnpm-lock.yaml`).
@@ -34,6 +41,7 @@ w `test/fixtures/claude` emitująca stream-json. Manager pakietów to **pnpm**
 Wejście `src/index.ts` (citty) → dwie subkomendy: `start` i `configure`.
 
 Przepływ `start` (`src/start.ts`):
+
 1. `preflight.ts` (`ensureReady`) — sprawdza obecność `claude` w PATH, pliku `.env` oraz
    plików promptów; przy braku rzuca błąd z podpowiedzią `pnpm configure`.
 2. `config.ts` (`loadWorkerConfig`) — ładuje `.env` przez `process.loadEnvFile`, waliduje

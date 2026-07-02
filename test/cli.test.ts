@@ -38,13 +38,13 @@ function runCli(
       close();
       rejectPromise(err);
     });
-    child.on("close", async (code) => {
+    child.on("close", (code) => {
       close();
-      const [out, err] = await Promise.all([
-        readFile(outPath, "utf8"),
-        readFile(errPath, "utf8"),
-      ]);
-      resolvePromise({ code, output: `${out}${err}` });
+      void Promise.all([readFile(outPath, "utf8"), readFile(errPath, "utf8")]).then(
+        ([out, err]) => {
+          resolvePromise({ code, output: `${out}${err}` });
+        },
+      );
     });
 
     if (interruptAfterMs != null) {
@@ -62,43 +62,35 @@ describe("CLI start (smoke E2E)", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it(
-    "uruchamia sesję i kończy czysto po SIGINT",
-    async () => {
-      await mkdir(join(dir, "prompts"), { recursive: true });
-      await writeFile(join(dir, "prompts", "prompt.md"), "zadanie\n", "utf8");
-      await writeFile(join(dir, "prompts", "system.md"), "system\n", "utf8");
-      await writeFile(join(dir, ".env"), "CLAUDE_WORKER_INTERVAL_MS=1000\n", "utf8");
+  it("uruchamia sesję i kończy czysto po SIGINT", async () => {
+    await mkdir(join(dir, "prompts"), { recursive: true });
+    await writeFile(join(dir, "prompts", "prompt.md"), "zadanie\n", "utf8");
+    await writeFile(join(dir, "prompts", "system.md"), "system\n", "utf8");
+    await writeFile(join(dir, ".env"), "CLAUDE_WORKER_INTERVAL_MS=1000\n", "utf8");
 
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
-        FAKE_CLAUDE_MODE: "ok",
-        CONSOLA_LEVEL: "5",
-      };
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
+      FAKE_CLAUDE_MODE: "ok",
+      CONSOLA_LEVEL: "5",
+    };
 
-      const result = await runCli(dir, env, 4000);
+    const result = await runCli(dir, env, 4000);
 
-      expect(result.output).toMatch(/Worker uruchomiony/);
-      expect(result.output).toMatch(/Koniec sesji #1/);
-      expect(result.output).toMatch(/Scheduler zatrzymany/);
-    },
-    30_000,
-  );
+    expect(result.output).toMatch(/Worker uruchomiony/);
+    expect(result.output).toMatch(/Koniec sesji #1/);
+    expect(result.output).toMatch(/Scheduler zatrzymany/);
+  }, 30_000);
 
-  it(
-    "kończy z kodem 1, gdy preflight nie przechodzi (brak .env)",
-    async () => {
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
-        PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
-      };
+  it("kończy z kodem 1, gdy preflight nie przechodzi (brak .env)", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
+    };
 
-      const result = await runCli(dir, env);
+    const result = await runCli(dir, env);
 
-      expect(result.code).toBe(1);
-      expect(result.output).toMatch(/Preflight nieudany|brak pliku/);
-    },
-    30_000,
-  );
+    expect(result.code).toBe(1);
+    expect(result.output).toMatch(/Preflight nieudany|brak pliku/);
+  }, 30_000);
 });
