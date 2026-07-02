@@ -12,8 +12,8 @@ import type { Task } from "../../src/types.js";
 function task(): Task {
   return {
     id: "t-1",
-    title: "Tytuł",
-    description: "Opis",
+    title: "Title",
+    description: "Description",
     status: "in_progress",
     attempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -22,33 +22,33 @@ function task(): Task {
 }
 
 describe("formatCountdown", () => {
-  it("formatuje minuty i sekundy", () => {
+  it("formats minutes and seconds", () => {
     expect(formatCountdown(65_000)).toBe("01:05");
   });
 
-  it("formatuje godziny", () => {
+  it("formats hours", () => {
     expect(formatCountdown(3_665_000)).toBe("1:01:05");
   });
 
-  it("nie schodzi poniżej zera", () => {
+  it("does not go below zero", () => {
     expect(formatCountdown(-5_000)).toBe("00:00");
   });
 });
 
 describe("formatInterval", () => {
-  it("formatuje pełne minuty", () => {
+  it("formats whole minutes", () => {
     expect(formatInterval(900_000)).toBe("15 min");
   });
 
-  it("formatuje godziny z minutami", () => {
+  it("formats hours with minutes", () => {
     expect(formatInterval(5_400_000)).toBe("1 h 30 min");
   });
 
-  it("formatuje sekundy", () => {
+  it("formats seconds", () => {
     expect(formatInterval(45_000)).toBe("45 s");
   });
 
-  it("zero pokazuje jako 0 s", () => {
+  it("shows zero as 0 s", () => {
     expect(formatInterval(0)).toBe("0 s");
   });
 });
@@ -56,71 +56,71 @@ describe("formatInterval", () => {
 describe("formatMonitorPhase", () => {
   const now = Date.parse("2026-07-02T10:00:00");
 
-  it("uruchamianie", () => {
-    expect(formatMonitorPhase({ kind: "starting" }, now)).toBe("uruchamianie…");
+  it("starting", () => {
+    expect(formatMonitorPhase({ kind: "starting" }, now)).toBe("starting…");
   });
 
-  it("poza godzinami z odliczaniem", () => {
+  it("outside working hours with countdown", () => {
     const label = formatMonitorPhase({ kind: "offHours", resumeAt: now + 60_000 }, now);
-    expect(label).toContain("poza godzinami pracy");
+    expect(label).toContain("outside working hours");
     expect(label).toContain("01:00");
   });
 
-  it("sesja z czasem trwania", () => {
+  it("session with duration", () => {
     const label = formatMonitorPhase(
       { kind: "session", cycle: 4, startedAt: now - 2_500 },
       now,
     );
-    expect(label).toContain("cykl #4");
+    expect(label).toContain("cycle #4");
     expect(label).toContain("2.5s");
   });
 
-  it("sen z odliczaniem", () => {
+  it("sleeping with countdown", () => {
     const label = formatMonitorPhase(
       { kind: "sleeping", nextCycleAt: now + 125_000 },
       now,
     );
-    expect(label).toContain("następny cykl za 02:05");
+    expect(label).toContain("next cycle in 02:05");
   });
 });
 
 describe("formatExecutorPhase", () => {
   const now = Date.parse("2026-07-02T10:00:00");
 
-  it("oczekiwanie", () => {
-    expect(formatExecutorPhase({ kind: "waiting" }, now)).toContain("oczekiwanie");
+  it("waiting", () => {
+    expect(formatExecutorPhase({ kind: "waiting" }, now)).toContain("waiting");
   });
 
-  it("sesja z zadaniem", () => {
+  it("session with a task", () => {
     const label = formatExecutorPhase(
       { kind: "session", task: task(), startedAt: now - 1_000 },
       now,
     );
     expect(label).toContain("t-1");
-    expect(label).toContain("Tytuł");
+    expect(label).toContain("Title");
     expect(label).toContain("1.0s");
   });
 
-  it("backoff z odliczaniem do ponowienia", () => {
+  it("backoff with countdown to retry", () => {
     const label = formatExecutorPhase(
       { kind: "backoff", task: task(), resumeAt: now + 30_000 },
       now,
     );
-    expect(label).toContain("↻ ponowienie t-1 za 00:30");
+    expect(label).toContain("↻ retrying t-1 in 00:30");
   });
 
-  it("podsumowanie sesji do pamięci", () => {
+  it("summarizing session to memory", () => {
     const label = formatExecutorPhase(
       { kind: "summary", task: task(), startedAt: now - 2_000 },
       now,
     );
-    expect(label).toContain("podsumowanie t-1");
+    expect(label).toContain("summarizing t-1");
     expect(label).toContain("2.0s");
   });
 });
 
 describe("formatMonitorOutcome", () => {
-  it("sukces z kosztem i duplikatami", () => {
+  it("success with cost and duplicates", () => {
     const label = formatMonitorOutcome({
       cycle: 2,
       ok: true,
@@ -131,64 +131,64 @@ describe("formatMonitorOutcome", () => {
       finishedAt: 0,
     });
     expect(label).toBe(
-      "✔ cykl #2 · czas=1.5s · koszt=$0.0123 · nowe zadania: 3 · pominięte duplikaty: 1",
+      "✔ cycle #2 · time=1.5s · cost=$0.0123 · new tasks: 3 · skipped duplicates: 1",
     );
   });
 
-  it("błąd z opisem", () => {
+  it("error with description", () => {
     const label = formatMonitorOutcome({
       cycle: 3,
       ok: false,
       durationMs: 500,
       addedTasks: 0,
       skippedDuplicates: 0,
-      error: "niepoprawny raport zadań",
+      error: "invalid task report",
       finishedAt: 0,
     });
-    expect(label).toBe("✖ cykl #3 · czas=0.5s · niepoprawny raport zadań");
+    expect(label).toBe("✖ cycle #3 · time=0.5s · invalid task report");
   });
 });
 
 describe("formatExecutorOutcome", () => {
-  it("sukces z turami", () => {
+  it("success with turns", () => {
     const label = formatExecutorOutcome({
       taskId: "t-1",
-      title: "Tytuł",
+      title: "Title",
       ok: true,
       durationMs: 2_000,
       costUsd: 0.5,
       numTurns: 7,
       finishedAt: 0,
     });
-    expect(label).toBe("✔ t-1 · czas=2.0s · koszt=$0.5000 · tury=7");
+    expect(label).toBe("✔ t-1 · time=2.0s · cost=$0.5000 · turns=7");
   });
 
-  it("błąd z opisem", () => {
+  it("error with description", () => {
     const label = formatExecutorOutcome({
       taskId: "t-2",
-      title: "Tytuł",
+      title: "Title",
       ok: false,
       durationMs: 100,
-      error: "Przekroczono limit czasu sesji",
+      error: "Session timed out",
       finishedAt: 0,
     });
-    expect(label).toBe("✖ t-2 · czas=0.1s · Przekroczono limit czasu sesji");
+    expect(label).toBe("✖ t-2 · time=0.1s · Session timed out");
   });
 
-  it("błąd przejściowy z zaplanowanym ponowieniem", () => {
+  it("transient error with a scheduled retry", () => {
     const label = formatExecutorOutcome({
       taskId: "t-3",
-      title: "Tytuł",
+      title: "Title",
       ok: false,
       durationMs: 100,
-      error: "Sesja zakończona błędem (is_error)",
+      error: "Session ended with an error (is_error)",
       willRetry: true,
       attempt: 1,
       maxAttempts: 3,
       finishedAt: 0,
     });
     expect(label).toBe(
-      "↻ t-3 · czas=0.1s · Sesja zakończona błędem (is_error) · ponowienie (próba 1/3)",
+      "↻ t-3 · time=0.1s · Session ended with an error (is_error) · retry (attempt 1/3)",
     );
   });
 });

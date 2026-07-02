@@ -9,8 +9,8 @@ import type { SessionResult, Task } from "../../src/types.js";
 function buildTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "redmine-1",
-    title: "Napraw eksport",
-    description: "Eksport CSV zwraca 500.",
+    title: "Fix export",
+    description: "CSV export returns 500.",
     status: "in_progress",
     attempts: 2,
     createdAt: "2026-07-02T10:00:00.000Z",
@@ -29,51 +29,51 @@ function buildResult(overrides: Partial<SessionResult> = {}): SessionResult {
 }
 
 describe("parseSummary", () => {
-  it("parsuje ostatni blok json z tekstu", () => {
+  it("parses the last json block from text", () => {
     const text = [
-      "Przeanalizowałem log.",
+      "I analyzed the log.",
       "```json",
-      '{"headline": "pierwszy", "summary": "x"}',
+      '{"headline": "first", "summary": "x"}',
       "```",
-      "korekta:",
+      "correction:",
       "```json",
-      '{"headline": "Naprawiono eksport CSV", "summary": "Przyczyną był brak nagłówka."}',
+      '{"headline": "Fixed CSV export", "summary": "The cause was a missing header."}',
       "```",
     ].join("\n");
 
     expect(parseSummary(text)).toEqual({
-      headline: "Naprawiono eksport CSV",
-      summary: "Przyczyną był brak nagłówka.",
+      headline: "Fixed CSV export",
+      summary: "The cause was a missing header.",
     });
   });
 
-  it("parsuje surowy json bez bloku kodu", () => {
-    const text = '{"headline": "OK", "summary": "Zrobione."}';
-    expect(parseSummary(text)).toEqual({ headline: "OK", summary: "Zrobione." });
+  it("parses raw json without a code block", () => {
+    const text = '{"headline": "OK", "summary": "Done."}';
+    expect(parseSummary(text)).toEqual({ headline: "OK", summary: "Done." });
   });
 
-  it("toleruje surowe znaki nowej linii wewnątrz stringów", () => {
-    const text = '```json\n{"headline": "OK", "summary": "linia 1\nlinia 2"}\n```';
+  it("tolerates raw newlines inside strings", () => {
+    const text = '```json\n{"headline": "OK", "summary": "line 1\nline 2"}\n```';
     expect(parseSummary(text)).toEqual({
       headline: "OK",
-      summary: "linia 1\nlinia 2",
+      summary: "line 1\nline 2",
     });
   });
 
-  it("zwraca null dla zepsutego jsona", () => {
+  it("returns null for broken json", () => {
     expect(parseSummary('```json\n{"headline": "OK",\n```')).toBeNull();
   });
 
-  it("zwraca null przy braku wymaganych pól", () => {
+  it("returns null when required fields are missing", () => {
     expect(parseSummary('{"headline": "OK"}')).toBeNull();
   });
 
-  it("zwraca null dla pustych pól", () => {
+  it("returns null for empty fields", () => {
     expect(parseSummary('{"headline": "  ", "summary": "x"}')).toBeNull();
   });
 
-  it("zwraca null dla zwykłego tekstu", () => {
-    expect(parseSummary("Nie mam nic do powiedzenia.")).toBeNull();
+  it("returns null for plain text", () => {
+    expect(parseSummary("I have nothing to say.")).toBeNull();
   });
 });
 
@@ -90,37 +90,37 @@ describe("composeSummaryPrompt", () => {
     };
   }
 
-  it("zawiera dane zadania i ścieżkę logu", () => {
+  it("includes the task data and the log path", () => {
     const prompt = composeSummaryPrompt(buildContext());
 
     expect(prompt).toContain("ID: redmine-1");
-    expect(prompt).toContain("Tytuł: Napraw eksport");
-    expect(prompt).toContain("Próba: 2");
-    expect(prompt).toContain("Eksport CSV zwraca 500.");
+    expect(prompt).toContain("Title: Fix export");
+    expect(prompt).toContain("Attempt: 2");
+    expect(prompt).toContain("CSV export returns 500.");
     expect(prompt).toContain(logPath);
-    expect(prompt).toContain("Status: sukces");
-    expect(prompt).not.toContain("Błąd:");
+    expect(prompt).toContain("Status: success");
+    expect(prompt).not.toContain("Error:");
   });
 
-  it("przy porażce zawiera błąd i informację o ponownej próbie", () => {
+  it("includes the error and retry info on failure", () => {
     const prompt = composeSummaryPrompt(
       buildContext({
-        result: buildResult({ ok: false, error: "timeout sesji" }),
+        result: buildResult({ ok: false, error: "session timeout" }),
         willRetry: true,
       }),
     );
 
-    expect(prompt).toContain("Status: porażka");
-    expect(prompt).toContain("Błąd: timeout sesji");
-    expect(prompt).toContain("Zaplanowano ponowną próbę: tak");
+    expect(prompt).toContain("Status: failure");
+    expect(prompt).toContain("Error: session timeout");
+    expect(prompt).toContain("Retry scheduled: yes");
   });
 
-  it("przy porażce bez komunikatu błędu opisuje go jako nieznany", () => {
+  it("describes the error as unknown when there is no error message on failure", () => {
     const prompt = composeSummaryPrompt(
       buildContext({ result: buildResult({ ok: false }) }),
     );
 
-    expect(prompt).toContain("Błąd: nieznany");
-    expect(prompt).toContain("Zaplanowano ponowną próbę: nie");
+    expect(prompt).toContain("Error: unknown");
+    expect(prompt).toContain("Retry scheduled: no");
   });
 });

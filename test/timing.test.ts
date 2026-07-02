@@ -10,7 +10,7 @@ describe("sleep", () => {
     vi.useRealTimers();
   });
 
-  it("kończy się po upływie czasu", async () => {
+  it("resolves after the time elapses", async () => {
     const resolved = vi.fn();
     void sleep(1000, new AbortController().signal).then(resolved);
 
@@ -21,7 +21,7 @@ describe("sleep", () => {
     expect(resolved).toHaveBeenCalledTimes(1);
   });
 
-  it("abort przerywa sen natychmiast", async () => {
+  it("abort interrupts the sleep immediately", async () => {
     const controller = new AbortController();
     const resolved = vi.fn();
     void sleep(60_000, controller.signal).then(resolved);
@@ -32,7 +32,7 @@ describe("sleep", () => {
     expect(resolved).toHaveBeenCalledTimes(1);
   });
 
-  it("na przerwanym sygnale kończy się od razu", async () => {
+  it("on an already-aborted signal resolves right away", async () => {
     const controller = new AbortController();
     controller.abort();
 
@@ -41,7 +41,7 @@ describe("sleep", () => {
 });
 
 describe("formatDuration", () => {
-  it("formatuje milisekundy jako sekundy z jednym miejscem", () => {
+  it("formats milliseconds as seconds with one decimal place", () => {
     expect(formatDuration(1500)).toBe("1.5s");
     expect(formatDuration(0)).toBe("0.0s");
     expect(formatDuration(61_230)).toBe("61.2s");

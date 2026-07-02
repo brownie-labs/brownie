@@ -6,23 +6,23 @@ export const TASK_REPORT_JSON_SCHEMA = JSON.stringify({
   properties: {
     tasks: {
       type: "array",
-      description: "Wykryte zadania; pusta lista, gdy nie wykryto żadnej pracy",
+      description: "Detected tasks; empty list when no work was detected",
       items: {
         type: "object",
         properties: {
           id: {
             type: "string",
             description:
-              "Stabilny identyfikator pochodzący ze źródła zadania (rodzaj źródła + " +
-              "identyfikator zadania w źródle) — to samo zadanie musi przy każdym " +
-              "cyklu dostawać ten sam id",
+              "Stable identifier derived from the task source (source kind + " +
+              "task identifier within the source) — the same task must receive " +
+              "the same id on every cycle",
           },
-          title: { type: "string", description: "Krótki tytuł zadania" },
+          title: { type: "string", description: "Short task title" },
           description: {
             type: "string",
             description:
-              "Cały kontekst potrzebny do samodzielnego wykonania zadania " +
-              "w osobnej sesji",
+              "All the context needed to complete the task independently " +
+              "in a separate session",
           },
         },
         required: ["id", "title", "description"],

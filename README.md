@@ -1,10 +1,10 @@
 <p align="center">
-  <h1 align="center">🧹 Brownie</h1>
+  <h1 align="center">🧝 Brownie</h1>
 </p>
 
 <p align="center">
-  <strong>Twój domowy skrzat do zaległej roboty. Pracuje, kiedy nie patrzysz.</strong><br>
-  <em>Nie ciastko. Duszek. 🍫➡️🧹</em>
+  <strong>Your household sprite for the work you keep putting off. It works while you're not looking.</strong><br>
+  <em>Not the cake. The spirit. 🍪➡️🧝</em>
 </p>
 
 <p align="center">
@@ -16,138 +16,138 @@
 
 ---
 
-Brownie to CLI, które cyklicznie uruchamia sesje [Claude Code](https://claude.com/claude-code) w układzie dwuagentowym: **monitor** wypatruje zadań, **egzekutor** je wykonuje, a **podsumowujący** zapisuje wnioski do pamięci długoterminowej. Ty śpisz — skrzat sprząta.
+Brownie is a CLI that cyclically runs [Claude Code](https://claude.com/claude-code) sessions in a two-agent setup: the **monitor** watches for tasks, the **executor** completes them, and the **summarizer** writes findings to long-term memory. You sleep — the sprite tidies up.
 
-> Jeśli chcesz mieć agenta, który sam znajduje sobie robotę, sam ją odwala i jeszcze pamięta, czego się nauczył — to jest to.
+> If you want an agent that finds its own work, gets it done, and even remembers what it learned — this is it.
 
-## Jak to działa
+## How it works
 
 ```
-        co N minut (tylko w godzinach pracy)
+        every N minutes (only during working hours)
                           │
                           ▼
-                  ┌───────────────┐   raport JSON   ┌───────────────┐
+                  ┌───────────────┐   JSON report   ┌───────────────┐
                   │    MONITOR    │ ───────────────▶│   TaskStore   │
-                  │   (sonnet)    │    (zadania)    │  tasks.json   │
+                  │   (sonnet)    │     (tasks)     │  tasks.json   │
                   └───────────────┘                 └───────┬───────┘
-                                                            │ budzi (Waker)
+                                                            │ wakes (Waker)
                                                             │
-┌───────────────┐   log sesji   ┌───────────────┐  pending  │
-│  SUMMARIZER   │ ◀──────────── │   EGZEKUTOR   │ ◀─────────┘
+┌───────────────┐  session log  ┌───────────────┐  pending  │
+│  SUMMARIZER   │ ◀──────────── │   EXECUTOR    │ ◀─────────┘
 │   (sonnet)    │               │    (opus)     │
 └───────┬───────┘               └───────┬───────┘
-        │ wnioski                       │ memory_search / memory_get
+        │ findings                      │ memory_search / memory_get
         ▼                               ▼
 ┌───────────────────────────────────────────────┐
-│            Pamięć (SQLite + FTS5)             │
-│              serwer MCP (stdio)               │
+│            Memory (SQLite + FTS5)             │
+│              MCP server (stdio)               │
 └───────────────────────────────────────────────┘
 ```
 
-Dwie pętle działają równolegle i komunikują się wyłącznie przez współdzielony magazyn zadań:
+Two loops run in parallel and communicate only through the shared task store:
 
-1. **Monitor** — co ustalony interwał (i tylko w skonfigurowanym oknie godzin/dni) odpala sesję Claude z wymuszonym schematem JSON. Wynik to lista zadań, deduplikowana po `id` i zapisywana do `TaskStore`.
-2. **Egzekutor** — budzony natychmiast po nowych zadaniach, wykonuje je jedno po drugim w sesjach z pełnym dostępem do narzędzi oraz pamięci długoterminowej przez MCP. Błędy przejściowe (timeout, znane wzorce) ponawia z opóźnieniem, resztę oznacza jako `failed`.
-3. **Podsumowujący** — po każdej sesji egzekutora (sukces czy porażka) czyta jej log i zapisuje wnioski do SQLite. Następne sesje mogą je wyszukiwać pełnotekstowo (FTS5) narzędziami `memory_search` / `memory_get`.
+1. **Monitor** — every configured interval (and only within the configured window of hours/days) it fires a Claude session with an enforced JSON schema. The result is a list of tasks, deduplicated by `id` and written to the `TaskStore`.
+2. **Executor** — woken immediately when new tasks arrive, it completes them one by one in sessions with full access to tools and to long-term memory via MCP. Transient errors (timeout, known patterns) are retried with a delay; the rest are marked as `failed`.
+3. **Summarizer** — after each executor session (success or failure) it reads the session log and writes findings to SQLite. Later sessions can search them full-text (FTS5) with the `memory_search` / `memory_get` tools.
 
 ## Highlights
 
-- 🔁 **Autonomiczna pętla** — monitor sam zgłasza zadania, egzekutor sam je wykonuje; zero ręcznego kolejkowania.
-- 🧠 **Pamięć długoterminowa** — SQLite + FTS5 wystawione egzekutorowi jako serwer MCP; skrzat uczy się na własnych sesjach.
-- ⏰ **Godziny pracy** — okno czasowe i dni tygodnia (`08:00-18:00`, `mon-fri`); poza nimi monitor odpoczywa.
-- 🔂 **Ponawianie z głową** — rozróżnia błędy przejściowe od trwałych, konfigurowalna liczba prób i opóźnienie.
-- 📺 **Dashboard TUI** — podgląd obu pętli na żywo (Ink/React): statusy sesji, zadania, zdarzenia.
-- 🗂️ **Trwałe logi sesji** — każda sesja ląduje w `logs/<agent>/<dzień>/<godzina>_<sessionId>.log`.
-- 🎛️ **Modele i effort per agent** — sonnet do patrolu, opus do roboty; wszystko konfigurowalne.
-- 🧾 **Zadania w JSON** — `data/tasks.json` z zapisem atomowym; zawieszone `in_progress` wracają do `pending` po restarcie.
-- 📝 **Prompty w plikach** — cała osobowość agentów w `prompts/*.md`, żadnych promptów zaszytych w kodzie.
+- 🔁 **Autonomous loop** — the monitor reports tasks on its own, the executor completes them on its own; zero manual queuing.
+- 🧠 **Long-term memory** — SQLite + FTS5 exposed to the executor as an MCP server; the sprite learns from its own sessions.
+- ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
+- 🔂 **Smart retries** — distinguishes transient from permanent errors, configurable number of attempts and delay.
+- 📺 **TUI dashboard** — a live view of both loops (Ink/React): session statuses, tasks, events.
+- 🗂️ **Persistent session logs** — every session lands in `logs/<agent>/<day>/<hour>_<sessionId>.log`.
+- 🎛️ **Per-agent model and effort** — sonnet for the patrol, opus for the work; all configurable.
+- 🧾 **Tasks in JSON** — `data/tasks.json` with atomic writes; stalled `in_progress` tasks return to `pending` after a restart.
+- 📝 **Prompts in files** — the entire personality of the agents lives in `prompts/*.md`, no prompts baked into the code.
 
-## Wymagania
+## Requirements
 
-- Node.js ≥ 22 i pnpm
-- Zainstalowane i zalogowane [Claude Code CLI](https://claude.com/claude-code) (`claude`)
+- Node.js ≥ 22 and pnpm
+- The [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in
 
 ## Quick start (TL;DR)
 
 ```bash
 pnpm install
 
-# interaktywnie wygeneruj .env i prompty
+# interactively generate .env and the prompts
 pnpm configure
 
-# wypuść skrzata
-pnpm start        # albo: pnpm dev (watch)
+# release the sprite
+pnpm start        # or: pnpm dev (watch)
 ```
 
-Podkomendy binarki:
+Binary subcommands:
 
 ```bash
-brownie start        # uruchom obie pętle + dashboard
-brownie configure    # interaktywna konfiguracja (.env, prompty)
-brownie mcp --db …   # serwer MCP pamięci (używany wewnętrznie przez egzekutora)
+brownie start        # run both loops + dashboard
+brownie configure    # interactive configuration (.env, prompts)
+brownie mcp --db …   # memory MCP server (used internally by the executor)
 ```
 
-## Konfiguracja
+## Configuration
 
-Wszystko przez zmienne `CLAUDE_WORKER_*` w `.env` (walidowane zodem — literówka nie przejdzie). `pnpm configure` przeprowadzi Cię przez całość, ale możesz też ręcznie:
+Everything through `CLAUDE_WORKER_*` variables in `.env` (validated with zod — a typo won't get through). `pnpm configure` walks you through all of it, but you can also do it by hand:
 
-| Zmienna                                       | Domyślnie                        | Opis                                                 |
-| --------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
-| `CLAUDE_WORKER_MONITOR_MODEL`                 | `sonnet`                         | model monitora                                       |
-| `CLAUDE_WORKER_MONITOR_EFFORT`                | `medium`                         | effort monitora                                      |
-| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`           | `900000` (15 min)                | interwał patrolu                                     |
-| `CLAUDE_WORKER_MONITOR_ACTIVE_HOURS`          | _(całą dobę)_                    | okno pracy, np. `08:00-18:00`                        |
-| `CLAUDE_WORKER_MONITOR_ACTIVE_DAYS`           | _(codziennie)_                   | dni pracy, np. `mon-fri` albo `mon,wed,sat-sun`      |
-| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`           | `./prompts/monitor.prompt.md`    | prompt monitora                                      |
-| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`    | `./prompts/monitor.system.md`    | system prompt monitora                               |
-| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`    | _(brak)_                         | timeout sesji monitora                               |
-| `CLAUDE_WORKER_EXECUTOR_MODEL`                | `opus`                           | model egzekutora                                     |
-| `CLAUDE_WORKER_EXECUTOR_EFFORT`               | `high`                           | effort egzekutora                                    |
-| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`          | `./prompts/executor.prompt.md`   | prompt egzekutora                                    |
-| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE`   | `./prompts/executor.system.md`   | system prompt egzekutora                             |
-| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS`   | _(brak)_                         | timeout sesji egzekutora                             |
-| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`        | `3`                              | maks. liczba prób zadania                            |
-| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`       | `30000`                          | opóźnienie między próbami                            |
-| `CLAUDE_WORKER_SUMMARIZER_MODEL`              | `sonnet`                         | model podsumowującego                                |
-| `CLAUDE_WORKER_SUMMARIZER_EFFORT`             | `medium`                         | effort podsumowującego                               |
-| `CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE` | `./prompts/summarizer.system.md` | system prompt podsumowującego                        |
-| `CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS` | `300000` (5 min)                 | timeout sesji podsumowującego                        |
-| `CLAUDE_WORKER_MEMORY_DB`                     | `./data/memory.db`               | baza pamięci długoterminowej                         |
-| `CLAUDE_WORKER_TASKS_FILE`                    | `./data/tasks.json`              | magazyn zadań                                        |
-| `CLAUDE_WORKER_LOGS_DIR`                      | `./logs`                         | katalog logów sesji                                  |
-| `CLAUDE_WORKER_STREAM_PARTIAL`                | `true`                           | strumieniowanie częściowych odpowiedzi do dashboardu |
-| `CLAUDE_WORKER_CWD`                           | `./workspace`                    | katalog roboczy sesji agentów                        |
+| Variable                                      | Default                          | Description                                       |
+| --------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| `CLAUDE_WORKER_MONITOR_MODEL`                 | `sonnet`                         | monitor model                                     |
+| `CLAUDE_WORKER_MONITOR_EFFORT`                | `medium`                         | monitor effort                                    |
+| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`           | `900000` (15 min)                | patrol interval                                   |
+| `CLAUDE_WORKER_MONITOR_ACTIVE_HOURS`          | _(24/7)_                         | working window, e.g. `08:00-18:00`                |
+| `CLAUDE_WORKER_MONITOR_ACTIVE_DAYS`           | _(daily)_                        | working days, e.g. `mon-fri` or `mon,wed,sat-sun` |
+| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`           | `./prompts/monitor.prompt.md`    | monitor prompt                                    |
+| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`    | `./prompts/monitor.system.md`    | monitor system prompt                             |
+| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`    | _(none)_                         | monitor session timeout                           |
+| `CLAUDE_WORKER_EXECUTOR_MODEL`                | `opus`                           | executor model                                    |
+| `CLAUDE_WORKER_EXECUTOR_EFFORT`               | `high`                           | executor effort                                   |
+| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`          | `./prompts/executor.prompt.md`   | executor prompt                                   |
+| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE`   | `./prompts/executor.system.md`   | executor system prompt                            |
+| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS`   | _(none)_                         | executor session timeout                          |
+| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`        | `3`                              | max task attempts                                 |
+| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`       | `30000`                          | delay between attempts                            |
+| `CLAUDE_WORKER_SUMMARIZER_MODEL`              | `sonnet`                         | summarizer model                                  |
+| `CLAUDE_WORKER_SUMMARIZER_EFFORT`             | `medium`                         | summarizer effort                                 |
+| `CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE` | `./prompts/summarizer.system.md` | summarizer system prompt                          |
+| `CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS` | `300000` (5 min)                 | summarizer session timeout                        |
+| `CLAUDE_WORKER_MEMORY_DB`                     | `./data/memory.db`               | long-term memory database                         |
+| `CLAUDE_WORKER_TASKS_FILE`                    | `./data/tasks.json`              | task store                                        |
+| `CLAUDE_WORKER_LOGS_DIR`                      | `./logs`                         | session logs directory                            |
+| `CLAUDE_WORKER_STREAM_PARTIAL`                | `true`                           | stream partial responses to the dashboard         |
+| `CLAUDE_WORKER_CWD`                           | `./workspace`                    | working directory for agent sessions              |
 
-## Prompty
+## Prompts
 
-Cała osobowość skrzata mieszka w `prompts/*.md`:
+The sprite's entire personality lives in `prompts/*.md`:
 
-| Plik                   | Rola                                                  |
-| ---------------------- | ----------------------------------------------------- |
-| `monitor.system.md`    | kim jest monitor i jak ocenia, co jest zadaniem       |
-| `monitor.prompt.md`    | co monitor ma sprawdzać w każdym patrolu              |
-| `executor.system.md`   | zasady pracy egzekutora                               |
-| `executor.prompt.md`   | szablon zlecenia (opis zadania doklejany na końcu)    |
-| `summarizer.system.md` | jak destylować sesję do wniosków wartych zapamiętania |
+| File                   | Role                                                            |
+| ---------------------- | --------------------------------------------------------------- |
+| `monitor.system.md`    | who the monitor is and how it decides what counts as a task     |
+| `monitor.prompt.md`    | what the monitor should check on every patrol                   |
+| `executor.system.md`   | the executor's working rules                                    |
+| `executor.prompt.md`   | the task template (the task description is appended at the end) |
+| `summarizer.system.md` | how to distill a session into findings worth remembering        |
 
-To tutaj decydujesz, czym skrzat się zajmuje: przeglądaniem PR-ów, pilnowaniem CI, porządkami w backlogu — co tylko opiszesz.
+This is where you decide what the sprite works on: reviewing PRs, watching CI, tidying the backlog — whatever you describe.
 
-## Bezpieczeństwo
+## Security
 
-Sesje agentów działają z `--permission-mode bypassPermissions` i pełnym dostępem do narzędzi — skrzat ma wolną rękę w obrębie `CLAUDE_WORKER_CWD` (domyślnie `./workspace`). Wypuszczaj go więc na przemyślanym terenie: dedykowany katalog roboczy, przemyślane prompty, żadnych sekretów w zasięgu. Zadania zgłaszane przez monitor traktuj jak każde wejście do autonomicznego agenta — to prompty definiują granice.
+Agent sessions run with `--permission-mode bypassPermissions` and full tool access — the sprite has a free hand within `CLAUDE_WORKER_CWD` (`./workspace` by default). So release it onto well-considered ground: a dedicated working directory, well-considered prompts, no secrets within reach. Treat tasks reported by the monitor like any input to an autonomous agent — the prompts define the boundaries.
 
 ## Development
 
 ```bash
-pnpm dev              # start z watch (tsx)
-pnpm check            # typecheck + lint + format:check + test — przed każdym commitem
+pnpm dev              # start with watch (tsx)
+pnpm check            # typecheck + lint + format:check + test — before every commit
 pnpm test             # vitest run
-pnpm test:coverage    # progi pokrycia wymuszane w vitest.config.ts
+pnpm test:coverage    # coverage thresholds enforced in vitest.config.ts
 pnpm build            # tsup -> dist/
 ```
 
-Sesje Claude testuje się bez prawdziwego CLI — `test/fixtures/claude` to fałszywa binarka sterowana zmiennymi `FAKE_CLAUDE_*`. Progi pokrycia (statements 92%, lines 94%) są wymuszane, więc nowy kod musi być otestowany.
+Claude sessions are tested without the real CLI — `test/fixtures/claude` is a fake binary driven by `FAKE_CLAUDE_*` variables. Coverage thresholds (statements 92%, lines 94%) are enforced, so new code must be tested.
 
-## Dlaczego „Brownie”?
+## Why "Brownie"?
 
-W folklorze Wysp Brytyjskich **brownie** to domowy duszek, który nocą — kiedy domownicy śpią — po cichu kończy za nich robotę. Ma dwie żelazne zasady: pracuje nieproszony i znika, gdy się go podgląda. Nasz brownie jest odrobinę nowocześniejszy: zamiast miski mleka bierze tokeny, a zamiast zamiatać izbę — domyka Twoje zadania. Podglądać wolno (od tego jest dashboard). 🧹
+In British folklore a **brownie** is a household spirit that, at night — while the household sleeps — quietly finishes their work for them. It has two iron rules: it works unbidden, and it vanishes when watched. Ours is a touch more modern: instead of a bowl of milk it takes tokens, and instead of sweeping the room it closes out your tasks. Watching is allowed (that's what the dashboard is for). 🧝

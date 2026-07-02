@@ -27,8 +27,8 @@ type MemoryStoreType = import("../../src/memory/store.js").MemoryStore;
 function task(overrides: Partial<Task> = {}): Task {
   return {
     id: "redmine-1",
-    title: "Napraw eksport",
-    description: "Eksport CSV zwraca 500.",
+    title: "Fix export",
+    description: "CSV export returns 500.",
     status: "in_progress",
     attempts: 1,
     createdAt: "2026-07-02T10:00:00.000Z",
@@ -41,7 +41,7 @@ function executorResult(overrides: Partial<SessionResult> = {}): SessionResult {
   return {
     ok: true,
     durationMs: 5000,
-    sessionId: "sesja-egzekutora",
+    sessionId: "executor-session",
     ...overrides,
   };
 }
@@ -51,8 +51,8 @@ function summarySessionResult(overrides: Partial<SessionResult> = {}): SessionRe
     ok: true,
     durationMs: 700,
     costUsd: 0.01,
-    sessionId: "sesja-podsumowania",
-    resultText: '```json\n{"headline": "Nagłówek", "summary": "Szczegóły."}\n```',
+    sessionId: "summary-session",
+    resultText: '```json\n{"headline": "Headline", "summary": "Details."}\n```',
     ...overrides,
   };
 }
@@ -61,7 +61,7 @@ describe("SessionSummarizer", () => {
   let dir: string;
   let store: MemoryStoreType;
   let spy: ExecutorReporterSpy;
-  const logPath = "/logs/executor/2026-07-02/10-00-00-sesja-egzekutora.log";
+  const logPath = "/logs/executor/2026-07-02/10-00-00-executor-session.log";
   const resolveLogPath = vi.fn();
 
   function buildSummarizer() {
@@ -82,7 +82,7 @@ describe("SessionSummarizer", () => {
     store = MemoryStore.open(join(dir, "memory.db"));
     spy = createExecutorReporterSpy();
     resolveLogPath.mockReset().mockResolvedValue(logPath);
-    mocks.readFile.mockReset().mockResolvedValue("system podsumowującego\n");
+    mocks.readFile.mockReset().mockResolvedValue("summarizer system\n");
     mocks.runSession.mockReset().mockResolvedValue(summarySessionResult());
   });
 
@@ -91,7 +91,7 @@ describe("SessionSummarizer", () => {
     await removeTempDir(dir);
   });
 
-  it("uruchamia sesję podsumowującą i zapisuje rekord do pamięci", async () => {
+  it("runs the summarizer session and saves a record to memory", async () => {
     await buildSummarizer().summarize(
       task(),
       executorResult(),
@@ -100,7 +100,7 @@ describe("SessionSummarizer", () => {
     );
 
     expect(spy.summaryStarted).toHaveBeenCalledOnce();
-    expect(resolveLogPath).toHaveBeenCalledWith("sesja-egzekutora");
+    expect(resolveLogPath).toHaveBeenCalledWith("executor-session");
 
     const spec = mocks.runSession.mock.calls[0]?.[0] as {
       model: string;
@@ -114,7 +114,7 @@ describe("SessionSummarizer", () => {
     };
     expect(spec.model).toBe("haiku");
     expect(spec.effort).toBe("low");
-    expect(spec.systemPrompt).toBe("system podsumowującego\n");
+    expect(spec.systemPrompt).toBe("summarizer system\n");
     expect(spec.prompt).toContain("ID: redmine-1");
     expect(spec.prompt).toContain(logPath);
     expect(spec.sessionTimeoutMs).toBe(60_000);
@@ -124,34 +124,34 @@ describe("SessionSummarizer", () => {
 
     const records = store.get("redmine-1");
     expect(records).toHaveLength(1);
-    expect(records[0]?.headline).toBe("Nagłówek");
-    expect(records[0]?.summary).toBe("Szczegóły.");
+    expect(records[0]?.headline).toBe("Headline");
+    expect(records[0]?.summary).toBe("Details.");
     expect(records[0]?.ok).toBe(true);
-    expect(records[0]?.sessionId).toBe("sesja-egzekutora");
+    expect(records[0]?.sessionId).toBe("executor-session");
 
     expect(spy.summaryFinished).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "redmine-1", ok: true, costUsd: 0.01 }),
     );
   });
 
-  it("zapisuje porażkę zadania razem z jego błędem", async () => {
+  it("saves the task failure along with its error", async () => {
     await buildSummarizer().summarize(
       task({ attempts: 2 }),
-      executorResult({ ok: false, error: "timeout sesji" }),
+      executorResult({ ok: false, error: "session timeout" }),
       { willRetry: true },
       new AbortController().signal,
     );
 
     const records = store.get("redmine-1");
     expect(records[0]?.ok).toBe(false);
-    expect(records[0]?.error).toBe("timeout sesji");
+    expect(records[0]?.error).toBe("session timeout");
     expect(records[0]?.attempt).toBe(2);
 
     const spec = mocks.runSession.mock.calls[0]?.[0] as { prompt: string };
-    expect(spec.prompt).toContain("Zaplanowano ponowną próbę: tak");
+    expect(spec.prompt).toContain("Retry scheduled: yes");
   });
 
-  it("pomija podsumowanie, gdy sesja egzekutora nie ma identyfikatora", async () => {
+  it("skips the summary when the executor session has no id", async () => {
     await buildSummarizer().summarize(
       task(),
       executorResult({ sessionId: undefined }),
@@ -164,12 +164,12 @@ describe("SessionSummarizer", () => {
     expect(spy.summaryFinished).toHaveBeenCalledWith(
       expect.objectContaining({
         ok: false,
-        error: expect.stringContaining("brak logu") as unknown,
+        error: expect.stringContaining("no log") as unknown,
       }),
     );
   });
 
-  it("pomija podsumowanie, gdy nie można ustalić ścieżki logu", async () => {
+  it("skips the summary when the log path cannot be resolved", async () => {
     resolveLogPath.mockResolvedValue(undefined);
 
     await buildSummarizer().summarize(
@@ -185,9 +185,9 @@ describe("SessionSummarizer", () => {
     );
   });
 
-  it("zgłasza błąd przy zepsutym raporcie i niczego nie zapisuje", async () => {
+  it("reports an error on a broken report and saves nothing", async () => {
     mocks.runSession.mockResolvedValue(
-      summarySessionResult({ resultText: "to nie jest json" }),
+      summarySessionResult({ resultText: "this is not json" }),
     );
 
     await buildSummarizer().summarize(
@@ -201,12 +201,12 @@ describe("SessionSummarizer", () => {
     expect(spy.summaryFinished).toHaveBeenCalledWith(
       expect.objectContaining({
         ok: false,
-        error: "niepoprawny raport podsumowania",
+        error: "invalid summary report",
       }),
     );
   });
 
-  it("zgłasza błąd nieudanej sesji podsumowującej", async () => {
+  it("reports the error of a failed summarizer session", async () => {
     mocks.runSession.mockResolvedValue(
       summarySessionResult({ ok: false, error: "API Error", resultText: undefined }),
     );
@@ -224,8 +224,8 @@ describe("SessionSummarizer", () => {
     );
   });
 
-  it("nie propaguje wyjątków — zgłasza je przez reporter", async () => {
-    mocks.runSession.mockRejectedValue(new Error("awaria"));
+  it("does not propagate exceptions — reports them via the reporter", async () => {
+    mocks.runSession.mockRejectedValue(new Error("failure"));
 
     await expect(
       buildSummarizer().summarize(
@@ -237,11 +237,11 @@ describe("SessionSummarizer", () => {
     ).resolves.toBeUndefined();
 
     expect(spy.summaryFinished).toHaveBeenCalledWith(
-      expect.objectContaining({ ok: false, error: "awaria" }),
+      expect.objectContaining({ ok: false, error: "failure" }),
     );
   });
 
-  it("po przerwaniu nie zapisuje wyniku ani nie raportuje", async () => {
+  it("after an abort saves no result and does not report", async () => {
     const controller = new AbortController();
     mocks.runSession.mockImplementation(() => {
       controller.abort();
@@ -259,7 +259,7 @@ describe("SessionSummarizer", () => {
     expect(spy.summaryFinished).not.toHaveBeenCalled();
   });
 
-  it("z już przerwanym sygnałem nie robi nic", async () => {
+  it("does nothing with an already aborted signal", async () => {
     const controller = new AbortController();
     controller.abort();
 

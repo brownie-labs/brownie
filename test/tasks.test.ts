@@ -7,7 +7,7 @@ import type { NewTask } from "../src/types.js";
 import { createTempDir, removeTempDir } from "./helpers.js";
 
 function newTask(id: string, overrides: Partial<NewTask> = {}): NewTask {
-  return { id, title: `Zadanie ${id}`, description: `Opis ${id}`, ...overrides };
+  return { id, title: `Task ${id}`, description: `Description ${id}`, ...overrides };
 }
 
 describe("TaskStore", () => {
@@ -21,13 +21,13 @@ describe("TaskStore", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it("otwiera pusty magazyn, gdy plik nie istnieje", async () => {
+  it("opens an empty store when the file does not exist", async () => {
     const store = await TaskStore.open(path);
     expect(store.pendingCount()).toBe(0);
     expect(await store.takeNext()).toBeUndefined();
   });
 
-  it("dodaje nowe zadania i zwraca faktycznie dodane", async () => {
+  it("adds new tasks and returns the ones actually added", async () => {
     const store = await TaskStore.open(path);
     const added = await store.addTasks([newTask("a"), newTask("b")]);
 
@@ -36,7 +36,7 @@ describe("TaskStore", () => {
     expect(store.pendingCount()).toBe(2);
   });
 
-  it("deduplikuje względem oczekujących zadań", async () => {
+  it("deduplicates against pending tasks", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
@@ -46,13 +46,13 @@ describe("TaskStore", () => {
     expect(store.pendingCount()).toBe(2);
   });
 
-  it("deduplikuje względem historii (done i failed)", async () => {
+  it("deduplicates against history (done and failed)", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("done-1"), newTask("failed-1")]);
     await store.takeNext();
     await store.complete("done-1");
     await store.takeNext();
-    await store.fail("failed-1", "błąd");
+    await store.fail("failed-1", "error");
 
     const added = await store.addTasks([newTask("done-1"), newTask("failed-1")]);
 
@@ -60,7 +60,7 @@ describe("TaskStore", () => {
     expect(store.pendingCount()).toBe(0);
   });
 
-  it("takeNext zwraca najstarsze pending i oznacza je in_progress", async () => {
+  it("takeNext returns the oldest pending and marks it in_progress", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a"), newTask("b")]);
 
@@ -73,13 +73,13 @@ describe("TaskStore", () => {
     expect(await store.takeNext()).toBeUndefined();
   });
 
-  it("complete i fail utrwalają status z błędem", async () => {
+  it("complete and fail persist the status with the error", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a"), newTask("b")]);
     await store.takeNext();
     await store.complete("a");
     await store.takeNext();
-    await store.fail("b", "nie wyszło");
+    await store.fail("b", "did not work");
 
     const file = JSON.parse(await readFile(path, "utf8")) as {
       tasks: { id: string; status: string; error?: string }[];
@@ -87,10 +87,10 @@ describe("TaskStore", () => {
     const byId = new Map(file.tasks.map((t) => [t.id, t]));
     expect(byId.get("a")?.status).toBe("done");
     expect(byId.get("b")?.status).toBe("failed");
-    expect(byId.get("b")?.error).toBe("nie wyszło");
+    expect(byId.get("b")?.error).toBe("did not work");
   });
 
-  it("zachowuje zadania po ponownym otwarciu", async () => {
+  it("keeps tasks after reopening", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
@@ -100,7 +100,7 @@ describe("TaskStore", () => {
     expect((await reopened.takeNext())?.id).toBe("a");
   });
 
-  it("resetuje osierocone in_progress do pending przy otwarciu", async () => {
+  it("resets orphaned in_progress to pending on open", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
     await store.takeNext();
@@ -111,7 +111,7 @@ describe("TaskStore", () => {
     expect((await reopened.takeNext())?.id).toBe("a");
   });
 
-  it("nie zostawia pliku tymczasowego po zapisie", async () => {
+  it("does not leave a temporary file after writing", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
@@ -119,21 +119,21 @@ describe("TaskStore", () => {
     expect(existsSync(path)).toBe(true);
   });
 
-  it("rzuca czytelny błąd przy uszkodzonym JSON", async () => {
+  it("throws a readable error on corrupted JSON", async () => {
     await TaskStore.open(path);
-    await writeFile(path, "to nie json", "utf8");
+    await writeFile(path, "not json", "utf8");
 
-    await expect(TaskStore.open(path)).rejects.toThrow(/Uszkodzony plik magazynu zadań/);
+    await expect(TaskStore.open(path)).rejects.toThrow(/Corrupted task store file/);
   });
 
-  it("rzuca czytelny błąd przy niezgodnym formacie", async () => {
+  it("throws a readable error on an incompatible format", async () => {
     await TaskStore.open(path);
     await writeFile(path, JSON.stringify({ version: 2, tasks: [] }), "utf8");
 
-    await expect(TaskStore.open(path)).rejects.toThrow(/niezgodny format/);
+    await expect(TaskStore.open(path)).rejects.toThrow(/unexpected data format/);
   });
 
-  it("takeNext zlicza próby wykonania", async () => {
+  it("takeNext counts execution attempts", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
@@ -142,35 +142,35 @@ describe("TaskStore", () => {
     expect(taken?.attempts).toBe(1);
   });
 
-  it("requeue przywraca zadanie do pending, zachowuje próby i zapisuje błąd", async () => {
+  it("requeue restores the task to pending, keeps attempts and saves the error", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
     await store.takeNext();
 
-    await store.requeue("a", "zerwane połączenie");
+    await store.requeue("a", "broken connection");
 
     expect(store.list()[0]).toMatchObject({
       id: "a",
       status: "pending",
       attempts: 1,
-      error: "zerwane połączenie",
+      error: "broken connection",
     });
 
     const again = await store.takeNext();
     expect(again?.attempts).toBe(2);
   });
 
-  it("requeue nieznanego id jest ignorowane", async () => {
+  it("requeue of an unknown id is ignored", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
-    await store.requeue("nie-ma", "błąd");
+    await store.requeue("not-there", "error");
 
     expect(store.list()).toHaveLength(1);
     expect(store.list()[0]?.status).toBe("pending");
   });
 
-  it("wczytuje magazyn w starym formacie bez pola attempts", async () => {
+  it("loads an old-format store without the attempts field", async () => {
     await TaskStore.open(path);
     await writeFile(
       path,
@@ -178,9 +178,9 @@ describe("TaskStore", () => {
         version: 1,
         tasks: [
           {
-            id: "stare",
-            title: "Stare zadanie",
-            description: "Opis",
+            id: "old",
+            title: "Old task",
+            description: "Description",
             status: "pending",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
@@ -195,7 +195,7 @@ describe("TaskStore", () => {
     expect(reopened.list()[0]?.attempts).toBe(0);
   });
 
-  it("list zwraca kopie zadań — mutacja wyniku nie psuje magazynu", async () => {
+  it("list returns copies of tasks — mutating the result does not corrupt the store", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
 
@@ -203,13 +203,13 @@ describe("TaskStore", () => {
     expect(listed.map((t) => t.id)).toEqual(["a"]);
 
     const first = listed[0];
-    if (!first) throw new Error("oczekiwano zadania na liście");
+    if (!first) throw new Error("expected a task on the list");
     first.status = "failed";
     expect(store.list()[0]?.status).toBe("pending");
     expect(store.pendingCount()).toBe(1);
   });
 
-  it("onChange powiadamia świeżym snapshotem po każdej mutacji", async () => {
+  it("onChange notifies with a fresh snapshot after each mutation", async () => {
     const store = await TaskStore.open(path);
     const snapshots: string[][] = [];
     store.onChange((tasks) => snapshots.push(tasks.map((t) => `${t.id}:${t.status}`)));
@@ -221,7 +221,7 @@ describe("TaskStore", () => {
     expect(snapshots).toEqual([["a:pending"], ["a:in_progress"], ["a:done"]]);
   });
 
-  it("onChange nie powiadamia, gdy mutacja nic nie zmienia", async () => {
+  it("onChange does not notify when a mutation changes nothing", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);
     const calls: number[] = [];
@@ -232,7 +232,7 @@ describe("TaskStore", () => {
     expect(calls).toEqual([]);
   });
 
-  it("unsubscribe z onChange przestaje powiadamiać", async () => {
+  it("unsubscribe from onChange stops notifications", async () => {
     const store = await TaskStore.open(path);
     let calls = 0;
     const unsubscribe = store.onChange(() => {
@@ -247,7 +247,7 @@ describe("TaskStore", () => {
     expect(calls).toBe(1);
   });
 
-  it("współbieżne mutacje nie przeplatają się i zostawiają spójny plik", async () => {
+  it("concurrent mutations do not interleave and leave a consistent file", async () => {
     const store = await TaskStore.open(path);
     const ids = Array.from({ length: 20 }, (_, i) => `t-${i}`);
 

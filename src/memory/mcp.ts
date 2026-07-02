@@ -19,13 +19,13 @@ export function buildMcpConfig(
 }
 
 function formatRecord(record: TaskSummaryRecord): string {
-  const status = record.ok ? "sukces" : "porażka";
+  const status = record.ok ? "success" : "failure";
   const lines = [
     `### ${record.taskId} — ${record.headline}`,
-    `Zadanie: ${record.title}`,
-    `Próba: ${record.attempt}, wynik: ${status}, data: ${record.createdAt}`,
+    `Task: ${record.title}`,
+    `Attempt: ${record.attempt}, result: ${status}, date: ${record.createdAt}`,
   ];
-  if (record.error !== undefined) lines.push(`Błąd: ${record.error}`);
+  if (record.error !== undefined) lines.push(`Error: ${record.error}`);
   lines.push("", record.summary);
   return lines.join("\n");
 }
@@ -42,44 +42,44 @@ export function createMemoryMcpServer(reader: MemoryReader): McpServer {
   server.registerTool(
     "memory_search",
     {
-      title: "Wyszukiwanie w pamięci zadań",
+      title: "Search task memory",
       description:
-        "Pełnotekstowa wyszukiwarka pamięci długoterminowej: podsumowania wcześniej " +
-        "wykonanych zadań (decyzje, ślepe uliczki, pułapki). Wyniki posortowane po " +
-        "trafności.",
+        "Full-text search over long-term memory: summaries of previously " +
+        "completed tasks (decisions, dead ends, pitfalls). Results sorted by " +
+        "relevance.",
       inputSchema: {
         query: z
           .string()
           .min(1)
-          .describe("Słowa kluczowe, np. źródło zadania, projekt, komunikat błędu"),
+          .describe("Keywords, e.g. task source, project, error message"),
         limit: z
           .number()
           .int()
           .min(1)
           .max(50)
           .optional()
-          .describe("Maksymalna liczba wyników (domyślnie 10)"),
+          .describe("Maximum number of results (default 10)"),
       },
     },
     ({ query, limit }) =>
-      textResult(reader.search(query, limit ?? 10), "Brak wyników w pamięci."),
+      textResult(reader.search(query, limit ?? 10), "No results in memory."),
   );
 
   server.registerTool(
     "memory_get",
     {
-      title: "Historia podsumowań zadania",
+      title: "Task summary history",
       description:
-        "Zwraca wszystkie podsumowania sesji dla zadania o podanym ID, " +
-        "w kolejności chronologicznej.",
+        "Returns all session summaries for a task with the given ID, " +
+        "in chronological order.",
       inputSchema: {
         taskId: z
           .string()
           .min(1)
-          .describe("Dokładny identyfikator zadania (pole „ID” z opisu zadania)"),
+          .describe("Exact task identifier (the “ID” field from the task description)"),
       },
     },
-    ({ taskId }) => textResult(reader.get(taskId), "Brak podsumowań dla tego zadania."),
+    ({ taskId }) => textResult(reader.get(taskId), "No summaries for this task."),
   );
 
   return server;
@@ -94,13 +94,14 @@ export async function runMemoryMcpServer(dbPath: string): Promise<void> {
 export const mcpCommand = defineCommand({
   meta: {
     name: "mcp",
-    description: "Serwer MCP (stdio) z pamięcią podsumowań zadań dla sesji egzekutora",
+    description:
+      "MCP server (stdio) exposing task summary memory for the executor session",
   },
   args: {
     db: {
       type: "string",
       required: true,
-      description: "Ścieżka do pliku bazy pamięci (SQLite)",
+      description: "Path to the memory database file (SQLite)",
     },
   },
   run: ({ args }) => runMemoryMcpServer(args.db),

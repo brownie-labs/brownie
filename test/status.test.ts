@@ -12,8 +12,8 @@ function createStore(
 function buildTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "t-1",
-    title: "Tytuł",
-    description: "Opis",
+    title: "Title",
+    description: "Description",
     status: "pending",
     attempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -27,7 +27,7 @@ describe("WorkerStatusStore", () => {
     vi.useRealTimers();
   });
 
-  it("stan początkowy: monitor startuje, egzekutor czeka, brak zadań", () => {
+  it("initial state: monitor starting, executor waiting, no tasks", () => {
     const store = createStore();
     const status = store.getSnapshot();
     expect(status.monitor.phase).toEqual({ kind: "starting" });
@@ -38,7 +38,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("przechodzi przez fazy monitora", () => {
+  it("transitions through monitor phases", () => {
     const store = createStore();
     const resumeAt = new Date("2026-07-02T08:00:00");
     store.monitor.offHours(resumeAt);
@@ -64,7 +64,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("przechodzi przez fazy egzekutora i zapisuje wynik zadania", () => {
+  it("transitions through executor phases and records the task outcome", () => {
     const store = createStore();
     const task = buildTask();
     store.executor.taskStarted(task);
@@ -75,7 +75,7 @@ describe("WorkerStatusStore", () => {
 
     store.executor.taskFinished({
       taskId: "t-1",
-      title: "Tytuł",
+      title: "Title",
       ok: true,
       durationMs: 1200,
       costUsd: 0.02,
@@ -94,26 +94,26 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("summaryStarted ustawia fazę podsumowania bez czyszczenia taila", () => {
+  it("summaryStarted sets the summary phase without clearing the tail", () => {
     const store = createStore();
     const task = buildTask();
     store.executor.taskStarted(task);
-    store.executor.session({ type: "text", text: "praca nad zadaniem" });
+    store.executor.session({ type: "text", text: "working on task" });
     store.executor.summaryStarted(task);
     store.flush();
 
     const status = store.getSnapshot().executor;
     expect(status.phase.kind).toBe("summary");
     if (status.phase.kind === "summary") expect(status.phase.task.id).toBe("t-1");
-    expect(status.tail).toContain("praca nad zadaniem");
+    expect(status.tail).toContain("working on task");
     store.dispose();
   });
 
-  it("summaryFinished dokłada linię do taila i nie nadpisuje wyniku zadania", () => {
+  it("summaryFinished appends a line to the tail and does not overwrite the task outcome", () => {
     const store = createStore();
     store.executor.taskFinished({
       taskId: "t-1",
-      title: "Tytuł",
+      title: "Title",
       ok: true,
       durationMs: 1200,
       costUsd: undefined,
@@ -132,24 +132,23 @@ describe("WorkerStatusStore", () => {
       ok: false,
       durationMs: 300,
       costUsd: undefined,
-      error: "niepoprawny raport podsumowania",
+      error: "invalid summary report",
     });
     store.flush();
 
     const status = store.getSnapshot().executor;
     expect(status.lastOutcome?.taskId).toBe("t-1");
-    expect(status.tail.some((l) => l.includes("✔ pamięć: podsumowanie t-1"))).toBe(true);
+    expect(status.tail.some((l) => l.includes("✔ memory: summary t-1"))).toBe(true);
     expect(
       status.tail.some(
         (l) =>
-          l.includes("✖ pamięć: podsumowanie t-1") &&
-          l.includes("niepoprawny raport podsumowania"),
+          l.includes("✖ memory: summary t-1") && l.includes("invalid summary report"),
       ),
     ).toBe(true);
     store.dispose();
   });
 
-  it("zapisuje wynik cyklu monitora z czasem zakończenia", () => {
+  it("records the monitor cycle outcome with a finish time", () => {
     const store = createStore();
     store.monitor.cycleFinished({
       cycle: 1,
@@ -158,20 +157,20 @@ describe("WorkerStatusStore", () => {
       costUsd: undefined,
       addedTasks: 0,
       skippedDuplicates: 0,
-      error: "niepoprawny raport zadań",
+      error: "invalid task report",
     });
     store.flush();
     const outcome = store.getSnapshot().monitor.lastOutcome;
     expect(outcome).toMatchObject({
       cycle: 1,
       ok: false,
-      error: "niepoprawny raport zadań",
+      error: "invalid task report",
     });
     expect(outcome?.finishedAt).toBeGreaterThan(0);
     store.dispose();
   });
 
-  it("zdarzenia sesji trafiają do taila, init ustawia sessionId", () => {
+  it("session events land in the tail, init sets the sessionId", () => {
     const store = createStore();
     store.monitor.session({
       type: "init",
@@ -179,20 +178,20 @@ describe("WorkerStatusStore", () => {
       sessionId: "sess-7",
       toolCount: 2,
     });
-    store.monitor.session({ type: "text", text: "Sprawdzam repo" });
+    store.monitor.session({ type: "text", text: "Checking repo" });
     store.monitor.session({ type: "toolUse", name: "Bash", input: "git status" });
     store.flush();
     const panel = store.getSnapshot().monitor;
     expect(panel.sessionId).toBe("sess-7");
     expect(panel.tail).toEqual([
-      "init · model=haiku · session=sess-7 · narzędzia: 2",
-      "Sprawdzam repo",
+      "init · model=haiku · session=sess-7 · tools: 2",
+      "Checking repo",
       "🔧 Bash git status",
     ]);
     store.dispose();
   });
 
-  it("skleja delty partial i pokazuje otwartą linię jako ostatni element taila", () => {
+  it("joins partial deltas and shows the open line as the last tail element", () => {
     const store = createStore();
     store.monitor.session({ type: "partial", text: "abc" });
     store.monitor.session({ type: "partial", text: "def\ngh" });
@@ -205,27 +204,27 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("pomija zdarzenie text zdublowane przez wcześniejsze partiale", () => {
+  it("skips a text event duplicated by earlier partials", () => {
     const store = createStore();
-    store.monitor.session({ type: "partial", text: "Raport gotowy" });
-    store.monitor.session({ type: "text", text: "Raport gotowy" });
+    store.monitor.session({ type: "partial", text: "Report ready" });
+    store.monitor.session({ type: "text", text: "Report ready" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["Raport gotowy"]);
+    expect(store.getSnapshot().monitor.tail).toEqual(["Report ready"]);
     store.dispose();
   });
 
-  it("zdarzenie inne niż text przywraca dopisywanie kolejnych tekstów", () => {
+  it("an event other than text restores appending of subsequent texts", () => {
     const store = createStore();
-    store.monitor.session({ type: "partial", text: "pierwszy" });
-    store.monitor.session({ type: "text", text: "pierwszy" });
+    store.monitor.session({ type: "partial", text: "first" });
+    store.monitor.session({ type: "text", text: "first" });
     store.monitor.session({ type: "toolUse", name: "Bash", input: "ls" });
-    store.monitor.session({ type: "text", text: "drugi" });
+    store.monitor.session({ type: "text", text: "second" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["pierwszy", "🔧 Bash ls", "drugi"]);
+    expect(store.getSnapshot().monitor.tail).toEqual(["first", "🔧 Bash ls", "second"]);
     store.dispose();
   });
 
-  it("retryScheduled ustawia fazę backoff z czasem wznowienia", () => {
+  it("retryScheduled sets the backoff phase with a resume time", () => {
     const store = createStore();
     const resumeAt = new Date(Date.now() + 30_000);
     store.executor.retryScheduled(buildTask(), resumeAt);
@@ -238,7 +237,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("nowa sesja czyści tail i sessionId", () => {
+  it("a new session clears the tail and sessionId", () => {
     const store = createStore();
     store.monitor.session({
       type: "init",
@@ -246,7 +245,7 @@ describe("WorkerStatusStore", () => {
       sessionId: "sess-1",
       toolCount: 0,
     });
-    store.monitor.session({ type: "partial", text: "w toku" });
+    store.monitor.session({ type: "partial", text: "in progress" });
     store.monitor.cycleStarted(2);
     store.flush();
     const panel = store.getSnapshot().monitor;
@@ -255,17 +254,17 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("ogranicza tail do zadanego limitu", () => {
+  it("limits the tail to the given limit", () => {
     const store = createStore({ tailLimit: 3 });
     for (let i = 1; i <= 5; i += 1) {
-      store.executor.session({ type: "text", text: `linia ${i}` });
+      store.executor.session({ type: "text", text: `line ${i}` });
     }
     store.flush();
-    expect(store.getSnapshot().executor.tail).toEqual(["linia 3", "linia 4", "linia 5"]);
+    expect(store.getSnapshot().executor.tail).toEqual(["line 3", "line 4", "line 5"]);
     store.dispose();
   });
 
-  it("przycina bardzo długie linie taila", () => {
+  it("truncates very long tail lines", () => {
     const store = createStore();
     store.monitor.session({ type: "text", text: "x".repeat(500) });
     store.flush();
@@ -275,7 +274,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("zwraca stabilny snapshot między powiadomieniami", () => {
+  it("returns a stable snapshot between notifications", () => {
     const store = createStore();
     const first = store.getSnapshot();
     expect(store.getSnapshot()).toBe(first);
@@ -286,7 +285,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("koalescuje serię zmian w jedno powiadomienie", () => {
+  it("coalesces a burst of changes into a single notification", () => {
     vi.useFakeTimers();
     const store = new WorkerStatusStore({ notifyDelayMs: 50 });
     const listener = vi.fn();
@@ -301,7 +300,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("unsubscribe przestaje powiadamiać", () => {
+  it("unsubscribe stops notifications", () => {
     const store = createStore();
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
@@ -315,7 +314,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("setTasks kopiuje zadania — późniejsza mutacja wejścia nie zmienia snapshotu", () => {
+  it("setTasks copies tasks — a later mutation of the input does not change the snapshot", () => {
     const store = createStore();
     const task = buildTask();
     store.setTasks([task]);
@@ -325,7 +324,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("shutdownRequested zapisuje nazwę sygnału", () => {
+  it("shutdownRequested records the signal name", () => {
     const store = createStore();
     store.shutdownRequested("SIGINT");
     store.flush();
@@ -333,7 +332,7 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
-  it("dispose anuluje zaplanowane powiadomienie", () => {
+  it("dispose cancels the scheduled notification", () => {
     vi.useFakeTimers();
     const store = new WorkerStatusStore({ notifyDelayMs: 50 });
     const listener = vi.fn();
@@ -346,24 +345,24 @@ describe("WorkerStatusStore", () => {
 });
 
 describe("formatSessionEvent", () => {
-  it("formatuje wszystkie typy zdarzeń", () => {
+  it("formats all event types", () => {
     expect(
       formatSessionEvent({ type: "init", model: "haiku", sessionId: "s", toolCount: 1 }),
-    ).toBe("init · model=haiku · session=s · narzędzia: 1");
+    ).toBe("init · model=haiku · session=s · tools: 1");
     expect(formatSessionEvent({ type: "text", text: "abc" })).toBe("abc");
     expect(formatSessionEvent({ type: "toolUse", name: "Bash", input: "ls" })).toBe(
       "🔧 Bash ls",
     );
     expect(
       formatSessionEvent({ type: "toolResult", isError: false, content: "ok" }),
-    ).toBe("↳ wynik ok");
+    ).toBe("↳ result ok");
     expect(
       formatSessionEvent({ type: "toolResult", isError: true, content: "boom" }),
-    ).toBe("⚠ wynik(błąd) boom");
-    expect(formatSessionEvent({ type: "raw", line: "x" })).toBe("(nie-JSON) x");
+    ).toBe("⚠ result(error) boom");
+    expect(formatSessionEvent({ type: "raw", line: "x" })).toBe("(non-JSON) x");
     expect(formatSessionEvent({ type: "stderr", line: "err" })).toBe("stderr: err");
     expect(formatSessionEvent({ type: "killing", reason: "timeout" })).toBe(
-      "⏹ Zatrzymuję sesję (timeout)…",
+      "⏹ Stopping session (timeout)…",
     );
     expect(formatSessionEvent({ type: "procError", message: "pad" })).toBe("✖ pad");
   });

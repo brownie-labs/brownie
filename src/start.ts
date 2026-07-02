@@ -18,7 +18,7 @@ import { Waker } from "./waker.js";
 const envFileArg = {
   "env-file": {
     type: "string",
-    description: "Ścieżka do pliku .env (domyślnie ./.env)",
+    description: "Path to the .env file (defaults to ./.env)",
   },
 } satisfies ArgsDef;
 
@@ -103,7 +103,7 @@ export const startCommand = defineCommand({
   meta: {
     name: "start",
     description:
-      "Uruchamia workera: monitor cyklicznie zgłasza zadania, egzekutor je wykonuje",
+      "Starts the worker: the monitor reports tasks on a cycle, the executor completes them",
   },
   args: envFileArg,
   run: ({ args }) => startWorker(args["env-file"]),

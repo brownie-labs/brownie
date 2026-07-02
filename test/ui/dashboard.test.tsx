@@ -17,8 +17,8 @@ async function flushed(store: WorkerStatusStore): Promise<void> {
 function buildTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "t-1",
-    title: "Posprzątać repo",
-    description: "Opis",
+    title: "Clean up repo",
+    description: "Description",
     status: "pending",
     attempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -32,7 +32,7 @@ describe("Dashboard", () => {
     vi.useRealTimers();
   });
 
-  it("pokazuje parametry obu agentów w nagłówku", () => {
+  it("shows the parameters of both agents in the header", () => {
     const store = createStore();
     const config = buildConfig({ cwd: "/tmp/ws" });
     const { lastFrame, unmount } = render(<Dashboard store={store} config={config} />);
@@ -40,9 +40,9 @@ describe("Dashboard", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("monitor");
     expect(frame).toContain("model=haiku");
-    expect(frame).toContain("interwał=5 min");
-    expect(frame).toContain("godziny pracy=całą dobę");
-    expect(frame).toContain("egzekutor");
+    expect(frame).toContain("interval=5 min");
+    expect(frame).toContain("working hours=24/7");
+    expect(frame).toContain("executor");
     expect(frame).toContain("model=opus");
     expect(frame).toContain("cwd=/tmp/ws");
 
@@ -50,28 +50,28 @@ describe("Dashboard", () => {
     store.dispose();
   });
 
-  it("pokazuje fazy: start monitora i oczekiwanie egzekutora", () => {
+  it("shows the phases: monitor starting and executor waiting", () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
     );
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("uruchamianie…");
-    expect(frame).toContain("oczekiwanie na zadania");
+    expect(frame).toContain("starting…");
+    expect(frame).toContain("waiting for tasks");
 
     unmount();
     store.dispose();
   });
 
-  it("po zdarzeniach reportera pokazuje cykl, tail sesji i wynik", async () => {
+  it("after reporter events shows the cycle, session tail and outcome", async () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
     );
 
     store.monitor.cycleStarted(2);
-    store.monitor.session({ type: "text", text: "Sprawdzam zaległości" });
+    store.monitor.session({ type: "text", text: "Checking backlog" });
     store.monitor.session({ type: "toolUse", name: "Bash", input: "git log" });
     store.monitor.cycleFinished({
       cycle: 2,
@@ -83,16 +83,16 @@ describe("Dashboard", () => {
     await flushed(store);
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("cykl #2");
-    expect(frame).toContain("Sprawdzam zaległości");
+    expect(frame).toContain("cycle #2");
+    expect(frame).toContain("Checking backlog");
     expect(frame).toContain("🔧 Bash git log");
-    expect(frame).toContain("nowe zadania: 1");
+    expect(frame).toContain("new tasks: 1");
 
     unmount();
     store.dispose();
   });
 
-  it("pokazuje tabelę zadań z licznikami i błędem nieudanego zadania", async () => {
+  it("shows the task table with counters and the failed task error", async () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
@@ -100,11 +100,11 @@ describe("Dashboard", () => {
 
     store.setTasks([
       buildTask(),
-      buildTask({ id: "t-2", title: "Wdrożyć zmiany", status: "in_progress" }),
-      buildTask({ id: "t-3", title: "Zbudować raport", status: "done" }),
+      buildTask({ id: "t-2", title: "Deploy changes", status: "in_progress" }),
+      buildTask({ id: "t-3", title: "Build report", status: "done" }),
       buildTask({
         id: "t-4",
-        title: "Naprawić testy",
+        title: "Fix tests",
         status: "failed",
         error: "timeout",
       }),
@@ -112,30 +112,30 @@ describe("Dashboard", () => {
     await flushed(store);
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("oczekujące: 1");
-    expect(frame).toContain("w toku: 1");
-    expect(frame).toContain("wykonane: 1");
-    expect(frame).toContain("nieudane: 1");
-    expect(frame).toContain("t-2 · Wdrożyć zmiany");
-    expect(frame).toContain("t-4 · Naprawić testy — timeout");
+    expect(frame).toContain("pending: 1");
+    expect(frame).toContain("in progress: 1");
+    expect(frame).toContain("done: 1");
+    expect(frame).toContain("failed: 1");
+    expect(frame).toContain("t-2 · Deploy changes");
+    expect(frame).toContain("t-4 · Fix tests — timeout");
 
     unmount();
     store.dispose();
   });
 
-  it("pokazuje pustą tabelę z komunikatem o braku zadań", () => {
+  it("shows an empty table with a no-tasks message", () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
     );
 
-    expect(lastFrame()).toContain("brak zadań");
+    expect(lastFrame()).toContain("no tasks");
 
     unmount();
     store.dispose();
   });
 
-  it("pokazuje komunikat zamykania po sygnale", async () => {
+  it("shows the shutdown message after a signal", async () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
@@ -144,13 +144,13 @@ describe("Dashboard", () => {
     store.shutdownRequested("SIGINT");
     await flushed(store);
 
-    expect(lastFrame()).toContain("Otrzymano SIGINT — zamykanie…");
+    expect(lastFrame()).toContain("Received SIGINT — shutting down…");
 
     unmount();
     store.dispose();
   });
 
-  it("odlicza czas do kolejnego cyklu co sekundę", async () => {
+  it("counts down to the next cycle every second", async () => {
     vi.useFakeTimers();
     const store = createStore();
     const { lastFrame, unmount } = render(
@@ -160,16 +160,16 @@ describe("Dashboard", () => {
     store.monitor.sleepUntil(new Date(Date.now() + 90_000));
     store.flush();
     await vi.advanceTimersByTimeAsync(100);
-    expect(lastFrame()).toContain("następny cykl za 01:30");
+    expect(lastFrame()).toContain("next cycle in 01:30");
 
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(lastFrame()).toContain("następny cykl za 01:2");
+    expect(lastFrame()).toContain("next cycle in 01:2");
 
     unmount();
     store.dispose();
   });
 
-  it("pokazuje wynik nieudanego zadania egzekutora", async () => {
+  it("shows the failed executor task outcome", async () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
@@ -178,23 +178,23 @@ describe("Dashboard", () => {
     store.executor.taskStarted(buildTask({ status: "in_progress" }));
     store.executor.taskFinished({
       taskId: "t-1",
-      title: "Posprzątać repo",
+      title: "Clean up repo",
       ok: false,
       durationMs: 300,
-      error: "Sesja zakończona błędem (is_error)",
+      error: "Session ended with an error (is_error)",
     });
     store.executor.waiting();
     await flushed(store);
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("✖ t-1");
-    expect(frame).toContain("Sesja zakończona błędem");
+    expect(frame).toContain("Session ended with an");
 
     unmount();
     store.dispose();
   });
 
-  it("pokazuje backoff z zaplanowanym ponowieniem po błędzie przejściowym", async () => {
+  it("shows backoff with a scheduled retry after a transient error", async () => {
     const store = createStore();
     const { lastFrame, unmount } = render(
       <Dashboard store={store} config={buildConfig()} />,
@@ -202,10 +202,10 @@ describe("Dashboard", () => {
 
     store.executor.taskFinished({
       taskId: "t-1",
-      title: "Posprzątać repo",
+      title: "Clean up repo",
       ok: false,
       durationMs: 300,
-      error: "Sesja zakończona błędem (is_error)",
+      error: "Session ended with an error (is_error)",
       willRetry: true,
       attempt: 1,
       maxAttempts: 3,
@@ -214,8 +214,8 @@ describe("Dashboard", () => {
     await flushed(store);
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("↻ ponowienie t-1 za");
-    expect(frame).toContain("↻ t-1 · czas=0.3s");
+    expect(frame).toContain("↻ retrying t-1 in");
+    expect(frame).toContain("↻ t-1 · time=0.3s");
 
     unmount();
     store.dispose();

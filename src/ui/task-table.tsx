@@ -10,10 +10,10 @@ const STATUS_ORDER: Record<TaskStatus, number> = {
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
-  pending: "oczekuje",
-  in_progress: "w toku",
-  done: "wykonane",
-  failed: "nieudane",
+  pending: "pending",
+  in_progress: "in progress",
+  done: "done",
+  failed: "failed",
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -55,25 +55,25 @@ export function TaskTable({ tasks, height }: TaskTableProps): JSX.Element {
       overflow="hidden"
     >
       <Text bold wrap="truncate-end">
-        {"Zadania  "}
-        <Text color="yellow">oczekujące: {countByStatus(tasks, "pending")}</Text>
+        {"Tasks  "}
+        <Text color="yellow">pending: {countByStatus(tasks, "pending")}</Text>
         {" · "}
-        <Text color="cyan">w toku: {countByStatus(tasks, "in_progress")}</Text>
+        <Text color="cyan">in progress: {countByStatus(tasks, "in_progress")}</Text>
         {" · "}
-        <Text color="green">wykonane: {countByStatus(tasks, "done")}</Text>
+        <Text color="green">done: {countByStatus(tasks, "done")}</Text>
         {" · "}
-        <Text color="red">nieudane: {countByStatus(tasks, "failed")}</Text>
+        <Text color="red">failed: {countByStatus(tasks, "failed")}</Text>
       </Text>
-      {tasks.length === 0 ? <Text dimColor>brak zadań</Text> : null}
+      {tasks.length === 0 ? <Text dimColor>no tasks</Text> : null}
       {visible.map((task) => (
         <Text key={task.id} wrap="truncate-end">
           <Text color={STATUS_COLORS[task.status]}>
-            {STATUS_LABELS[task.status].padEnd(9)}
+            {STATUS_LABELS[task.status].padEnd(11)}
           </Text>
           {`${task.id} · ${task.title}${task.error === undefined ? "" : ` — ${task.error}`}`}
         </Text>
       ))}
-      {overflow > 0 ? <Text dimColor>… i {overflow} więcej</Text> : null}
+      {overflow > 0 ? <Text dimColor>… and {overflow} more</Text> : null}
     </Box>
   );
 }

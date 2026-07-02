@@ -14,30 +14,30 @@ function buildRecord(
     taskId: "redmine-1",
     attempt: 1,
     ok: true,
-    title: "Napraw eksport",
-    headline: "Naprawiono eksport CSV",
-    summary: "Przyczyną był brak nagłówka Content-Type.",
+    title: "Fix export",
+    headline: "Fixed CSV export",
+    summary: "The cause was a missing Content-Type header.",
     error: undefined,
-    sessionId: "sesja-1",
+    sessionId: "session-1",
     createdAt: "2026-07-02T10:00:00.000Z",
     ...overrides,
   };
 }
 
 describe("toMatchQuery", () => {
-  it("skleja tokeny w alternatywę fraz w cudzysłowach", () => {
-    expect(toMatchQuery("błąd połączenia redmine")).toBe(
-      '"błąd" OR "połączenia" OR "redmine"',
+  it("joins tokens into an alternative of quoted phrases", () => {
+    expect(toMatchQuery("connection error redmine")).toBe(
+      '"connection" OR "error" OR "redmine"',
     );
   });
 
-  it("neutralizuje składnię FTS5", () => {
-    expect(toMatchQuery('redmine AND "eksport" (NOT x*)')).toBe(
-      '"redmine" OR "AND" OR "eksport" OR "NOT" OR "x"',
+  it("neutralizes FTS5 syntax", () => {
+    expect(toMatchQuery('redmine AND "export" (NOT x*)')).toBe(
+      '"redmine" OR "AND" OR "export" OR "NOT" OR "x"',
     );
   });
 
-  it("zwraca null dla pustych zapytań", () => {
+  it("returns null for empty queries", () => {
     expect(toMatchQuery("")).toBeNull();
     expect(toMatchQuery('   ()"* ')).toBeNull();
   });
@@ -59,15 +59,15 @@ describe("MemoryStore", () => {
     await removeTempDir(dir);
   });
 
-  it("tworzy plik bazy razem z brakującym katalogiem", () => {
+  it("creates the database file along with a missing directory", () => {
     const record = store.add(buildRecord());
     expect(record.id).toBeGreaterThan(0);
   });
 
-  it("add zwraca rekord z nadanym id, a get czyta historię zadania w kolejności zapisu", () => {
+  it("add returns a record with an assigned id, and get reads task history in insertion order", () => {
     const first = store.add(buildRecord({ ok: false, error: "timeout" }));
-    const second = store.add(buildRecord({ attempt: 2, headline: "Druga próba" }));
-    store.add(buildRecord({ taskId: "redmine-2", headline: "Inne zadanie" }));
+    const second = store.add(buildRecord({ attempt: 2, headline: "Second attempt" }));
+    store.add(buildRecord({ taskId: "redmine-2", headline: "Other task" }));
 
     const history = store.get("redmine-1");
     expect(history.map((r) => r.id)).toEqual([first.id, second.id]);
@@ -77,17 +77,19 @@ describe("MemoryStore", () => {
     expect(history[1]?.attempt).toBe(2);
   });
 
-  it("get zwraca pustą listę dla nieznanego zadania", () => {
-    expect(store.get("brak")).toEqual([]);
+  it("get returns an empty list for an unknown task", () => {
+    expect(store.get("missing")).toEqual([]);
   });
 
-  it("search znajduje rekordy po treści podsumowania", () => {
-    store.add(buildRecord({ summary: "Redmine odrzucał żądania bez tokenu API." }));
+  it("search finds records by summary content", () => {
+    store.add(
+      buildRecord({ summary: "Redmine rejected requests without an API token." }),
+    );
     store.add(
       buildRecord({
         taskId: "email-1",
-        headline: "Obsłużono skrzynkę",
-        summary: "Skrzynka IMAP wymaga app password.",
+        headline: "Handled the mailbox",
+        summary: "The IMAP mailbox requires an app password.",
       }),
     );
 
@@ -96,26 +98,26 @@ describe("MemoryStore", () => {
     expect(results[0]?.taskId).toBe("redmine-1");
   });
 
-  it("search dopasowuje polskie znaki i skleja diakrytyki dekomponowalne", () => {
-    store.add(buildRecord({ summary: "Błąd połączenia z bazą danych." }));
+  it("search matches accented characters and folds decomposable diacritics", () => {
+    store.add(buildRecord({ summary: "Café connection to the database." }));
 
-    expect(store.search("połączenia")).toHaveLength(1);
-    expect(store.search("baza")).toHaveLength(1);
+    expect(store.search("café")).toHaveLength(1);
+    expect(store.search("cafe")).toHaveLength(1);
   });
 
-  it("search sortuje po trafności bm25", () => {
+  it("search sorts by bm25 relevance", () => {
     store.add(
       buildRecord({
         taskId: "redmine-2",
-        headline: "Wdrożenie aplikacji",
-        summary: "Wdrożenie przez deploy.sh, wymaga zmiennej DEPLOY_ENV.",
+        headline: "Application deployment",
+        summary: "Deployment via deploy.sh, requires the DEPLOY_ENV variable.",
       }),
     );
     store.add(
       buildRecord({
         taskId: "redmine-3",
-        headline: "Poprawka deployu",
-        summary: "Deploy padał, bo deploy.sh zakładał obecność deploy-keys.",
+        headline: "Deployment fix",
+        summary: "Deploy failed because deploy.sh assumed deploy-keys were present.",
       }),
     );
 
@@ -123,34 +125,34 @@ describe("MemoryStore", () => {
     expect(results.map((r) => r.taskId)).toEqual(["redmine-3", "redmine-2"]);
   });
 
-  it("search respektuje limit", () => {
+  it("search respects the limit", () => {
     for (let i = 0; i < 5; i += 1) {
-      store.add(buildRecord({ taskId: `redmine-${i}`, summary: `wdrożenie ${i}` }));
+      store.add(buildRecord({ taskId: `redmine-${i}`, summary: `deployment ${i}` }));
     }
 
-    expect(store.search("wdrożenie", 2)).toHaveLength(2);
+    expect(store.search("deployment", 2)).toHaveLength(2);
   });
 
-  it("search zwraca pustą listę dla zapytania bez tokenów", () => {
+  it("search returns an empty list for a query without tokens", () => {
     store.add(buildRecord());
     expect(store.search('"()*')).toEqual([]);
   });
 
-  it("nie zapisuje częściowego rekordu przy błędzie w transakcji", () => {
+  it("does not save a partial record on a transaction error", () => {
     store.add(buildRecord());
     const broken = buildRecord({ attempt: 2 });
     Object.defineProperty(broken, "headline", {
       get() {
-        return { zła: "wartość" };
+        return { bad: "value" };
       },
     });
 
     expect(() => store.add(broken)).toThrow();
     expect(store.get("redmine-1")).toHaveLength(1);
-    expect(store.search("eksport")).toHaveLength(1);
+    expect(store.search("export")).toHaveLength(1);
   });
 
-  it("czytelnik read-only widzi zapisy pisarza i nie może pisać", () => {
+  it("a read-only reader sees the writer's records and cannot write", () => {
     store.add(buildRecord());
 
     const reader = MemoryStore.open(dbPath, { readOnly: true });
@@ -166,9 +168,9 @@ describe("MemoryStore", () => {
     }
   });
 
-  it("open read-only nie tworzy brakującej bazy", () => {
+  it("read-only open does not create a missing database", () => {
     expect(() =>
-      MemoryStore.open(join(dir, "nie-ma", "memory.db"), { readOnly: true }),
+      MemoryStore.open(join(dir, "missing", "memory.db"), { readOnly: true }),
     ).toThrow();
   });
 });

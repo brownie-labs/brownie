@@ -85,13 +85,13 @@ export async function runSession(
       return {
         ok: false,
         durationMs: Date.now() - startedAt,
-        error: `Nie udało się uruchomić "${spec.command}": ${spawnError.message}`,
+        error: `Failed to start "${spec.command}": ${spawnError.message}`,
         failureReason: "spawn",
       };
     }
 
     child.on("error", (err) =>
-      spec.events({ type: "procError", message: `Błąd procesu: ${err.message}` }),
+      spec.events({ type: "procError", message: `Process error: ${err.message}` }),
     );
     child.stdin.on("error", (err) =>
       spec.events({ type: "procError", message: `stdin: ${err.message}` }),
@@ -148,15 +148,15 @@ function describeFailure(
 ): string {
   switch (reason) {
     case "timeout":
-      return "Przekroczono limit czasu sesji";
+      return "Session timed out";
     case "abort":
-      return "Sesja przerwana";
+      return "Session aborted";
     case "isError":
-      return "Sesja zakończona błędem (is_error)";
+      return "Session ended with an error (is_error)";
     default:
       return code !== null
-        ? `Proces zakończył się kodem ${code}`
-        : `Proces zakończony sygnałem ${exitSignal ?? "?"}`;
+        ? `Process exited with code ${code}`
+        : `Process terminated by signal ${exitSignal ?? "?"}`;
   }
 }
 

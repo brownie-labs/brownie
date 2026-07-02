@@ -14,14 +14,14 @@ interface TextContent {
 function firstText(result: unknown): string {
   const content = (result as { content?: TextContent[] }).content;
   const block = content?.[0];
-  if (block?.type !== "text") throw new Error("brak bloku tekstowego");
+  if (block?.type !== "text") throw new Error("missing text block");
   return block.text;
 }
 
 describe("buildMcpConfig", () => {
-  it("dla wejścia .ts uruchamia serwer przez tsx", () => {
+  it("runs the server via tsx for a .ts entry", () => {
     const config = JSON.parse(
-      buildMcpConfig("/dane/memory.db", "/repo/src/index.ts"),
+      buildMcpConfig("/data/memory.db", "/repo/src/index.ts"),
     ) as {
       mcpServers: { memory: { command: string; args: string[] } };
     };
@@ -33,13 +33,13 @@ describe("buildMcpConfig", () => {
       "/repo/src/index.ts",
       "mcp",
       "--db",
-      "/dane/memory.db",
+      "/data/memory.db",
     ]);
   });
 
-  it("dla wejścia .js uruchamia serwer bezpośrednio nodem", () => {
+  it("runs the server directly with node for a .js entry", () => {
     const config = JSON.parse(
-      buildMcpConfig("/dane/memory.db", "/repo/dist/index.js"),
+      buildMcpConfig("/data/memory.db", "/repo/dist/index.js"),
     ) as {
       mcpServers: { memory: { command: string; args: string[] } };
     };
@@ -48,12 +48,12 @@ describe("buildMcpConfig", () => {
       "/repo/dist/index.js",
       "mcp",
       "--db",
-      "/dane/memory.db",
+      "/data/memory.db",
     ]);
   });
 });
 
-describe("serwer MCP pamięci", () => {
+describe("memory MCP server", () => {
   let dir: string;
   let store: MemoryStore;
   let client: Client;
@@ -65,22 +65,22 @@ describe("serwer MCP pamięci", () => {
       taskId: "redmine-1",
       attempt: 1,
       ok: true,
-      title: "Napraw eksport",
-      headline: "Naprawiono eksport CSV",
-      summary: "Przyczyną był brak nagłówka Content-Type.",
+      title: "Fix export",
+      headline: "Fixed CSV export",
+      summary: "The cause was a missing Content-Type header.",
       error: undefined,
-      sessionId: "sesja-1",
+      sessionId: "session-1",
       createdAt: "2026-07-02T10:00:00.000Z",
     });
     store.add({
       taskId: "redmine-1",
       attempt: 2,
       ok: false,
-      title: "Napraw eksport",
-      headline: "Regresja eksportu",
-      summary: "Deploy nadpisał poprawkę.",
+      title: "Fix export",
+      headline: "Export regression",
+      summary: "Deploy overwrote the fix.",
       error: "timeout",
-      sessionId: "sesja-2",
+      sessionId: "session-2",
       createdAt: "2026-07-02T11:00:00.000Z",
     });
 
@@ -96,60 +96,60 @@ describe("serwer MCP pamięci", () => {
     await removeTempDir(dir);
   });
 
-  it("wystawia narzędzia memory_search i memory_get", async () => {
+  it("exposes the memory_search and memory_get tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(["memory_get", "memory_search"]);
   });
 
-  it("memory_search zwraca sformatowane trafienia", async () => {
+  it("memory_search returns formatted hits", async () => {
     const result = await client.callTool({
       name: "memory_search",
-      arguments: { query: "eksport csv" },
+      arguments: { query: "export csv" },
     });
 
     const text = firstText(result);
-    expect(text).toContain("redmine-1 — Naprawiono eksport CSV");
-    expect(text).toContain("wynik: sukces");
-    expect(text).toContain("brak nagłówka Content-Type");
+    expect(text).toContain("redmine-1 — Fixed CSV export");
+    expect(text).toContain("result: success");
+    expect(text).toContain("missing Content-Type header");
   });
 
-  it("memory_search bez trafień zwraca czytelny komunikat", async () => {
+  it("memory_search with no hits returns a readable message", async () => {
     const result = await client.callTool({
       name: "memory_search",
       arguments: { query: "kubernetes" },
     });
 
-    expect(firstText(result)).toBe("Brak wyników w pamięci.");
+    expect(firstText(result)).toBe("No results in memory.");
   });
 
-  it("memory_search respektuje limit", async () => {
+  it("memory_search respects the limit", async () => {
     const result = await client.callTool({
       name: "memory_search",
-      arguments: { query: "eksportu eksport", limit: 1 },
+      arguments: { query: "export export", limit: 1 },
     });
 
     expect(firstText(result).match(/###/g)).toHaveLength(1);
   });
 
-  it("memory_get zwraca pełną historię zadania z błędami prób", async () => {
+  it("memory_get returns the full task history with attempt errors", async () => {
     const result = await client.callTool({
       name: "memory_get",
       arguments: { taskId: "redmine-1" },
     });
 
     const text = firstText(result);
-    expect(text).toContain("Naprawiono eksport CSV");
-    expect(text).toContain("Regresja eksportu");
-    expect(text).toContain("Błąd: timeout");
-    expect(text).toContain("wynik: porażka");
+    expect(text).toContain("Fixed CSV export");
+    expect(text).toContain("Export regression");
+    expect(text).toContain("Error: timeout");
+    expect(text).toContain("result: failure");
   });
 
-  it("memory_get dla nieznanego zadania zwraca czytelny komunikat", async () => {
+  it("memory_get returns a readable message for an unknown task", async () => {
     const result = await client.callTool({
       name: "memory_get",
-      arguments: { taskId: "brak" },
+      arguments: { taskId: "missing" },
     });
 
-    expect(firstText(result)).toBe("Brak podsumowań dla tego zadania.");
+    expect(firstText(result)).toBe("No summaries for this task.");
   });
 });

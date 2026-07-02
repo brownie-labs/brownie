@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Waker } from "../src/waker.js";
 
 describe("Waker", () => {
-  it("notify budzi oczekującego", async () => {
+  it("notify wakes a waiter", async () => {
     const waker = new Waker();
     const controller = new AbortController();
     const resolved = vi.fn();
@@ -15,7 +15,7 @@ describe("Waker", () => {
     expect(resolved).toHaveBeenCalledTimes(1);
   });
 
-  it("notify budzi wszystkich oczekujących naraz", async () => {
+  it("notify wakes all waiters at once", async () => {
     const waker = new Waker();
     const controller = new AbortController();
 
@@ -28,7 +28,7 @@ describe("Waker", () => {
     await expect(both).resolves.toEqual([undefined, undefined]);
   });
 
-  it("abort budzi oczekującego", async () => {
+  it("abort wakes a waiter", async () => {
     const waker = new Waker();
     const controller = new AbortController();
 
@@ -38,7 +38,7 @@ describe("Waker", () => {
     await expect(waiting).resolves.toBeUndefined();
   });
 
-  it("wait na przerwanym sygnale kończy się od razu", async () => {
+  it("wait on an already-aborted signal resolves right away", async () => {
     const waker = new Waker();
     const controller = new AbortController();
     controller.abort();
@@ -46,7 +46,7 @@ describe("Waker", () => {
     await expect(waker.wait(controller.signal)).resolves.toBeUndefined();
   });
 
-  it("notify bez oczekujących jest bezpieczne i nie budzi późniejszego wait", async () => {
+  it("notify without waiters is safe and does not wake a later wait", async () => {
     const waker = new Waker();
     const controller = new AbortController();
     waker.notify();
@@ -59,7 +59,7 @@ describe("Waker", () => {
     controller.abort();
   });
 
-  it("po abort oczekujący nie zostaje na liście (notify nie budzi go podwójnie)", async () => {
+  it("after abort a waiter is removed from the list (notify does not wake it twice)", async () => {
     const waker = new Waker();
     const controller = new AbortController();
 

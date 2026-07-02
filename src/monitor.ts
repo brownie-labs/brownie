@@ -65,7 +65,7 @@ export async function runMonitorLoop(
           costUsd: result.costUsd,
           addedTasks: 0,
           skippedDuplicates: 0,
-          error: result.error ?? "nieznany błąd",
+          error: result.error ?? "unknown error",
         });
       } else {
         const report =
@@ -78,7 +78,7 @@ export async function runMonitorLoop(
             costUsd: result.costUsd,
             addedTasks: 0,
             skippedDuplicates: 0,
-            error: "niepoprawny raport zadań — cykl pominięty",
+            error: "invalid task report — cycle skipped",
           });
         } else {
           const added = await store.addTasks(report);

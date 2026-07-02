@@ -51,11 +51,11 @@ export async function seedWorkerFiles(
 ): Promise<void> {
   const {
     env = "CLAUDE_WORKER_MONITOR_MODEL=haiku\n",
-    monitorPrompt = "obserwuj\n",
-    monitorSystem = "system monitora\n",
-    executorPrompt = "wykonuj\n",
-    executorSystem = "system egzekutora\n",
-    summarizerSystem = "system podsumowującego\n",
+    monitorPrompt = "observe\n",
+    monitorSystem = "monitor system\n",
+    executorPrompt = "execute\n",
+    executorSystem = "executor system\n",
+    summarizerSystem = "summarizer system\n",
   } = options;
   const promptsDir = join(dir, "prompts");
   await mkdir(promptsDir, { recursive: true });
@@ -239,7 +239,7 @@ export function buildSessionSpec(
     model: "haiku",
     effort: "medium",
     systemPrompt: "system\n",
-    prompt: "zadanie\n",
+    prompt: "task\n",
     sessionTimeoutMs: undefined,
     streamPartial: false,
     cwd: process.cwd(),

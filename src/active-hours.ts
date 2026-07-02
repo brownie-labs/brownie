@@ -15,7 +15,7 @@ const DAY_TO_WEEKDAY: Record<(typeof DAY_ORDER)[number], number> = {
   sun: 0,
 };
 
-const DAY_LABELS = ["nd", "pn", "wt", "śr", "cz", "pt", "sb"] as const;
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 function isDayToken(value: string): value is (typeof DAY_ORDER)[number] {
   return (DAY_ORDER as readonly string[]).includes(value);
@@ -26,7 +26,7 @@ function parseMinuteOfDay(hours: string, minutes: string, raw: string): number {
   const m = Number(minutes);
   if (h < 0 || h > 23 || m < 0 || m > 59) {
     throw new Error(
-      `godziny pracy poza zakresem (00:00–23:59): "${raw}" — dopuszczalne HH:MM od 00:00 do 23:59`,
+      `working hours out of range (00:00–23:59): "${raw}" — allowed HH:MM from 00:00 to 23:59`,
     );
   }
   return h * 60 + m;
@@ -36,7 +36,7 @@ export function parseTimeWindow(raw: string): { startMinute: number; endMinute: 
   const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(raw.trim());
   if (match === null) {
     throw new Error(
-      `nieprawidłowy format godzin pracy (oczekiwano HH:MM-HH:MM, np. 08:00-18:00): "${raw}"`,
+      `invalid working hours format (expected HH:MM-HH:MM, e.g. 08:00-18:00): "${raw}"`,
     );
   }
   const [, h1 = "", m1 = "", h2 = "", m2 = ""] = match;
@@ -44,7 +44,7 @@ export function parseTimeWindow(raw: string): { startMinute: number; endMinute: 
   const endMinute = parseMinuteOfDay(h2, m2, raw);
   if (startMinute === endMinute) {
     throw new Error(
-      `początek i koniec godzin pracy są identyczne ("${raw}") — zostaw puste, aby monitor działał całą dobę`,
+      `working hours start and end are identical ("${raw}") — leave empty to run the monitor 24/7`,
     );
   }
   return { startMinute, endMinute };
@@ -53,7 +53,7 @@ export function parseTimeWindow(raw: string): { startMinute: number; endMinute: 
 function expandDayRange(from: string, to: string, raw: string): number[] {
   if (!isDayToken(from) || !isDayToken(to)) {
     throw new Error(
-      `nieznany dzień w zakresie "${from}-${to}" (dozwolone: ${DAY_ORDER.join(", ")}) w "${raw}"`,
+      `unknown day in range "${from}-${to}" (allowed: ${DAY_ORDER.join(", ")}) in "${raw}"`,
     );
   }
   const start = DAY_ORDER.indexOf(from);
@@ -79,12 +79,12 @@ export function parseActiveDays(raw: string): number[] {
       days.add(DAY_TO_WEEKDAY[token]);
     } else {
       throw new Error(
-        `nieznany dzień "${token}" (dozwolone: ${DAY_ORDER.join(", ")}) w "${raw}"`,
+        `unknown day "${token}" (allowed: ${DAY_ORDER.join(", ")}) in "${raw}"`,
       );
     }
   }
   if (days.size === 0) {
-    throw new Error(`nie rozpoznano żadnego dnia w "${raw}"`);
+    throw new Error(`no day recognized in "${raw}"`);
   }
   return [...days].sort((a, b) => a - b);
 }
@@ -150,14 +150,14 @@ function formatMinuteOfDay(minute: number): string {
 }
 
 export function describeSchedule(schedule: MonitorSchedule | null): string {
-  if (schedule === null) return "całą dobę";
+  if (schedule === null) return "24/7";
   const fullDay = schedule.startMinute === 0 && schedule.endMinute === MINUTES_PER_DAY;
   const window = fullDay
-    ? "całą dobę"
+    ? "24/7"
     : `${formatMinuteOfDay(schedule.startMinute)}-${formatMinuteOfDay(schedule.endMinute % MINUTES_PER_DAY)}`;
   const days =
     schedule.days.length === 7
-      ? "codziennie"
+      ? "daily"
       : schedule.days.map((day) => DAY_LABELS[day]).join(",");
   return `${window} (${days})`;
 }

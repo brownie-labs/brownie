@@ -31,7 +31,7 @@ function emitOk(isError) {
   });
   emit({
     type: "assistant",
-    message: { content: [{ type: "text", text: "Wynik pracy workera" }] },
+    message: { content: [{ type: "text", text: "Worker output" }] },
   });
   emit({
     type: "result",
@@ -64,7 +64,7 @@ function run() {
       process.exit(0);
       break;
     case "exit_nonzero":
-      process.stderr.write("coś poszło nie tak\n");
+      process.stderr.write("something went wrong\n");
       process.exit(2);
       break;
     case "hang":
@@ -72,7 +72,7 @@ function run() {
       setInterval(() => {}, 1000);
       break;
     default:
-      process.stderr.write(`nieznany FAKE_CLAUDE_MODE=${mode}\n`);
+      process.stderr.write(`unknown FAKE_CLAUDE_MODE=${mode}\n`);
       process.exit(1);
   }
 }

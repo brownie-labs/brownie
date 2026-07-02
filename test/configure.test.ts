@@ -39,17 +39,17 @@ describe("configureCommand", () => {
     await removeTempDir(dir);
   });
 
-  it("zapisuje .env i prompty obu agentów bez CLAUDE_CONFIG_DIR", async () => {
+  it("writes .env and both agents' prompts without CLAUDE_CONFIG_DIR", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "15",
       "",
       [],
-      "obserwuj Redmine",
+      "watch Redmine",
       "opus",
       "high",
-      "wykonuj rzetelnie",
+      "execute diligently",
       false,
     );
     await runConfigure();
@@ -63,21 +63,21 @@ describe("configureCommand", () => {
     expect(env).not.toContain("CLAUDE_CONFIG_DIR");
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
-    expect(await readFile(monitorPromptPath, "utf8")).toBe("obserwuj Redmine\n");
-    expect(await readFile(executorPromptPath, "utf8")).toBe("wykonuj rzetelnie\n");
+    expect(await readFile(monitorPromptPath, "utf8")).toBe("watch Redmine\n");
+    expect(await readFile(executorPromptPath, "utf8")).toBe("execute diligently\n");
   });
 
-  it("zapisuje godziny i wybrane dni pracy monitora", async () => {
+  it("writes the monitor's working hours and selected days", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "15",
       "08:00-18:00",
       ["mon", "tue", "wed", "thu", "fri"],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -87,17 +87,17 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,tue,wed,thu,fri");
   });
 
-  it("normalizuje kolejność zaznaczonych dni", async () => {
+  it("normalizes the order of selected days", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "15",
       "",
       ["fri", "mon", "wed"],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -106,17 +106,17 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,wed,fri");
   });
 
-  it("pomija dni gdy zaznaczono wszystkie", async () => {
+  it("omits days when all are selected", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "15",
       "",
       ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -125,18 +125,18 @@ describe("configureCommand", () => {
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
   });
 
-  it("ponawia pytanie o godziny pracy przy błędnym formacie", async () => {
+  it("re-asks the working hours question on an invalid format", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "15",
-      "zła wartość",
+      "bad value",
       "08:00-18:00",
       [],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -146,28 +146,28 @@ describe("configureCommand", () => {
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
   });
 
-  it("dopisuje CLAUDE_CONFIG_DIR gdy wybrany", async () => {
+  it("appends CLAUDE_CONFIG_DIR when selected", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "2",
       "",
       [],
-      "obserwuj",
+      "watch",
       "sonnet",
       "high",
-      "wykonuj",
+      "execute",
       true,
-      "~/profil-claude",
+      "~/claude-profile",
     );
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_CONFIG_DIR=~/profil-claude");
+    expect(env).toContain("CLAUDE_CONFIG_DIR=~/claude-profile");
     expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=sonnet");
   });
 
-  it("ponawia pytanie o interwał przy błędnej wartości", async () => {
+  it("re-asks the interval question on an invalid value", async () => {
     queueAnswers(
       "haiku",
       "medium",
@@ -176,10 +176,10 @@ describe("configureCommand", () => {
       "3",
       "",
       [],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -188,17 +188,17 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=180000");
   });
 
-  it("obsługuje przecinek dziesiętny w interwale", async () => {
+  it("handles a decimal comma in the interval", async () => {
     queueAnswers(
       "haiku",
       "medium",
       "1,5",
       "",
       [],
-      "obserwuj",
+      "watch",
       "opus",
       "high",
-      "wykonuj",
+      "execute",
       false,
     );
     await runConfigure();
@@ -207,8 +207,8 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=90000");
   });
 
-  it("anulowanie nie zapisuje żadnych plików", async () => {
-    const cancelled = new Error("anulowano");
+  it("cancelling writes no files", async () => {
+    const cancelled = new Error("cancelled");
     cancelled.name = "ConsolaPromptCancelledError";
     vi.spyOn(consola, "prompt").mockRejectedValueOnce(cancelled);
 
@@ -218,13 +218,13 @@ describe("configureCommand", () => {
     expect(existsSync(executorPromptPath)).toBe(false);
   });
 
-  it("odmowa nadpisania istniejących plików kończy bez zmian", async () => {
-    await writeFile(envPath, "STARE=1\n", "utf8");
+  it("declining to overwrite existing files finishes without changes", async () => {
+    await writeFile(envPath, "OLD=1\n", "utf8");
     vi.spyOn(consola, "prompt").mockResolvedValueOnce(false);
 
     await runConfigure();
 
-    expect(await readFile(envPath, "utf8")).toBe("STARE=1\n");
+    expect(await readFile(envPath, "utf8")).toBe("OLD=1\n");
     expect(existsSync(monitorPromptPath)).toBe(false);
   });
 });

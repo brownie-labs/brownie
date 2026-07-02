@@ -14,7 +14,7 @@ import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
-const CONFIGURE_HINT = "utwórz konfigurację: pnpm configure";
+const CONFIGURE_HINT = "create configuration: pnpm configure";
 
 interface Check {
   label: string;
@@ -50,16 +50,16 @@ async function checkClaude(): Promise<Check> {
   return check(
     `Claude Code (${COMMAND})`,
     found !== undefined,
-    `nie znaleziono polecenia "${COMMAND}" w PATH — zainstaluj Claude Code: ${INSTALL_HINT}`,
+    `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`,
   );
 }
 
 function checkEnvFile(envFile?: string): Check {
   const path = resolveEnvPath(envFile);
   return check(
-    `plik .env (${path})`,
+    `.env file (${path})`,
     existsSync(path),
-    `brak pliku: ${path} — ${CONFIGURE_HINT}`,
+    `file missing: ${path} — ${CONFIGURE_HINT}`,
   );
 }
 
@@ -67,7 +67,7 @@ async function checkFile(path: string, label: string): Promise<Check> {
   return check(
     `${label} (${path})`,
     await canAccess(path, constants.R_OK),
-    `brak pliku: ${path} — ${CONFIGURE_HINT}`,
+    `file missing: ${path} — ${CONFIGURE_HINT}`,
   );
 }
 
@@ -103,7 +103,7 @@ export async function ensureReady(envFile?: string): Promise<WorkerPromptPaths> 
   const problems = checks.filter((c) => !c.ok);
   if (problems.length > 0) {
     const details = problems.map((c) => `  - ${c.problem ?? c.label}`).join("\n");
-    throw new Error(`Preflight nieudany — brakuje wymaganych elementów:\n${details}`);
+    throw new Error(`Preflight failed — required items are missing:\n${details}`);
   }
 
   return paths;

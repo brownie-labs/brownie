@@ -16,18 +16,18 @@ export function Header({ config }: { config: WorkerConfig }): JSX.Element {
           monitor
         </Text>
         {`  model=${config.monitor.model} · effort=${config.monitor.effort}` +
-          ` · interwał=${formatInterval(config.monitor.intervalMs)}` +
-          ` · godziny pracy=${describeSchedule(config.monitor.schedule)}` +
+          ` · interval=${formatInterval(config.monitor.intervalMs)}` +
+          ` · working hours=${describeSchedule(config.monitor.schedule)}` +
           timeoutLabel(config.monitor.sessionTimeoutMs)}
       </Text>
       <Text wrap="truncate-end">
         <Text color="magenta" bold>
-          egzekutor
+          executor
         </Text>
         {`  model=${config.executor.model} · effort=${config.executor.effort}${timeoutLabel(config.executor.sessionTimeoutMs)}`}
       </Text>
       <Text dimColor wrap="truncate-end">
-        {`cwd=${config.cwd} · zadania=${config.tasksFilePath} · partial=${config.streamPartial ? "on" : "off"}`}
+        {`cwd=${config.cwd} · tasks=${config.tasksFilePath} · partial=${config.streamPartial ? "on" : "off"}`}
       </Text>
     </Box>
   );

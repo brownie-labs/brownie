@@ -76,7 +76,7 @@ export function Dashboard({ store, config }: DashboardProps): JSX.Element {
           height={panelHeight}
         />
         <AgentPanel
-          title="Egzekutor"
+          title="Executor"
           color="magenta"
           phaseLabel={formatExecutorPhase(executor.phase, now)}
           phaseColor={phaseColor(executor.phase.kind)}
@@ -94,7 +94,7 @@ export function Dashboard({ store, config }: DashboardProps): JSX.Element {
       </Box>
       <TaskTable tasks={status.tasks} height={tableHeight} />
       {status.shutdownSignal === undefined ? null : (
-        <Text color="yellow">Otrzymano {status.shutdownSignal} — zamykanie…</Text>
+        <Text color="yellow">Received {status.shutdownSignal} — shutting down…</Text>
       )}
     </Box>
   );

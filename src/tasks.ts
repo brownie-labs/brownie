@@ -21,7 +21,7 @@ const storeFileSchema = z.object({
 
 function corruptStoreError(path: string, reason: string): Error {
   return new Error(
-    `Uszkodzony plik magazynu zadań (${path}): ${reason}\nNapraw lub usuń plik i uruchom ponownie.`,
+    `Corrupted task store file (${path}): ${reason}\nFix or delete the file and restart.`,
   );
 }
 
@@ -50,11 +50,11 @@ export class TaskStore {
       try {
         json = JSON.parse(raw);
       } catch {
-        throw corruptStoreError(path, "to nie jest poprawny JSON");
+        throw corruptStoreError(path, "not valid JSON");
       }
       const parsed = storeFileSchema.safeParse(json);
       if (!parsed.success) {
-        throw corruptStoreError(path, "niezgodny format danych");
+        throw corruptStoreError(path, "unexpected data format");
       }
       tasks = parsed.data.tasks;
     }

@@ -86,9 +86,9 @@ export interface ExecutorReporter {
 }
 
 function formatSummaryOutcome(outcome: SummaryOutcome): string {
-  const cost = outcome.costUsd != null ? ` · koszt=$${outcome.costUsd.toFixed(4)}` : "";
-  const base = `pamięć: podsumowanie ${outcome.taskId} · czas=${formatDuration(outcome.durationMs)}${cost}`;
-  return outcome.ok ? `✔ ${base}` : `✖ ${base} · ${outcome.error ?? "nieznany błąd"}`;
+  const cost = outcome.costUsd != null ? ` · cost=$${outcome.costUsd.toFixed(4)}` : "";
+  const base = `memory: summary ${outcome.taskId} · time=${formatDuration(outcome.durationMs)}${cost}`;
+  return outcome.ok ? `✔ ${base}` : `✖ ${base} · ${outcome.error ?? "unknown error"}`;
 }
 
 const TAIL_LINE_MAX = 300;

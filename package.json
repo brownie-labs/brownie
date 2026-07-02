@@ -1,7 +1,7 @@
 {
   "name": "brownie",
   "version": "0.1.0",
-  "description": "CLI worker cyklicznie uruchamiający sesje Claude Code",
+  "description": "CLI worker that runs Claude Code sessions on a cycle",
   "type": "module",
   "bin": {
     "brownie": "./dist/index.js"

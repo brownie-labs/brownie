@@ -2,73 +2,73 @@ import { describe, expect, it } from "vitest";
 import { parseTaskReport } from "../src/report.js";
 
 describe("parseTaskReport", () => {
-  it("parsuje blok json otoczony prozą", () => {
+  it("parses a json block surrounded by prose", () => {
     const text = [
-      "Sprawdziłem Redmine.",
+      "I checked Redmine.",
       "```json",
-      '{"tasks": [{"id": "redmine-1", "title": "Task", "description": "Opis"}]}',
+      '{"tasks": [{"id": "redmine-1", "title": "Task", "description": "Description"}]}',
       "```",
     ].join("\n");
 
     expect(parseTaskReport(text)).toEqual([
-      { id: "redmine-1", title: "Task", description: "Opis" },
+      { id: "redmine-1", title: "Task", description: "Description" },
     ]);
   });
 
-  it("bierze ostatni blok json, gdy jest ich więcej", () => {
+  it("takes the last json block when there are several", () => {
     const text = [
       "```json",
-      '{"tasks": [{"id": "stary", "title": "X", "description": ""}]}',
+      '{"tasks": [{"id": "old", "title": "X", "description": ""}]}',
       "```",
-      "Poprawka:",
+      "Correction:",
       "```json",
-      '{"tasks": [{"id": "nowy", "title": "Y", "description": ""}]}',
+      '{"tasks": [{"id": "new", "title": "Y", "description": ""}]}',
       "```",
     ].join("\n");
 
-    expect(parseTaskReport(text)?.map((t) => t.id)).toEqual(["nowy"]);
+    expect(parseTaskReport(text)?.map((t) => t.id)).toEqual(["new"]);
   });
 
-  it("parsuje surowy JSON bez bloku kodu", () => {
+  it("parses raw JSON without a code block", () => {
     const text =
-      '{"tasks": [{"id": "email-abc", "title": "Odpisz", "description": "Mail"}]}';
+      '{"tasks": [{"id": "email-abc", "title": "Reply", "description": "Mail"}]}';
 
     expect(parseTaskReport(text)?.map((t) => t.id)).toEqual(["email-abc"]);
   });
 
-  it("pusta lista zadań jest poprawnym raportem", () => {
+  it("an empty task list is a valid report", () => {
     expect(parseTaskReport('{"tasks": []}')).toEqual([]);
   });
 
-  it("uzupełnia brakujący description pustym tekstem", () => {
+  it("fills a missing description with empty text", () => {
     const tasks = parseTaskReport('{"tasks": [{"id": "a", "title": "T"}]}');
     expect(tasks).toEqual([{ id: "a", title: "T", description: "" }]);
   });
 
-  it("zwraca null dla tekstu bez JSON", () => {
-    expect(parseTaskReport("nie znalazłem nic do zrobienia")).toBeNull();
+  it("returns null for text without JSON", () => {
+    expect(parseTaskReport("found nothing to do")).toBeNull();
   });
 
-  it("zwraca null dla JSON niezgodnego ze schematem", () => {
-    expect(parseTaskReport('{"tasks": [{"title": "bez id"}]}')).toBeNull();
-    expect(parseTaskReport('{"tasks": [{"id": "", "title": "puste id"}]}')).toBeNull();
-    expect(parseTaskReport('{"inne": []}')).toBeNull();
+  it("returns null for JSON that does not match the schema", () => {
+    expect(parseTaskReport('{"tasks": [{"title": "without id"}]}')).toBeNull();
+    expect(parseTaskReport('{"tasks": [{"id": "", "title": "empty id"}]}')).toBeNull();
+    expect(parseTaskReport('{"other": []}')).toBeNull();
   });
 
-  it("zwraca null dla zepsutego JSON w bloku", () => {
+  it("returns null for broken JSON in a block", () => {
     expect(parseTaskReport('```json\n{"tasks": [}\n```')).toBeNull();
   });
 
-  it("toleruje surowe znaki nowej linii wewnątrz stringów", () => {
+  it("tolerates raw newlines inside strings", () => {
     const text =
-      '{"tasks": [{"id": "a", "title": "T", "description": "linia 1\nlinia 2\n\nlinia 4"}]}';
+      '{"tasks": [{"id": "a", "title": "T", "description": "line 1\nline 2\n\nline 4"}]}';
 
     expect(parseTaskReport(text)).toEqual([
-      { id: "a", title: "T", description: "linia 1\nlinia 2\n\nlinia 4" },
+      { id: "a", title: "T", description: "line 1\nline 2\n\nline 4" },
     ]);
   });
 
-  it("toleruje surowe znaki sterujące (tab, CR) wewnątrz stringów", () => {
+  it("tolerates raw control characters (tab, CR) inside strings", () => {
     const text = '{"tasks": [{"id": "a", "title": "T\tX", "description": "y\r\nz"}]}';
 
     expect(parseTaskReport(text)).toEqual([
@@ -76,35 +76,35 @@ describe("parseTaskReport", () => {
     ]);
   });
 
-  it("nie myli znaków sterujących w stringu z whitespace strukturalnym", () => {
+  it("does not confuse control characters in a string with structural whitespace", () => {
     const text = [
       "```json",
       "{",
       '  "tasks": [',
-      '    {"id": "a", "title": "wielolinijkowy",',
-      '     "description": "wiersz A\nwiersz B"}',
+      '    {"id": "a", "title": "multiline",',
+      '     "description": "row A\nrow B"}',
       "  ]",
       "}",
       "```",
     ].join("\n");
 
     expect(parseTaskReport(text)).toEqual([
-      { id: "a", title: "wielolinijkowy", description: "wiersz A\nwiersz B" },
+      { id: "a", title: "multiline", description: "row A\nrow B" },
     ]);
   });
 
-  it("deduplikuje id w obrębie raportu (pierwsze wystąpienie wygrywa)", () => {
+  it("deduplicates ids within the report (first occurrence wins)", () => {
     const text = JSON.stringify({
       tasks: [
-        { id: "a", title: "Pierwszy", description: "1" },
-        { id: "a", title: "Duplikat", description: "2" },
-        { id: "b", title: "Drugi", description: "3" },
+        { id: "a", title: "First", description: "1" },
+        { id: "a", title: "Duplicate", description: "2" },
+        { id: "b", title: "Second", description: "3" },
       ],
     });
 
     expect(parseTaskReport(text)).toEqual([
-      { id: "a", title: "Pierwszy", description: "1" },
-      { id: "b", title: "Drugi", description: "3" },
+      { id: "a", title: "First", description: "1" },
+      { id: "b", title: "Second", description: "3" },
     ]);
   });
 });

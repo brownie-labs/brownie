@@ -23,19 +23,19 @@ export function formatSessionEvent(
 ): string {
   switch (event.type) {
     case "init":
-      return `init · model=${event.model} · session=${event.sessionId} · narzędzia: ${event.toolCount}`;
+      return `init · model=${event.model} · session=${event.sessionId} · tools: ${event.toolCount}`;
     case "text":
       return event.text;
     case "toolUse":
       return `🔧 ${event.name} ${event.input}`;
     case "toolResult":
-      return `${event.isError ? "⚠ wynik(błąd)" : "↳ wynik"} ${event.content}`;
+      return `${event.isError ? "⚠ result(error)" : "↳ result"} ${event.content}`;
     case "raw":
-      return `(nie-JSON) ${event.line}`;
+      return `(non-JSON) ${event.line}`;
     case "stderr":
       return `stderr: ${event.line}`;
     case "killing":
-      return `⏹ Zatrzymuję sesję (${event.reason})…`;
+      return `⏹ Stopping session (${event.reason})…`;
     case "procError":
       return `✖ ${event.message}`;
   }

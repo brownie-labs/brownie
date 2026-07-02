@@ -9,18 +9,18 @@ import { logger } from "./logger.js";
 import { EFFORT_LEVELS } from "./types.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
-const CANCEL_MESSAGE = "Przerwano — nic nie zmieniono.";
+const CANCEL_MESSAGE = "Cancelled — nothing changed.";
 const MODELS = ["haiku", "sonnet", "opus"];
 const EFFORTS = [...EFFORT_LEVELS];
 
 const DAY_OPTIONS: { value: string; label: string }[] = [
-  { value: "mon", label: "Poniedziałek" },
-  { value: "tue", label: "Wtorek" },
-  { value: "wed", label: "Środa" },
-  { value: "thu", label: "Czwartek" },
-  { value: "fri", label: "Piątek" },
-  { value: "sat", label: "Sobota" },
-  { value: "sun", label: "Niedziela" },
+  { value: "mon", label: "Monday" },
+  { value: "tue", label: "Tuesday" },
+  { value: "wed", label: "Wednesday" },
+  { value: "thu", label: "Thursday" },
+  { value: "fri", label: "Friday" },
+  { value: "sat", label: "Saturday" },
+  { value: "sun", label: "Sunday" },
 ];
 
 function ask<T extends PromptOptions>(message: string, options: T) {
@@ -34,19 +34,19 @@ function isCancellation(err: unknown): boolean {
 async function confirmOverwrite(paths: string[]): Promise<boolean> {
   const existing = paths.filter((p) => existsSync(p));
   if (existing.length === 0) return true;
-  logger.warn(`Istnieją już pliki:\n${existing.map((p) => `  - ${p}`).join("\n")}`);
-  return ask("Nadpisać?", { type: "confirm", initial: false });
+  logger.warn(`Files already exist:\n${existing.map((p) => `  - ${p}`).join("\n")}`);
+  return ask("Overwrite?", { type: "confirm", initial: false });
 }
 
 async function askIntervalMinutes(): Promise<number> {
   let minutes = NaN;
   while (!(minutes > 0)) {
-    const raw = await ask("Interwał monitora w minutach", {
+    const raw = await ask("Monitor interval in minutes", {
       type: "text",
       initial: "15",
     });
     minutes = Number(raw.replace(",", "."));
-    if (!(minutes > 0)) logger.warn("Podaj dodatnią liczbę minut.");
+    if (!(minutes > 0)) logger.warn("Enter a positive number of minutes.");
   }
   return minutes;
 }
@@ -69,10 +69,11 @@ async function askOptional(
 }
 
 async function askActiveDays(): Promise<string> {
-  const selected = (await ask(
-    "Dni pracy monitora (spacja = zaznacz, Enter = wszystkie dni)",
-    { type: "multiselect", options: DAY_OPTIONS, required: false },
-  )) as unknown as string[];
+  const selected = (await ask("Monitor working days (space = select, Enter = all days)", {
+    type: "multiselect",
+    options: DAY_OPTIONS,
+    required: false,
+  })) as unknown as string[];
   if (selected.length === 0 || selected.length === DAY_OPTIONS.length) return "";
   const order = DAY_OPTIONS.map((option) => option.value);
   return [...selected].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(",");
@@ -123,7 +124,7 @@ export const configureCommand = defineCommand({
   meta: {
     name: "configure",
     description:
-      "Interaktywnie tworzy .env oraz prompty obu agentów (monitora i egzekutora)",
+      "Interactively creates .env and the prompts for both agents (monitor and executor)",
   },
   async run() {
     const envPath = resolveEnvPath();
@@ -138,17 +139,17 @@ export const configureCommand = defineCommand({
       }
 
       logger.info(
-        "Worker składa się z dwóch agentów: monitor cyklicznie wykrywa pracę do zrobienia " +
-          "i dodaje zadania na listę, a egzekutor wykonuje zadania z listy — każde w osobnej sesji.",
+        "The worker consists of two agents: the monitor cyclically detects work to be done " +
+          "and adds tasks to the list, while the executor completes tasks from the list — each in a separate session.",
       );
 
-      const monitorModel = await ask("Model monitora (tani — tylko wykrywa zadania)", {
+      const monitorModel = await ask("Monitor model (cheap — only detects tasks)", {
         type: "select",
         options: MODELS,
         initial: "sonnet",
       });
 
-      const monitorEffort = await ask("Effort monitora (poziom wysiłku rozumowania)", {
+      const monitorEffort = await ask("Monitor effort (reasoning effort level)", {
         type: "select",
         options: EFFORTS,
         initial: "medium",
@@ -158,26 +159,26 @@ export const configureCommand = defineCommand({
       const intervalMs = Math.round(intervalMinutes * 60_000);
 
       const activeHours = await askOptional(
-        "Godziny pracy monitora (HH:MM-HH:MM, Enter = cała doba)",
-        "np. 08:00-18:00",
+        "Monitor working hours (HH:MM-HH:MM, Enter = 24/7)",
+        "e.g. 08:00-18:00",
         parseTimeWindow,
       );
       const activeDays = await askActiveDays();
 
       const monitorPrompt = (
         await ask(
-          "Co monitor ma obserwować? (np. „zadania w Redmine przypisane do mnie ze statusem Open”)",
+          "What should the monitor watch? (e.g. “Redmine tasks assigned to me with status Open”)",
           { type: "text" },
         )
       ).trim();
 
-      const executorModel = await ask("Model egzekutora (mocny — wykonuje zadania)", {
+      const executorModel = await ask("Executor model (powerful — completes tasks)", {
         type: "select",
         options: MODELS,
         initial: "opus",
       });
 
-      const executorEffort = await ask("Effort egzekutora (poziom wysiłku rozumowania)", {
+      const executorEffort = await ask("Executor effort (reasoning effort level)", {
         type: "select",
         options: EFFORTS,
         initial: "high",
@@ -185,21 +186,21 @@ export const configureCommand = defineCommand({
 
       const executorPrompt = (
         await ask(
-          "Kim jest egzekutor i jak ma wykonywać zadania? (tożsamość, zasady pracy, dostępne narzędzia)",
+          "Who is the executor and how should it complete tasks? (identity, working rules, available tools)",
           { type: "text" },
         )
       ).trim();
 
       const useConfigDir = await ask(
-        "Użyć osobnego katalogu konfiguracji Claude (CLAUDE_CONFIG_DIR)?",
+        "Use a separate Claude config directory (CLAUDE_CONFIG_DIR)?",
         { type: "confirm", initial: false },
       );
       let configDir: string | undefined;
       if (useConfigDir) {
         configDir = (
-          await ask("Ścieżka CLAUDE_CONFIG_DIR", {
+          await ask("CLAUDE_CONFIG_DIR path", {
             type: "text",
-            placeholder: "np. ~/.claude-inny-profil",
+            placeholder: "e.g. ~/.claude-other-profile",
           })
         ).trim();
       }
@@ -221,14 +222,14 @@ export const configureCommand = defineCommand({
       await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");
       await writeFile(executorPromptPath, `${executorPrompt}\n`, "utf8");
 
-      logger.success(`Zapisano ${envPath}`);
-      logger.success(`Zapisano ${monitorPromptPath}`);
-      logger.success(`Zapisano ${executorPromptPath}`);
+      logger.success(`Saved ${envPath}`);
+      logger.success(`Saved ${monitorPromptPath}`);
+      logger.success(`Saved ${executorPromptPath}`);
       logger.info(
-        "Definicje ról agentów są w prompts/monitor.system.md i prompts/executor.system.md " +
-          "(wersjonowane w repo) — możesz je edytować ręcznie.",
+        "Agent role definitions live in prompts/monitor.system.md and prompts/executor.system.md " +
+          "(versioned in the repo) — you can edit them manually.",
       );
-      logger.info("Uruchom workera: pnpm start");
+      logger.info("Start the worker: pnpm start");
     } catch (err) {
       if (isCancellation(err)) {
         logger.info(CANCEL_MESSAGE);

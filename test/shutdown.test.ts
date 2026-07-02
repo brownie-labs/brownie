@@ -8,12 +8,12 @@ describe("abortOnSignals", () => {
     process.removeAllListeners(SIGNAL);
   });
 
-  it("nie jest przerwany zanim nadejdzie sygnał", () => {
+  it("is not aborted before a signal arrives", () => {
     const signal = abortOnSignals(undefined, [SIGNAL]);
     expect(signal.aborted).toBe(false);
   });
 
-  it("po sygnale ustawia abort i woła callback z nazwą sygnału", () => {
+  it("on a signal sets abort and calls the callback with the signal name", () => {
     const onSignal = vi.fn();
     const signal = abortOnSignals(onSignal, [SIGNAL]);
     process.emit(SIGNAL);
@@ -21,13 +21,13 @@ describe("abortOnSignals", () => {
     expect(onSignal).toHaveBeenCalledWith(SIGNAL);
   });
 
-  it("działa bez callbacka", () => {
+  it("works without a callback", () => {
     const signal = abortOnSignals(undefined, [SIGNAL]);
     process.emit(SIGNAL);
     expect(signal.aborted).toBe(true);
   });
 
-  it("drugi sygnał nie wywołuje ponownie logiki zamykania", () => {
+  it("a second signal does not re-run the shutdown logic", () => {
     const onSignal = vi.fn();
     const signal = abortOnSignals(onSignal, [SIGNAL]);
     process.emit(SIGNAL);

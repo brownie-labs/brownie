@@ -19,11 +19,11 @@ export function isTransientFailure(result: SessionResult): boolean {
 export function composeTaskPrompt(prompt: string, task: Task): string {
   return `${prompt.trimEnd()}
 
-## Zadanie do wykonania
+## Task to complete
 
 ID: ${task.id}
-Tytuł: ${task.title}
-Opis:
+Title: ${task.title}
+Description:
 ${task.description}
 `;
 }
@@ -89,7 +89,7 @@ export async function runExecutorLoop(
           .summarize(task, result, { willRetry: false }, signal)
           .catch(() => undefined);
       } else {
-        const error = result.error ?? "nieznany błąd";
+        const error = result.error ?? "unknown error";
         const willRetry =
           isTransientFailure(result) && task.attempts < executor.maxTaskAttempts;
         if (willRetry) {

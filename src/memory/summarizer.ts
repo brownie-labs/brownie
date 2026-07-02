@@ -63,12 +63,12 @@ export class SessionSummarizer implements TaskSummarizer {
     try {
       const sessionId = result.sessionId;
       if (sessionId === undefined) {
-        finished(false, "sesja egzekutora bez identyfikatora — brak logu");
+        finished(false, "executor session has no id — no log");
         return;
       }
       const logPath = await this.deps.resolveLogPath(sessionId);
       if (logPath === undefined) {
-        finished(false, "nie znaleziono pliku logu sesji egzekutora");
+        finished(false, "executor session log file not found");
         return;
       }
 
@@ -99,7 +99,7 @@ export class SessionSummarizer implements TaskSummarizer {
       if (!sessionResult.ok) {
         finished(
           false,
-          sessionResult.error ?? "nieznany błąd sesji podsumowującej",
+          sessionResult.error ?? "unknown summarizer session error",
           sessionResult.costUsd,
         );
         return;
@@ -110,7 +110,7 @@ export class SessionSummarizer implements TaskSummarizer {
           ? null
           : parseSummary(sessionResult.resultText);
       if (report === null) {
-        finished(false, "niepoprawny raport podsumowania", sessionResult.costUsd);
+        finished(false, "invalid summary report", sessionResult.costUsd);
         return;
       }
 

@@ -136,7 +136,7 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
-    throw new Error(`Nieprawidłowa konfiguracja (.env):\n${issues}`);
+    throw new Error(`Invalid configuration (.env):\n${issues}`);
   }
   return parsed.data;
 }
@@ -168,18 +168,18 @@ export function resolvePromptPaths(
 
 export const PROMPT_FILE_LABELS = {
   monitor: {
-    promptPath: "plik promptu monitora (CLAUDE_WORKER_MONITOR_PROMPT_FILE)",
+    promptPath: "monitor prompt file (CLAUDE_WORKER_MONITOR_PROMPT_FILE)",
     systemPromptPath:
-      "plik system promptu monitora (CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE)",
+      "monitor system prompt file (CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE)",
   },
   executor: {
-    promptPath: "plik promptu egzekutora (CLAUDE_WORKER_EXECUTOR_PROMPT_FILE)",
+    promptPath: "executor prompt file (CLAUDE_WORKER_EXECUTOR_PROMPT_FILE)",
     systemPromptPath:
-      "plik system promptu egzekutora (CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE)",
+      "executor system prompt file (CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE)",
   },
   summarizer: {
     systemPromptPath:
-      "plik system promptu podsumowującego (CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE)",
+      "summarizer system prompt file (CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE)",
   },
 } as const;
 

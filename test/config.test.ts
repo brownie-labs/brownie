@@ -14,55 +14,55 @@ import {
 import { createTempDir, removeTempDir, snapshotEnv } from "./helpers.js";
 
 describe("expandHome", () => {
-  it("zamienia samo ~ na katalog domowy", () => {
+  it("replaces a bare ~ with the home directory", () => {
     expect(expandHome("~")).toBe(homedir());
   });
 
-  it("rozwija ~/podścieżka", () => {
-    expect(expandHome("~/projekt")).toBe(resolve(homedir(), "projekt"));
+  it("expands ~/subpath", () => {
+    expect(expandHome("~/project")).toBe(resolve(homedir(), "project"));
   });
 
-  it("pozostawia ścieżkę bez ~ bez zmian", () => {
-    expect(expandHome("/abs/ścieżka")).toBe("/abs/ścieżka");
-    expect(expandHome("względna/x")).toBe("względna/x");
+  it("leaves a path without ~ unchanged", () => {
+    expect(expandHome("/abs/path")).toBe("/abs/path");
+    expect(expandHome("relative/x")).toBe("relative/x");
   });
 
-  it("nie rozwija ~ bez ukośnika", () => {
-    expect(expandHome("~inne")).toBe("~inne");
+  it("does not expand ~ without a slash", () => {
+    expect(expandHome("~other")).toBe("~other");
   });
 });
 
 describe("resolveEnvPath", () => {
-  it("bez argumentu wskazuje .env w cwd", () => {
+  it("without an argument points to .env in cwd", () => {
     expect(resolveEnvPath()).toBe(resolve(process.cwd(), ".env"));
   });
 
-  it("z argumentem względnym rozwiązuje od cwd", () => {
-    expect(resolveEnvPath("inny.env")).toBe(resolve("inny.env"));
+  it("with a relative argument resolves from cwd", () => {
+    expect(resolveEnvPath("other.env")).toBe(resolve("other.env"));
   });
 
-  it("z argumentem bezwzględnym zwraca go wprost", () => {
+  it("with an absolute argument returns it as is", () => {
     expect(resolveEnvPath("/etc/worker.env")).toBe("/etc/worker.env");
   });
 });
 
 describe("resolveFromCwd", () => {
-  it("ścieżkę bezwzględną zwraca bez zmian", () => {
+  it("returns an absolute path unchanged", () => {
     expect(resolveFromCwd("/abs")).toBe("/abs");
   });
 
-  it("względną rozwiązuje od cwd", () => {
+  it("resolves a relative path from cwd", () => {
     expect(resolveFromCwd("a/b")).toBe(resolve(process.cwd(), "a/b"));
   });
 
-  it("rozwija ~ przed rozwiązaniem", () => {
+  it("expands ~ before resolving", () => {
     expect(resolveFromCwd("~")).toBe(homedir());
     expect(resolveFromCwd("~/x")).toBe(resolve(homedir(), "x"));
   });
 });
 
 describe("envSchema", () => {
-  it("stosuje wartości domyślne", () => {
+  it("applies default values", () => {
     const env = envSchema.parse({});
     expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("sonnet");
     expect(env.CLAUDE_WORKER_MONITOR_EFFORT).toBe("medium");
@@ -91,7 +91,7 @@ describe("envSchema", () => {
   });
 
   it.each(["1", "true", "yes", "on", "ON", "True"])(
-    "traktuje %s jako true dla STREAM_PARTIAL",
+    "treats %s as true for STREAM_PARTIAL",
     (value) => {
       expect(
         envSchema.parse({ CLAUDE_WORKER_STREAM_PARTIAL: value })
@@ -100,8 +100,8 @@ describe("envSchema", () => {
     },
   );
 
-  it.each(["0", "false", "no", "off", "cokolwiek"])(
-    "traktuje %s jako false dla STREAM_PARTIAL",
+  it.each(["0", "false", "no", "off", "whatever"])(
+    "treats %s as false for STREAM_PARTIAL",
     (value) => {
       expect(
         envSchema.parse({ CLAUDE_WORKER_STREAM_PARTIAL: value })
@@ -110,14 +110,14 @@ describe("envSchema", () => {
     },
   );
 
-  it("pusty STREAM_PARTIAL korzysta z domyślnego true", () => {
+  it("empty STREAM_PARTIAL uses the default true", () => {
     expect(
       envSchema.parse({ CLAUDE_WORKER_STREAM_PARTIAL: "  " })
         .CLAUDE_WORKER_STREAM_PARTIAL,
     ).toBe(true);
   });
 
-  it("odrzuca niepozytywny interwał monitora", () => {
+  it("rejects a non-positive monitor interval", () => {
     expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "0" }).success).toBe(
       false,
     );
@@ -126,13 +126,13 @@ describe("envSchema", () => {
     );
   });
 
-  it("odrzuca niecałkowity interwał monitora", () => {
+  it("rejects a non-integer monitor interval", () => {
     expect(
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "1.5" }).success,
     ).toBe(false);
   });
 
-  it("odrzuca nieznany poziom effortu", () => {
+  it("rejects an unknown effort level", () => {
     expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_EFFORT: "turbo" }).success).toBe(
       false,
     );
@@ -144,13 +144,13 @@ describe("envSchema", () => {
     ).toBe(false);
   });
 
-  it("domyślnie pozostawia godziny i dni pracy nieustawione", () => {
+  it("leaves active hours and days unset by default", () => {
     const env = envSchema.parse({});
     expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS).toBeUndefined();
     expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS).toBeUndefined();
   });
 
-  it("przyjmuje poprawne godziny i dni pracy", () => {
+  it("accepts valid active hours and days", () => {
     const env = envSchema.parse({
       CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "08:00-18:00",
       CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: "mon-fri",
@@ -159,27 +159,27 @@ describe("envSchema", () => {
     expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS).toBe("mon-fri");
   });
 
-  it("odrzuca błędny format godzin pracy", () => {
+  it("rejects an invalid active hours format", () => {
     expect(
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "8-18" }).success,
     ).toBe(false);
   });
 
-  it("odrzuca identyczny początek i koniec godzin pracy", () => {
+  it("rejects identical start and end of active hours", () => {
     expect(
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "08:00-08:00" }).success,
     ).toBe(false);
   });
 
-  it("odrzuca nieznany dzień pracy", () => {
-    expect(
-      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: "pon" }).success,
-    ).toBe(false);
+  it("rejects an unknown active day", () => {
+    expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: "mo" }).success).toBe(
+      false,
+    );
   });
 });
 
 describe("resolvePromptPaths", () => {
-  it("rozwiązuje ścieżki wszystkich agentów ze sparsowanego env", () => {
+  it("resolves paths for all agents from parsed env", () => {
     const paths = resolvePromptPaths(
       envSchema.parse({
         CLAUDE_WORKER_MONITOR_PROMPT_FILE: "custom/m.md",
@@ -196,7 +196,7 @@ describe("resolvePromptPaths", () => {
     expect(paths.summarizer.systemPromptPath).toBe("/abs/ss.md");
   });
 
-  it("używa domyślnych ścieżek przy pustym źródle", () => {
+  it("uses default paths with an empty source", () => {
     const paths = resolvePromptPaths(envSchema.parse({}));
     expect(paths.monitor.promptPath).toBe(
       resolve(process.cwd(), "./prompts/monitor.prompt.md"),
@@ -250,7 +250,7 @@ describe("loadWorkerConfig", () => {
     }
   }
 
-  it("buduje pełny WorkerConfig z poprawnego .env", async () => {
+  it("builds a full WorkerConfig from a valid .env", async () => {
     await writePrompts();
     await writeEnv(
       [
@@ -264,9 +264,9 @@ describe("loadWorkerConfig", () => {
         "CLAUDE_WORKER_SUMMARIZER_EFFORT=medium",
         "CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS=90000",
         ...PROMPT_FILE_ENV,
-        "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
-        "CLAUDE_WORKER_MEMORY_DB=./stan/memory.db",
-        "CLAUDE_WORKER_LOGS_DIR=./dzienniki",
+        "CLAUDE_WORKER_TASKS_FILE=./state/tasks.json",
+        "CLAUDE_WORKER_MEMORY_DB=./state/memory.db",
+        "CLAUDE_WORKER_LOGS_DIR=./log-output",
         "CLAUDE_WORKER_CWD=./ws",
       ].join("\n"),
     );
@@ -288,21 +288,21 @@ describe("loadWorkerConfig", () => {
     expect(config.summarizer.effort).toBe("medium");
     expect(config.summarizer.sessionTimeoutMs).toBe(90000);
     expect(config.summarizer.systemPromptPath).toBe(join(dir, "ss.md"));
-    expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));
-    expect(config.memoryDbPath).toBe(join(dir, "stan", "memory.db"));
+    expect(config.tasksFilePath).toBe(join(dir, "state", "tasks.json"));
+    expect(config.memoryDbPath).toBe(join(dir, "state", "memory.db"));
     const mcpConfig = JSON.parse(config.executor.mcpConfig) as {
       mcpServers: { memory: { command: string; args: string[] } };
     };
     expect(mcpConfig.mcpServers.memory.command).toBe(process.execPath);
     expect(mcpConfig.mcpServers.memory.args).toContain("mcp");
-    expect(mcpConfig.mcpServers.memory.args).toContain(join(dir, "stan", "memory.db"));
-    expect(config.logsDir).toBe(join(dir, "dzienniki"));
+    expect(mcpConfig.mcpServers.memory.args).toContain(join(dir, "state", "memory.db"));
+    expect(config.logsDir).toBe(join(dir, "log-output"));
     expect(config.cwd).toBe(join(dir, "ws"));
     expect(config.streamPartial).toBe(true);
     expect(config.monitor.schedule).toBeNull();
   });
 
-  it("buduje harmonogram monitora z godzin i dni pracy", async () => {
+  it("builds the monitor schedule from active hours and days", async () => {
     await writePrompts();
     await writeEnv(
       [
@@ -321,35 +321,35 @@ describe("loadWorkerConfig", () => {
     });
   });
 
-  it("rzuca, gdy brak któregokolwiek pliku promptu", async () => {
+  it("throws when any prompt file is missing", async () => {
     await writePrompts();
     await removeTempDir(join(dir, "e.md"));
     await writeEnv(PROMPT_FILE_ENV.join("\n"));
 
-    await expect(loadWorkerConfig()).rejects.toThrow(/plik promptu egzekutora/);
+    await expect(loadWorkerConfig()).rejects.toThrow(/executor prompt file/);
   });
 
-  it("rzuca czytelny błąd walidacji przy błędnym env", async () => {
+  it("throws a readable validation error on a bad env", async () => {
     await writePrompts();
     await writeEnv(
       ["CLAUDE_WORKER_MONITOR_INTERVAL_MS=-1", ...PROMPT_FILE_ENV].join("\n"),
     );
 
-    await expect(loadWorkerConfig()).rejects.toThrow(/Nieprawidłowa konfiguracja/);
+    await expect(loadWorkerConfig()).rejects.toThrow(/Invalid configuration/);
   });
 
-  it("z przekazanymi zweryfikowanymi ścieżkami pomija ponowną walidację plików", async () => {
+  it("with passed verified paths skips re-validating the files", async () => {
     const verified = {
       monitor: {
-        promptPath: join(dir, "nie-ma-m.md"),
-        systemPromptPath: join(dir, "nie-ma-ms.md"),
+        promptPath: join(dir, "missing-m.md"),
+        systemPromptPath: join(dir, "missing-ms.md"),
       },
       executor: {
-        promptPath: join(dir, "nie-ma-e.md"),
-        systemPromptPath: join(dir, "nie-ma-es.md"),
+        promptPath: join(dir, "missing-e.md"),
+        systemPromptPath: join(dir, "missing-es.md"),
       },
       summarizer: {
-        systemPromptPath: join(dir, "nie-ma-ss.md"),
+        systemPromptPath: join(dir, "missing-ss.md"),
       },
     };
 
@@ -362,23 +362,21 @@ describe("loadWorkerConfig", () => {
     expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
   });
 
-  it("rzuca, gdy brak pliku system promptu podsumowującego", async () => {
+  it("throws when the summarizer system prompt file is missing", async () => {
     await writePrompts();
     await removeTempDir(join(dir, "ss.md"));
     await writeEnv(PROMPT_FILE_ENV.join("\n"));
 
-    await expect(loadWorkerConfig()).rejects.toThrow(
-      /plik system promptu podsumowującego/,
-    );
+    await expect(loadWorkerConfig()).rejects.toThrow(/summarizer system prompt file/);
   });
 
-  it("rozwija ~ w CLAUDE_CONFIG_DIR w childEnv", async () => {
+  it("expands ~ in CLAUDE_CONFIG_DIR in childEnv", async () => {
     await writePrompts();
-    await writeEnv([...PROMPT_FILE_ENV, "CLAUDE_CONFIG_DIR=~/profil-claude"].join("\n"));
+    await writeEnv([...PROMPT_FILE_ENV, "CLAUDE_CONFIG_DIR=~/claude-profile"].join("\n"));
     delete process.env.CLAUDE_CONFIG_DIR;
 
     const config = await loadWorkerConfig();
 
-    expect(config.childEnv.CLAUDE_CONFIG_DIR).toBe(resolve(homedir(), "profil-claude"));
+    expect(config.childEnv.CLAUDE_CONFIG_DIR).toBe(resolve(homedir(), "claude-profile"));
   });
 });

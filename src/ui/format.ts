@@ -34,53 +34,53 @@ export function formatInterval(ms: number): string {
 export function formatMonitorPhase(phase: MonitorPhase, now: number): string {
   switch (phase.kind) {
     case "starting":
-      return "uruchamianie…";
+      return "starting…";
     case "offHours":
-      return `⏸ poza godzinami pracy · wznowienie ${formatResume(new Date(phase.resumeAt))} (za ${formatCountdown(phase.resumeAt - now)})`;
+      return `⏸ outside working hours · resume ${formatResume(new Date(phase.resumeAt))} (in ${formatCountdown(phase.resumeAt - now)})`;
     case "session":
-      return `▶ cykl #${phase.cycle} · trwa ${formatDuration(now - phase.startedAt)}`;
+      return `▶ cycle #${phase.cycle} · running ${formatDuration(now - phase.startedAt)}`;
     case "sleeping":
-      return `⏳ następny cykl za ${formatCountdown(phase.nextCycleAt - now)}`;
+      return `⏳ next cycle in ${formatCountdown(phase.nextCycleAt - now)}`;
   }
 }
 
 export function formatExecutorPhase(phase: ExecutorPhase, now: number): string {
   switch (phase.kind) {
     case "waiting":
-      return "⏳ oczekiwanie na zadania";
+      return "⏳ waiting for tasks";
     case "session":
-      return `▶ ${phase.task.id}: ${phase.task.title} · trwa ${formatDuration(now - phase.startedAt)}`;
+      return `▶ ${phase.task.id}: ${phase.task.title} · running ${formatDuration(now - phase.startedAt)}`;
     case "summary":
-      return `✎ podsumowanie ${phase.task.id} do pamięci · trwa ${formatDuration(now - phase.startedAt)}`;
+      return `✎ summarizing ${phase.task.id} to memory · running ${formatDuration(now - phase.startedAt)}`;
     case "backoff":
-      return `↻ ponowienie ${phase.task.id} za ${formatCountdown(phase.resumeAt - now)}`;
+      return `↻ retrying ${phase.task.id} in ${formatCountdown(phase.resumeAt - now)}`;
   }
 }
 
 function formatCost(costUsd: number | undefined): string {
-  return costUsd != null ? ` · koszt=$${costUsd.toFixed(4)}` : "";
+  return costUsd != null ? ` · cost=$${costUsd.toFixed(4)}` : "";
 }
 
 export function formatMonitorOutcome(outcome: MonitorCycleOutcome): string {
-  const base = `cykl #${outcome.cycle} · czas=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
-  if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "nieznany błąd"}`;
+  const base = `cycle #${outcome.cycle} · time=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
+  if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "unknown error"}`;
   const duplicates =
     outcome.skippedDuplicates > 0
-      ? ` · pominięte duplikaty: ${outcome.skippedDuplicates}`
+      ? ` · skipped duplicates: ${outcome.skippedDuplicates}`
       : "";
-  return `✔ ${base} · nowe zadania: ${outcome.addedTasks}${duplicates}`;
+  return `✔ ${base} · new tasks: ${outcome.addedTasks}${duplicates}`;
 }
 
 export function formatExecutorOutcome(outcome: ExecutorTaskOutcome): string {
-  const base = `${outcome.taskId} · czas=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
+  const base = `${outcome.taskId} · time=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
   if (outcome.willRetry) {
     const attempts =
       outcome.attempt != null && outcome.maxAttempts != null
-        ? ` · ponowienie (próba ${outcome.attempt}/${outcome.maxAttempts})`
-        : " · ponowienie";
-    return `↻ ${base} · ${outcome.error ?? "nieznany błąd"}${attempts}`;
+        ? ` · retry (attempt ${outcome.attempt}/${outcome.maxAttempts})`
+        : " · retry";
+    return `↻ ${base} · ${outcome.error ?? "unknown error"}${attempts}`;
   }
-  if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "nieznany błąd"}`;
-  const turns = outcome.numTurns != null ? ` · tury=${outcome.numTurns}` : "";
+  if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "unknown error"}`;
+  const turns = outcome.numTurns != null ? ` · turns=${outcome.numTurns}` : "";
   return `✔ ${base}${turns}`;
 }

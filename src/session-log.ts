@@ -38,7 +38,7 @@ export class SessionLog {
     const stream =
       event.type === "init"
         ? this.openSession(at, event.sessionId)
-        : (this.stream ?? this.openSession(at, "nieznana"));
+        : (this.stream ?? this.openSession(at, "unknown"));
     const prefix = `[${timeStamp(at)}]`;
     for (const line of formatSessionEvent(event).split("\n")) {
       stream.write(`${prefix} ${line}\n`);

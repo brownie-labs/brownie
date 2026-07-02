@@ -77,7 +77,7 @@ describe("startCommand", () => {
     await removeTempDir(dir);
   });
 
-  it("przechodzi preflight, buduje config, tworzy cwd, otwiera magazyn i startuje obie pętle", async () => {
+  it("passes preflight, builds config, creates cwd, opens the store and starts both loops", async () => {
     const paths = verifiedPaths(dir);
     const cwd = join(dir, "ws");
     const config = buildConfig({ cwd, tasksFilePath: join(dir, "data", "tasks.json") });
@@ -90,10 +90,10 @@ describe("startCommand", () => {
     mocks.runMonitorLoop.mockResolvedValue(undefined);
     mocks.runExecutorLoop.mockResolvedValue(undefined);
 
-    await runStart("./inny.env");
+    await runStart("./other.env");
 
-    expect(mocks.ensureReady).toHaveBeenCalledWith("./inny.env");
-    expect(mocks.loadWorkerConfig).toHaveBeenCalledWith("./inny.env", paths);
+    expect(mocks.ensureReady).toHaveBeenCalledWith("./other.env");
+    expect(mocks.loadWorkerConfig).toHaveBeenCalledWith("./other.env", paths);
     expect(existsSync(cwd)).toBe(true);
     expect(mocks.taskStoreOpen).toHaveBeenCalledWith(config.tasksFilePath);
     expect(mocks.runMonitorLoop).toHaveBeenCalledWith(
@@ -139,7 +139,7 @@ describe("startCommand", () => {
     expect(process.exitCode).toBe(savedExitCode);
   });
 
-  it("błąd pętli: odmontowuje dashboard, loguje i ustawia exitCode=1", async () => {
+  it("loop error: unmounts the dashboard, logs and sets exitCode=1", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
     mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: join(dir, "ws") }));
     mocks.abortOnSignals.mockReturnValue(new AbortController().signal);
@@ -148,52 +148,48 @@ describe("startCommand", () => {
       list: () => [],
       onChange: vi.fn(),
     });
-    mocks.runMonitorLoop.mockRejectedValue(new Error("awaria pętli"));
+    mocks.runMonitorLoop.mockRejectedValue(new Error("loop failure"));
     mocks.runExecutorLoop.mockResolvedValue(undefined);
 
     await runStart();
 
     expect(mocks.dashboardUnmount).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith("awaria pętli");
+    expect(logger.error).toHaveBeenCalledWith("loop failure");
     expect(process.exitCode).toBe(1);
   });
 
-  it("błąd preflight: loguje, ustawia exitCode=1 i nie startuje pętli", async () => {
-    mocks.ensureReady.mockRejectedValue(new Error("Preflight nieudany"));
+  it("preflight error: logs, sets exitCode=1 and does not start the loops", async () => {
+    mocks.ensureReady.mockRejectedValue(new Error("Preflight failed"));
 
     await runStart();
 
-    expect(logger.error).toHaveBeenCalledWith("Preflight nieudany");
+    expect(logger.error).toHaveBeenCalledWith("Preflight failed");
     expect(process.exitCode).toBe(1);
     expect(mocks.loadWorkerConfig).not.toHaveBeenCalled();
     expect(mocks.runMonitorLoop).not.toHaveBeenCalled();
     expect(mocks.runExecutorLoop).not.toHaveBeenCalled();
   });
 
-  it("błąd ładowania konfiguracji: loguje, ustawia exitCode=1 i nie startuje pętli", async () => {
+  it("config loading error: logs, sets exitCode=1 and does not start the loops", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
-    mocks.loadWorkerConfig.mockRejectedValue(
-      new Error("Nieprawidłowa konfiguracja (.env)"),
-    );
+    mocks.loadWorkerConfig.mockRejectedValue(new Error("Invalid configuration (.env)"));
 
     await runStart();
 
-    expect(logger.error).toHaveBeenCalledWith("Nieprawidłowa konfiguracja (.env)");
+    expect(logger.error).toHaveBeenCalledWith("Invalid configuration (.env)");
     expect(process.exitCode).toBe(1);
     expect(mocks.runMonitorLoop).not.toHaveBeenCalled();
   });
 
-  it("uszkodzony magazyn zadań: loguje, ustawia exitCode=1 i nie startuje pętli", async () => {
+  it("corrupted task store: logs, sets exitCode=1 and does not start the loops", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
     mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: join(dir, "ws") }));
-    mocks.taskStoreOpen.mockRejectedValue(
-      new Error("Uszkodzony plik magazynu zadań (x)"),
-    );
+    mocks.taskStoreOpen.mockRejectedValue(new Error("Corrupted task store file (x)"));
 
     await runStart();
 
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("Uszkodzony plik magazynu zadań"),
+      expect.stringContaining("Corrupted task store file"),
     );
     expect(process.exitCode).toBe(1);
     expect(mocks.runMonitorLoop).not.toHaveBeenCalled();

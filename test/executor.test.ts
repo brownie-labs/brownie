@@ -27,8 +27,8 @@ const { runExecutorLoop, composeTaskPrompt, isTransientFailure } =
 function task(id: string): Task {
   return {
     id,
-    title: `Zadanie ${id}`,
-    description: `Opis ${id}`,
+    title: `Task ${id}`,
+    description: `Description ${id}`,
     status: "pending",
     attempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -44,7 +44,7 @@ function transientFailure(): SessionResult {
   return {
     ok: false,
     durationMs: 10,
-    error: "Sesja zakończona błędem (is_error)",
+    error: "Session ended with an error (is_error)",
     failureReason: "isError",
     resultText: "API Error: Connection closed mid-response.",
   };
@@ -83,14 +83,14 @@ function fakeStore(queue: Task[]): FakeStore {
 }
 
 describe("composeTaskPrompt", () => {
-  it("dokleja blok zadania do promptu", () => {
-    const prompt = composeTaskPrompt("tożsamość\n", task("redmine-7"));
+  it("appends the task block to the prompt", () => {
+    const prompt = composeTaskPrompt("identity\n", task("redmine-7"));
 
-    expect(prompt).toContain("tożsamość");
-    expect(prompt).toContain("## Zadanie do wykonania");
+    expect(prompt).toContain("identity");
+    expect(prompt).toContain("## Task to complete");
     expect(prompt).toContain("ID: redmine-7");
-    expect(prompt).toContain("Tytuł: Zadanie redmine-7");
-    expect(prompt).toContain("Opis redmine-7");
+    expect(prompt).toContain("Title: Task redmine-7");
+    expect(prompt).toContain("Description redmine-7");
   });
 });
 
@@ -103,7 +103,7 @@ describe("runExecutorLoop", () => {
     spy = createExecutorReporterSpy();
     summarizerSpy = createTaskSummarizerSpy();
     mocks.readFile.mockImplementation((path: string) =>
-      Promise.resolve(path.includes("system") ? "system\n" : "tożsamość\n"),
+      Promise.resolve(path.includes("system") ? "system\n" : "identity\n"),
     );
   });
 
@@ -111,7 +111,7 @@ describe("runExecutorLoop", () => {
     vi.useRealTimers();
   });
 
-  it("drenuje kolejkę sekwencyjnie i oznacza zadania jako wykonane", async () => {
+  it("drains the queue sequentially and marks tasks as completed", async () => {
     const { store, complete } = fakeStore([task("a"), task("b")]);
     const waker = new Waker();
     const controller = new AbortController();
@@ -150,7 +150,7 @@ describe("runExecutorLoop", () => {
     await promise;
   });
 
-  it("komponuje spec sesji: kontrakt w system promptcie, zadanie w promptcie, sink sesji", async () => {
+  it("composes the session spec: contract in the system prompt, task in the prompt, session sink", async () => {
     const { store } = fakeStore([task("x")]);
     const controller = new AbortController();
     mocks.runSession.mockResolvedValue(ok());
@@ -185,17 +185,17 @@ describe("runExecutorLoop", () => {
     expect(spec.model).toBe("opus");
     expect(spec.effort).toBe("high");
     expect(spec.systemPrompt).toBe("system\n");
-    expect(spec.prompt).toContain("tożsamość");
+    expect(spec.prompt).toContain("identity");
     expect(spec.prompt).toContain("ID: x");
     expect(spec.mcpConfig).toBe('{"mcpServers":{}}');
     expect(spec.jsonSchema).toBeUndefined();
     expect(spec.events).toBe(spy.reporter.session);
   });
 
-  it("po ukończonym zadaniu uruchamia podsumowanie do pamięci", async () => {
+  it("runs a memory summary after a completed task", async () => {
     const { store, complete } = fakeStore([task("a")]);
     const controller = new AbortController();
-    const result = { ...ok(), sessionId: "sesja-a" };
+    const result = { ...ok(), sessionId: "session-a" };
     mocks.runSession.mockResolvedValue(result);
 
     const promise = runExecutorLoop(
@@ -223,10 +223,10 @@ describe("runExecutorLoop", () => {
     expect(summarizeOrder).toBeGreaterThan(finishedOrder);
   });
 
-  it("po nieudanym zadaniu uruchamia podsumowanie z informacją o ponowieniu", async () => {
-    const { store } = fakeStore([task("chwiejne")]);
+  it("runs a summary with retry info after a failed task", async () => {
+    const { store } = fakeStore([task("flaky")]);
     const controller = new AbortController();
-    const result = { ...transientFailure(), sessionId: "sesja-f" };
+    const result = { ...transientFailure(), sessionId: "session-f" };
     mocks.runSession.mockResolvedValue(result);
 
     const promise = runExecutorLoop(
@@ -242,18 +242,18 @@ describe("runExecutorLoop", () => {
     await promise;
 
     expect(summarizerSpy.summarize).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "chwiejne" }),
+      expect.objectContaining({ id: "flaky" }),
       result,
       { willRetry: true },
       controller.signal,
     );
   });
 
-  it("rzucający summarizer nie zmienia statusu zadania i nie przerywa pętli", async () => {
+  it("a throwing summarizer does not change task status and does not break the loop", async () => {
     const { store, complete, fail } = fakeStore([task("a"), task("b")]);
     const controller = new AbortController();
     mocks.runSession.mockResolvedValue(ok());
-    summarizerSpy.summarize.mockRejectedValue(new Error("awaria pamięci"));
+    summarizerSpy.summarize.mockRejectedValue(new Error("memory failure"));
 
     const promise = runExecutorLoop(
       buildConfig(),
@@ -272,13 +272,13 @@ describe("runExecutorLoop", () => {
     expect(fail).not.toHaveBeenCalled();
   });
 
-  it("nieudana sesja oznacza zadanie jako failed z błędem", async () => {
-    const { store, complete, fail } = fakeStore([task("zly")]);
+  it("a failed session marks the task as failed with the error", async () => {
+    const { store, complete, fail } = fakeStore([task("bad")]);
     const controller = new AbortController();
     mocks.runSession.mockResolvedValue({
       ok: false,
       durationMs: 10,
-      error: "Proces zakończył się kodem 2",
+      error: "Process exited with code 2",
     } satisfies SessionResult);
 
     const promise = runExecutorLoop(
@@ -290,14 +290,14 @@ describe("runExecutorLoop", () => {
       controller.signal,
     );
     await vi.waitFor(() =>
-      expect(fail).toHaveBeenCalledWith("zly", "Proces zakończył się kodem 2"),
+      expect(fail).toHaveBeenCalledWith("bad", "Process exited with code 2"),
     );
     expect(complete).not.toHaveBeenCalled();
     expect(spy.taskFinished).toHaveBeenCalledWith(
       expect.objectContaining({
-        taskId: "zly",
+        taskId: "bad",
         ok: false,
-        error: "Proces zakończył się kodem 2",
+        error: "Process exited with code 2",
       }),
     );
 
@@ -305,8 +305,8 @@ describe("runExecutorLoop", () => {
     await promise;
   });
 
-  it("wyjątek podczas zadania oznacza je jako failed, pętla trwa dalej", async () => {
-    const { store, fail, complete } = fakeStore([task("crash"), task("dobre")]);
+  it("an exception during a task marks it as failed, the loop keeps going", async () => {
+    const { store, fail, complete } = fakeStore([task("crash"), task("good")]);
     const controller = new AbortController();
     mocks.runSession.mockRejectedValueOnce(new Error("boom")).mockResolvedValue(ok());
 
@@ -318,7 +318,7 @@ describe("runExecutorLoop", () => {
       summarizerSpy.summarizer,
       controller.signal,
     );
-    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("dobre"));
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("good"));
 
     expect(fail).toHaveBeenCalledWith("crash", "boom");
     expect(spy.taskFinished).toHaveBeenCalledWith(
@@ -329,7 +329,7 @@ describe("runExecutorLoop", () => {
     await promise;
   });
 
-  it("przy pustej kolejce raportuje oczekiwanie i budzi się po notify", async () => {
+  it("with an empty queue reports waiting and wakes up on notify", async () => {
     const { store, takeNext, complete } = fakeStore([]);
     const waker = new Waker();
     const controller = new AbortController();
@@ -347,15 +347,15 @@ describe("runExecutorLoop", () => {
     expect(mocks.runSession).not.toHaveBeenCalled();
     expect(spy.waiting).toHaveBeenCalledTimes(1);
 
-    takeNext.mockResolvedValueOnce(task("nowe"));
+    takeNext.mockResolvedValueOnce(task("new"));
     waker.notify();
-    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("nowe"));
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("new"));
 
     controller.abort();
     await promise;
   });
 
-  it("abort podczas oczekiwania kończy pętlę", async () => {
+  it("abort while waiting ends the loop", async () => {
     const { store, takeNext } = fakeStore([]);
     const controller = new AbortController();
 
@@ -376,15 +376,15 @@ describe("runExecutorLoop", () => {
     expect(spy.taskStarted).not.toHaveBeenCalled();
   });
 
-  it("abort w trakcie sesji zostawia zadanie bez zmiany statusu i bez wyniku", async () => {
-    const { store, complete, fail } = fakeStore([task("w-trakcie")]);
+  it("abort during a session leaves the task with an unchanged status and no result", async () => {
+    const { store, complete, fail } = fakeStore([task("in-flight")]);
     const controller = new AbortController();
     mocks.runSession.mockImplementation(() => {
       controller.abort();
       return Promise.resolve({
         ok: false,
         durationMs: 5,
-        error: "Sesja przerwana",
+        error: "Session aborted",
       } satisfies SessionResult);
     });
 
@@ -404,11 +404,11 @@ describe("runExecutorLoop", () => {
     expect(summarizerSpy.summarize).not.toHaveBeenCalled();
   });
 
-  it("błąd przejściowy wraca do kolejki i jest ponawiany aż do sukcesu", async () => {
+  it("a transient error goes back to the queue and is retried until success", async () => {
     const takeNext = vi
       .fn()
-      .mockResolvedValueOnce({ ...task("chwiejne"), attempts: 1 })
-      .mockResolvedValueOnce({ ...task("chwiejne"), attempts: 2 })
+      .mockResolvedValueOnce({ ...task("flaky"), attempts: 1 })
+      .mockResolvedValueOnce({ ...task("flaky"), attempts: 2 })
       .mockResolvedValue(undefined);
     const complete = vi.fn().mockResolvedValue(undefined);
     const fail = vi.fn().mockResolvedValue(undefined);
@@ -425,17 +425,17 @@ describe("runExecutorLoop", () => {
       summarizerSpy.summarizer,
       controller.signal,
     );
-    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("chwiejne"));
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("flaky"));
 
     expect(requeue).toHaveBeenCalledWith(
-      "chwiejne",
-      "Sesja zakończona błędem (is_error)",
+      "flaky",
+      "Session ended with an error (is_error)",
     );
     expect(fail).not.toHaveBeenCalled();
     expect(spy.taskFinished).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        taskId: "chwiejne",
+        taskId: "flaky",
         ok: false,
         willRetry: true,
         attempt: 1,
@@ -444,15 +444,15 @@ describe("runExecutorLoop", () => {
     );
     expect(spy.taskFinished).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ taskId: "chwiejne", ok: true }),
+      expect.objectContaining({ taskId: "flaky", ok: true }),
     );
 
     controller.abort();
     await promise;
   });
 
-  it("po wyczerpaniu prób błąd przejściowy oznacza zadanie jako failed", async () => {
-    const { store, fail, requeue } = fakeStore([{ ...task("uparte"), attempts: 2 }]);
+  it("after attempts are exhausted a transient error marks the task as failed", async () => {
+    const { store, fail, requeue } = fakeStore([{ ...task("stubborn"), attempts: 2 }]);
     const controller = new AbortController();
     mocks.runSession.mockResolvedValue(transientFailure());
 
@@ -465,25 +465,28 @@ describe("runExecutorLoop", () => {
       controller.signal,
     );
     await vi.waitFor(() =>
-      expect(fail).toHaveBeenCalledWith("uparte", "Sesja zakończona błędem (is_error)"),
+      expect(fail).toHaveBeenCalledWith(
+        "stubborn",
+        "Session ended with an error (is_error)",
+      ),
     );
 
     expect(requeue).not.toHaveBeenCalled();
     expect(spy.taskFinished).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "uparte", willRetry: false, attempt: 3 }),
+      expect.objectContaining({ taskId: "stubborn", willRetry: false, attempt: 3 }),
     );
 
     controller.abort();
     await promise;
   });
 
-  it("błąd trwały nie jest ponawiany", async () => {
-    const { store, fail, requeue } = fakeStore([task("trwale-zle")]);
+  it("a permanent error is not retried", async () => {
+    const { store, fail, requeue } = fakeStore([task("permanently-bad")]);
     const controller = new AbortController();
     mocks.runSession.mockResolvedValue({
       ok: false,
       durationMs: 10,
-      error: "Proces zakończył się kodem 2",
+      error: "Process exited with code 2",
       failureReason: "exit",
     } satisfies SessionResult);
 
@@ -496,7 +499,7 @@ describe("runExecutorLoop", () => {
       controller.signal,
     );
     await vi.waitFor(() =>
-      expect(fail).toHaveBeenCalledWith("trwale-zle", "Proces zakończył się kodem 2"),
+      expect(fail).toHaveBeenCalledWith("permanently-bad", "Process exited with code 2"),
     );
 
     expect(requeue).not.toHaveBeenCalled();
@@ -505,11 +508,11 @@ describe("runExecutorLoop", () => {
     await promise;
   });
 
-  it("przed ponowieniem raportuje backoff i czeka zadany czas", async () => {
+  it("reports backoff before retrying and waits the given time", async () => {
     vi.useFakeTimers();
     const takeNext = vi
       .fn()
-      .mockResolvedValueOnce({ ...task("chwiejne"), attempts: 1 })
+      .mockResolvedValueOnce({ ...task("flaky"), attempts: 1 })
       .mockResolvedValue(undefined);
     const requeue = vi.fn().mockResolvedValue(undefined);
     const store = {
@@ -534,7 +537,7 @@ describe("runExecutorLoop", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(spy.retryScheduled).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "chwiejne" }),
+      expect.objectContaining({ id: "flaky" }),
       expect.any(Date),
     );
     expect(takeNext).toHaveBeenCalledTimes(1);
@@ -548,13 +551,13 @@ describe("runExecutorLoop", () => {
 });
 
 describe("isTransientFailure", () => {
-  it("timeout sesji jest przejściowy", () => {
+  it("a session timeout is transient", () => {
     expect(
       isTransientFailure({ ok: false, durationMs: 1, failureReason: "timeout" }),
     ).toBe(true);
   });
 
-  it("is_error z błędem API/połączenia jest przejściowy", () => {
+  it("is_error with an API/connection error is transient", () => {
     for (const text of [
       "API Error: Connection closed mid-response.",
       "fetch failed: ECONNRESET",
@@ -573,18 +576,18 @@ describe("isTransientFailure", () => {
     }
   });
 
-  it("is_error bez sygnatury błędu sieciowego nie jest przejściowy", () => {
+  it("is_error without a network error signature is not transient", () => {
     expect(
       isTransientFailure({
         ok: false,
         durationMs: 1,
         failureReason: "isError",
-        resultText: "Nie mogę wykonać tego zadania.",
+        resultText: "I cannot complete this task.",
       }),
     ).toBe(false);
   });
 
-  it("inne przyczyny (exit, spawn, abort) nie są przejściowe", () => {
+  it("other reasons (exit, spawn, abort) are not transient", () => {
     for (const failureReason of ["exit", "spawn", "abort"] as const) {
       expect(isTransientFailure({ ok: false, durationMs: 1, failureReason })).toBe(false);
     }

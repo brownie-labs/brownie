@@ -8,12 +8,12 @@ export const SUMMARY_JSON_SCHEMA = JSON.stringify({
     headline: {
       type: "string",
       description:
-        "Jedno zdanie (maksymalnie ok. 200 znaków): co zrobiono albo na czym " +
-        "polegał problem",
+        "One sentence (about 200 characters max): what was done or what the " +
+        "problem was",
     },
     summary: {
       type: "string",
-      description: "Pełne podsumowanie sesji zgodnie z rolą",
+      description: "Full session summary according to the role",
     },
   },
   required: ["headline", "summary"],
@@ -50,32 +50,32 @@ export interface SummaryContext {
 export function composeSummaryPrompt(context: SummaryContext): string {
   const { task, result, willRetry, logPath } = context;
   const lines = [
-    "## Zadanie",
+    "## Task",
     "",
     `ID: ${task.id}`,
-    `Tytuł: ${task.title}`,
-    `Próba: ${task.attempts}`,
-    "Opis:",
+    `Title: ${task.title}`,
+    `Attempt: ${task.attempts}`,
+    "Description:",
     task.description,
     "",
-    "## Wynik sesji egzekutora",
+    "## Executor session result",
     "",
-    `Status: ${result.ok ? "sukces" : "porażka"}`,
+    `Status: ${result.ok ? "success" : "failure"}`,
   ];
   if (!result.ok) {
     lines.push(
-      `Błąd: ${result.error ?? "nieznany"}`,
-      `Zaplanowano ponowną próbę: ${willRetry ? "tak" : "nie"}`,
+      `Error: ${result.error ?? "unknown"}`,
+      `Retry scheduled: ${willRetry ? "yes" : "no"}`,
     );
   }
   lines.push(
     "",
-    "## Log sesji",
+    "## Session log",
     "",
-    "Pełny log sesji egzekutora znajduje się w pliku:",
+    "The full executor session log is in file:",
     logPath,
     "",
-    "Przeczytaj go i przygotuj podsumowanie.",
+    "Read it and prepare a summary.",
   );
   return lines.join("\n");
 }

@@ -8,7 +8,7 @@ const main = defineCommand({
   meta: {
     name: "brownie",
     description:
-      "Dwuagentowy worker Claude Code: monitor cyklicznie zgłasza zadania, egzekutor je wykonuje",
+      "Two-agent Claude Code worker: the monitor reports tasks on a cycle, the executor completes them",
   },
   subCommands: {
     start: startCommand,

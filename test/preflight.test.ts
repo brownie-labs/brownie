@@ -36,7 +36,7 @@ describe("ensureReady", () => {
     await removeTempDir(dir);
   });
 
-  it("przechodzi i zwraca zweryfikowane ścieżki promptów wszystkich agentów", async () => {
+  it("passes and returns verified prompt paths for all agents", async () => {
     await expect(ensureReady()).resolves.toEqual({
       monitor: {
         promptPath: join(dir, "prompts", "monitor.prompt.md"),
@@ -52,18 +52,18 @@ describe("ensureReady", () => {
     });
   });
 
-  it("rzuca z podpowiedzią instalacji, gdy brak claude w PATH", async () => {
-    process.env.PATH = join(dir, "puste");
-    await expect(ensureReady()).rejects.toThrow(/Preflight nieudany[\s\S]*PATH/);
+  it("throws with an install hint when claude is missing from PATH", async () => {
+    process.env.PATH = join(dir, "empty");
+    await expect(ensureReady()).rejects.toThrow(/Preflight failed[\s\S]*PATH/);
   });
 
-  it("rzuca z podpowiedzią configure, gdy brak pliku promptu", async () => {
+  it("throws with a configure hint when a prompt file is missing", async () => {
     await removeTempDir(join(dir, "prompts"));
     await expect(ensureReady()).rejects.toThrow(/pnpm configure/);
   });
 
-  it("rzuca, gdy brak pliku .env", async () => {
+  it("throws when the .env file is missing", async () => {
     await removeTempDir(join(dir, ".env"));
-    await expect(ensureReady()).rejects.toThrow(/Preflight nieudany/);
+    await expect(ensureReady()).rejects.toThrow(/Preflight failed/);
   });
 });

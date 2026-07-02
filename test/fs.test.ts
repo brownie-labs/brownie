@@ -11,21 +11,21 @@ describe("canAccess", () => {
 
   beforeEach(async () => {
     dir = await createTempDir();
-    file = join(dir, "plik.txt");
-    await writeFile(file, "treść", "utf8");
+    file = join(dir, "file.txt");
+    await writeFile(file, "content", "utf8");
   });
 
   afterEach(() => removeTempDir(dir));
 
-  it("zwraca true dla istniejącego pliku z R_OK", async () => {
+  it("returns true for an existing file with R_OK", async () => {
     expect(await canAccess(file, constants.R_OK)).toBe(true);
   });
 
-  it("zwraca false dla nieistniejącego pliku", async () => {
-    expect(await canAccess(join(dir, "brak.txt"), constants.R_OK)).toBe(false);
+  it("returns false for a non-existent file", async () => {
+    expect(await canAccess(join(dir, "missing.txt"), constants.R_OK)).toBe(false);
   });
 
-  it("zwraca false gdy brak prawa wykonywania na zwykłym pliku", async () => {
+  it("returns false when a regular file lacks execute permission", async () => {
     expect(await canAccess(file, constants.X_OK)).toBe(false);
   });
 });
@@ -39,16 +39,16 @@ describe("assertReadable", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it("nie rzuca dla czytelnego pliku", async () => {
+  it("does not throw for a readable file", async () => {
     const file = join(dir, "ok.txt");
     await writeFile(file, "x", "utf8");
-    await expect(assertReadable(file, "plik testowy")).resolves.toBeUndefined();
+    await expect(assertReadable(file, "test file")).resolves.toBeUndefined();
   });
 
-  it("rzuca z etykietą i ścieżką dla nieistniejącego pliku", async () => {
-    const missing = join(dir, "nie-ma.txt");
-    await expect(assertReadable(missing, "plik testowy")).rejects.toThrow(
-      new RegExp(`plik testowy.*${missing.replace(/[.]/g, "\\.")}`),
+  it("throws with the label and path for a non-existent file", async () => {
+    const missing = join(dir, "missing.txt");
+    await expect(assertReadable(missing, "test file")).rejects.toThrow(
+      new RegExp(`test file.*${missing.replace(/[.]/g, "\\.")}`),
     );
   });
 });

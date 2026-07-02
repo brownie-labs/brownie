@@ -16,20 +16,20 @@ function line(event: unknown): string {
 }
 
 describe("StreamRenderer", () => {
-  it("ignoruje puste linie", () => {
+  it("ignores empty lines", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine("");
     renderer.handleLine("   ");
     expect(events).toEqual([]);
   });
 
-  it("linię nie-JSON emituje jako zdarzenie raw", () => {
+  it("emits a non-JSON line as a raw event", () => {
     const { events, renderer } = createRenderer();
-    renderer.handleLine("to nie json");
-    expect(events).toEqual([{ type: "raw", line: "to nie json" }]);
+    renderer.handleLine("not json");
+    expect(events).toEqual([{ type: "raw", line: "not json" }]);
   });
 
-  it("system/init emituje model, sesję i liczbę narzędzi", () => {
+  it("system/init emits the model, session and tool count", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine(
       line({
@@ -45,26 +45,26 @@ describe("StreamRenderer", () => {
     ]);
   });
 
-  it("assistant: tekst emituje jako text, tool_use jako toolUse", () => {
+  it("assistant: emits text as text, tool_use as toolUse", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine(
       line({
         type: "assistant",
         message: {
           content: [
-            { type: "text", text: "  Cześć  " },
+            { type: "text", text: "  Hi  " },
             { type: "tool_use", name: "Bash", input: { command: "ls" } },
           ],
         },
       }),
     );
     expect(events).toEqual([
-      { type: "text", text: "Cześć" },
+      { type: "text", text: "Hi" },
       { type: "toolUse", name: "Bash", input: '{"command":"ls"}' },
     ]);
   });
 
-  it("assistant: pusty tekst jest pomijany", () => {
+  it("assistant: empty text is skipped", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine(
       line({ type: "assistant", message: { content: [{ type: "text", text: "   " }] } }),
@@ -72,7 +72,7 @@ describe("StreamRenderer", () => {
     expect(events).toEqual([]);
   });
 
-  it("user: tool_result emituje toolResult z flagą błędu", () => {
+  it("user: tool_result emits toolResult with an error flag", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine(
       line({
@@ -96,7 +96,7 @@ describe("StreamRenderer", () => {
     ]);
   });
 
-  it("stream_event z partialem włączonym emituje partial z deltą", () => {
+  it("stream_event with partial enabled emits partial with the delta", () => {
     const { events, renderer } = createRenderer(true);
     renderer.handleLine(
       line({
@@ -110,7 +110,7 @@ describe("StreamRenderer", () => {
     expect(events).toEqual([{ type: "partial", text: "abc" }]);
   });
 
-  it("stream_event z partialem wyłączonym nic nie emituje", () => {
+  it("stream_event with partial disabled emits nothing", () => {
     const { events, renderer } = createRenderer(false);
     renderer.handleLine(
       line({
@@ -124,7 +124,7 @@ describe("StreamRenderer", () => {
     expect(events).toEqual([]);
   });
 
-  it("result nie emituje zdarzenia, tylko zasila podsumowanie", () => {
+  it("result emits no event, only feeds the summary", () => {
     const { events, renderer } = createRenderer();
     renderer.handleLine(
       line({
@@ -145,7 +145,7 @@ describe("StreamRenderer", () => {
     });
   });
 
-  it("getSummary przekazuje tekst z pola result", () => {
+  it("getSummary passes the text from the result field", () => {
     const { renderer } = createRenderer();
     renderer.handleLine(
       line({
@@ -158,7 +158,7 @@ describe("StreamRenderer", () => {
     expect(renderer.getSummary().resultText).toBe('{"tasks": []}');
   });
 
-  it("getSummary zwraca isError=true dla result z is_error", () => {
+  it("getSummary returns isError=true for a result with is_error", () => {
     const { renderer } = createRenderer();
     renderer.handleLine(line({ type: "result", is_error: true, session_id: "sess-err" }));
     const summary = renderer.getSummary();
@@ -166,7 +166,7 @@ describe("StreamRenderer", () => {
     expect(summary.sessionId).toBe("sess-err");
   });
 
-  it("obcina długie wejście narzędzia z wielokropkiem", () => {
+  it("truncates long tool input with an ellipsis", () => {
     const { events, renderer } = createRenderer();
     const long = "a".repeat(1000);
     renderer.handleLine(
@@ -178,7 +178,7 @@ describe("StreamRenderer", () => {
       }),
     );
     const [event] = events;
-    if (event?.type !== "toolUse") throw new Error("oczekiwano zdarzenia toolUse");
+    if (event?.type !== "toolUse") throw new Error("expected a toolUse event");
     expect(event.input).toContain("…");
     expect(event.input.length).toBeLessThan(long.length);
   });

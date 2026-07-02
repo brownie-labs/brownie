@@ -104,7 +104,7 @@ describe("CLI start (smoke E2E)", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it("monitor zgłasza zadanie, egzekutor je wykonuje, podsumowanie trafia do pamięci, całość kończy się czysto po SIGINT", async () => {
+  it("monitor reports a task, executor runs it, the summary lands in memory, and everything shuts down cleanly on SIGINT", async () => {
     await seedWorkerFiles(dir, {
       env: [
         "CLAUDE_WORKER_MONITOR_MODEL=haiku",
@@ -117,15 +117,15 @@ describe("CLI start (smoke E2E)", () => {
     const env = fakeClaudeCliEnv("ok", {
       CI: "true",
       FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({
-        tasks: [{ id: "e2e-1", title: "Zadanie testowe", description: "Opis e2e" }],
+        tasks: [{ id: "e2e-1", title: "Test task", description: "e2e description" }],
       }),
-      FAKE_CLAUDE_PROMPT_OUT_OPUS: join(dir, "prompt-egzekutora.txt"),
+      FAKE_CLAUDE_PROMPT_OUT_OPUS: join(dir, "executor-prompt.txt"),
       FAKE_CLAUDE_RESULT_TEXT_SONNET: JSON.stringify({
-        headline: "Podsumowanie e2e",
-        summary: "Egzekutor wykonał zadanie testowe.",
+        headline: "e2e summary",
+        summary: "The executor completed the test task.",
       }),
-      FAKE_CLAUDE_PROMPT_OUT_SONNET: join(dir, "prompt-podsumowania.txt"),
-      FAKE_CLAUDE_ARGS_OUT_OPUS: join(dir, "argi-egzekutora.json"),
+      FAKE_CLAUDE_PROMPT_OUT_SONNET: join(dir, "summary-prompt.txt"),
+      FAKE_CLAUDE_ARGS_OUT_OPUS: join(dir, "executor-args.json"),
     });
     const tasksPath = join(dir, "data", "tasks.json");
     const memoryDbPath = join(dir, "data", "memory.db");
@@ -141,36 +141,34 @@ describe("CLI start (smoke E2E)", () => {
       expect.objectContaining({ id: "e2e-1", status: "done" }),
     ]);
 
-    const executorPrompt = await readFile(join(dir, "prompt-egzekutora.txt"), "utf8");
-    expect(executorPrompt).toContain("## Zadanie do wykonania");
+    const executorPrompt = await readFile(join(dir, "executor-prompt.txt"), "utf8");
+    expect(executorPrompt).toContain("## Task to complete");
     expect(executorPrompt).toContain("ID: e2e-1");
-    expect(executorPrompt).toContain("wykonuj");
+    expect(executorPrompt).toContain("execute");
 
     const executorArgs = JSON.parse(
-      await readFile(join(dir, "argi-egzekutora.json"), "utf8"),
+      await readFile(join(dir, "executor-args.json"), "utf8"),
     ) as string[];
     const mcpFlagIndex = executorArgs.indexOf("--mcp-config");
     expect(mcpFlagIndex).toBeGreaterThanOrEqual(0);
     expect(executorArgs[mcpFlagIndex + 1]).toContain(memoryDbPath);
     expect(executorArgs).not.toContain("--strict-mcp-config");
 
-    const summarizerPrompt = await readFile(join(dir, "prompt-podsumowania.txt"), "utf8");
+    const summarizerPrompt = await readFile(join(dir, "summary-prompt.txt"), "utf8");
     expect(summarizerPrompt).toContain("ID: e2e-1");
     expect(summarizerPrompt).toContain(join(dir, "logs", "executor"));
 
-    expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([
-      { headline: "Podsumowanie e2e" },
-    ]);
+    expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([{ headline: "e2e summary" }]);
 
     expect(result.output).toContain("model=haiku");
     expect(result.output).toContain("e2e-1");
-    expect(result.output).toContain("wykonane: 1");
+    expect(result.output).toContain("done: 1");
   }, 30_000);
 
-  it("kończy z kodem 1, gdy preflight nie przechodzi (brak .env)", async () => {
+  it("exits with code 1 when preflight fails (no .env)", async () => {
     const result = await runCli(dir, fakeClaudeCliEnv("ok"));
 
     expect(result.code).toBe(1);
-    expect(result.output).toMatch(/Preflight nieudany|brak pliku/);
+    expect(result.output).toMatch(/Preflight failed|file missing/);
   }, 30_000);
 });
