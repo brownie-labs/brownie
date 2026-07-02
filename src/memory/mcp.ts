@@ -37,7 +37,7 @@ function textResult(records: TaskSummaryRecord[], emptyMessage: string) {
 }
 
 export function createMemoryMcpServer(reader: MemoryReader): McpServer {
-  const server = new McpServer({ name: "claude-worker-memory", version: "1.0.0" });
+  const server = new McpServer({ name: "brownie-memory", version: "1.0.0" });
 
   server.registerTool(
     "memory_search",

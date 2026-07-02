@@ -6,7 +6,7 @@ import { mcpCommand } from "./memory/mcp.js";
 
 const main = defineCommand({
   meta: {
-    name: "claude-worker",
+    name: "brownie",
     description:
       "Dwuagentowy worker Claude Code: monitor cyklicznie zgłasza zadania, egzekutor je wykonuje",
   },

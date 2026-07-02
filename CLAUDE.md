@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projekt
 
-`claude-worker` — CLI (Node >= 22, pnpm, ESM, TypeScript) uruchamiający cyklicznie sesje Claude Code w układzie dwuagentowym: **monitor** zgłasza zadania, **egzekutor** je wykonuje, a **podsumowujący** zapisuje wnioski do pamięci długoterminowej. Kod, komunikaty i commity są po polsku.
+`brownie` — CLI (Node >= 22, pnpm, ESM, TypeScript) uruchamiający cyklicznie sesje Claude Code w układzie dwuagentowym: **monitor** zgłasza zadania, **egzekutor** je wykonuje, a **podsumowujący** zapisuje wnioski do pamięci długoterminowej. Kod, komunikaty i commity są po polsku.
 
 ## Komendy
 
@@ -36,7 +36,7 @@ Pozostałe elementy:
 
 - **`runner.ts`** — jedyne miejsce spawnowania procesu `claude` (`-p --model --effort --system-prompt --output-format stream-json --permission-mode bypassPermissions`, prompt przez stdin). Obsługuje timeout/abort (SIGTERM, po 5 s SIGKILL). `stream.ts` parsuje stream-json na `SessionEvent`y i buduje `SessionSummary`.
 - **`tasks.ts` (`TaskStore`)** — magazyn zadań w JSON (`data/tasks.json`), zapis atomowy (tmp + rename), operacje serializowane łańcuchem promisów; przy starcie resetuje zawieszone `in_progress` na `pending`.
-- **`src/memory/`** — pamięć długoterminowa: `store.ts` (SQLite przez `node:sqlite` + FTS5), `summarizer.ts` (sesja haiku czytająca log sesji egzekutora, wynik do bazy), `mcp.ts` (serwer MCP stdio z narzędziami `memory_search`/`memory_get`; egzekutor dostaje go przez `--mcp-config` wskazujący z powrotem na ten sam binarny plik: `claude-worker mcp --db ...`).
+- **`src/memory/`** — pamięć długoterminowa: `store.ts` (SQLite przez `node:sqlite` + FTS5), `summarizer.ts` (sesja haiku czytająca log sesji egzekutora, wynik do bazy), `mcp.ts` (serwer MCP stdio z narzędziami `memory_search`/`memory_get`; egzekutor dostaje go przez `--mcp-config` wskazujący z powrotem na ten sam binarny plik: `brownie mcp --db ...`).
 - **`status.ts` + `src/ui/`** — `WorkerStatusStore` zbiera zdarzenia z obu pętli i zasila dashboard TUI (Ink/React). Zdarzenia sesji są jednocześnie tee-owane (`teeSession`) do trwałych logów `SessionLog` (`logs/<agent>/<dzień>/<godzina>_<sessionId>.log`).
 - **`config.ts`** — cała konfiguracja przez zmienne `CLAUDE_WORKER_*` walidowane zodem (`envSchema`), `.env` ładowany przez `process.loadEnvFile`. Nowa opcja konfiguracyjna = wpis w `envSchema` + mapowanie w `loadWorkerConfig` + zwykle pytanie w `configure.ts`.
 

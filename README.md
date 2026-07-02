@@ -82,9 +82,9 @@ pnpm start        # albo: pnpm dev (watch)
 Podkomendy binarki:
 
 ```bash
-claude-worker start        # uruchom obie pętle + dashboard
-claude-worker configure    # interaktywna konfiguracja (.env, prompty)
-claude-worker mcp --db …   # serwer MCP pamięci (używany wewnętrznie przez egzekutora)
+brownie start        # uruchom obie pętle + dashboard
+brownie configure    # interaktywna konfiguracja (.env, prompty)
+brownie mcp --db …   # serwer MCP pamięci (używany wewnętrznie przez egzekutora)
 ```
 
 ## Konfiguracja
