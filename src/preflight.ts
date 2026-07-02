@@ -1,13 +1,8 @@
-import { access, constants } from "node:fs/promises";
+import { constants } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import {
-  COMMAND,
-  envSchema,
-  loadEnvFile,
-  resolveEnvPath,
-  resolveFromCwd,
-} from "./config.js";
+import { COMMAND, loadEnvFile, resolveEnvPath, resolvePromptPaths } from "./config.js";
+import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
@@ -23,15 +18,6 @@ const WINDOWS_EXTENSIONS = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
   .split(";")
   .filter(Boolean);
 
-async function isExecutable(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function findOnPath(command: string): Promise<string | undefined> {
   const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
   const names =
@@ -41,7 +27,7 @@ async function findOnPath(command: string): Promise<string | undefined> {
   for (const dir of dirs) {
     for (const name of names) {
       const candidate = join(dir, name);
-      if (await isExecutable(candidate)) return candidate;
+      if (await canAccess(candidate, constants.X_OK)) return candidate;
     }
   }
   return undefined;
@@ -69,7 +55,7 @@ function checkEnvFile(envFile?: string): Check {
 }
 
 async function checkFile(path: string, label: string): Promise<Check> {
-  const ok = await isReadable(path);
+  const ok = await canAccess(path, constants.R_OK);
   return {
     label: `${label} (${path})`,
     ok,
@@ -77,29 +63,9 @@ async function checkFile(path: string, label: string): Promise<Check> {
   };
 }
 
-async function isReadable(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const promptDefaults = envSchema
-  .pick({ CLAUDE_WORKER_PROMPT_FILE: true, CLAUDE_WORKER_SYSTEM_PROMPT_FILE: true })
-  .parse({});
-
 export async function ensureReady(envFile?: string): Promise<void> {
   loadEnvFile(envFile);
-  const promptFile =
-    process.env.CLAUDE_WORKER_PROMPT_FILE?.trim() ||
-    promptDefaults.CLAUDE_WORKER_PROMPT_FILE;
-  const systemPromptFile =
-    process.env.CLAUDE_WORKER_SYSTEM_PROMPT_FILE?.trim() ||
-    promptDefaults.CLAUDE_WORKER_SYSTEM_PROMPT_FILE;
-  const promptPath = resolveFromCwd(promptFile);
-  const systemPromptPath = resolveFromCwd(systemPromptFile);
+  const { promptPath, systemPromptPath } = resolvePromptPaths(process.env);
 
   const checks = await Promise.all([
     checkClaude(),

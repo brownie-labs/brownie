@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { consola, type PromptOptions } from "consola";
+import { resolveEnvPath } from "./config.js";
 import { logger } from "./logger.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
@@ -37,7 +38,7 @@ export const configureCommand = defineCommand({
     description: "Interaktywnie tworzy pliki .env oraz prompts/prompt.md",
   },
   async run() {
-    const envPath = resolve(process.cwd(), ".env");
+    const envPath = resolveEnvPath();
     const promptPath = resolve(process.cwd(), "prompts", "prompt.md");
 
     try {

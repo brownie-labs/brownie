@@ -1,10 +1,12 @@
+import type { PermissionMode } from "./config.js";
+
 export interface WorkerConfig {
   command: string;
   model: string;
   intervalMs: number;
   promptPath: string;
   systemPromptPath: string;
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
+  permissionMode?: PermissionMode;
   sessionTimeoutMs?: number;
   streamPartial: boolean;
   cwd: string;
@@ -18,4 +20,11 @@ export interface SessionResult {
   numTurns?: number;
   sessionId?: string;
   error?: string;
+}
+
+export interface SessionSummary {
+  costUsd?: number;
+  numTurns?: number;
+  sessionId?: string;
+  is_error?: boolean;
 }

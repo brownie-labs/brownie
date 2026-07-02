@@ -1,5 +1,5 @@
 import type { ConsolaInstance } from "consola";
-import type { SessionResult } from "./types.js";
+import type { SessionSummary } from "./types.js";
 
 interface ContentBlock {
   type: string;
@@ -37,7 +37,7 @@ function truncate(value: unknown, max = 500): string {
 
 export class StreamRenderer {
   private partialOpen = false;
-  private summary: Omit<SessionResult, "durationMs" | "ok"> & { is_error?: boolean } = {};
+  private summary: SessionSummary = {};
 
   constructor(
     private readonly log: ConsolaInstance,
@@ -120,7 +120,7 @@ export class StreamRenderer {
     }
   }
 
-  getSummary(): Omit<SessionResult, "durationMs" | "ok"> & { is_error?: boolean } {
+  getSummary(): SessionSummary {
     this.endPartial();
     return this.summary;
   }

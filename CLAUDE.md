@@ -62,8 +62,11 @@ przerwanie bez zmian. Zapisuje `.env` i `prompts/prompt.md`.
 - **`CLAUDE_CONFIG_DIR`** — przekazywany do procesu potomnego przez `childEnv`; obsługuje `~`
   (rozwijane przez `expandHome`). Pozwala użyć innego profilu Claude Code (osobne MCP/subskrypcja).
 - **Ścieżki** — względne rozwiązywane od `process.cwd()` przez `resolveFromCwd`
-  (z rozwinięciem `~`). Uwaga: `preflight.ts` odtwarza domyślne wartości promptów z `envSchema`
-  (`.pick(...).parse({})`), więc zmiana defaultów w schemacie propaguje się do preflightu.
+  (z rozwinięciem `~`). Ścieżki promptów w jednym miejscu: `resolvePromptPaths` w
+  `config.ts` parsuje defaulty z `envSchema` i resolwuje je; używają jej zarówno
+  `preflight.ts`, jak i `loadWorkerConfig`.
+- **Dostęp do plików** — wspólne helpery w `src/fs.ts` (`canAccess`, `assertReadable`);
+  nie duplikuj wzorca `fs.access(...) + try/catch`.
 - **ESM + verbatimModuleSyntax** — importy muszą mieć rozszerzenie `.js` (mimo plików `.ts`),
   a importy typów muszą używać `import type`.
 
