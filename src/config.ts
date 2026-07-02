@@ -23,15 +23,6 @@ const boolFromEnv = (defaultValue = false) =>
 
 export const COMMAND = "claude";
 
-export const PERMISSION_MODES = [
-  "default",
-  "acceptEdits",
-  "bypassPermissions",
-  "plan",
-] as const;
-
-export type PermissionMode = (typeof PERMISSION_MODES)[number];
-
 export const envSchema = z.object({
   CLAUDE_WORKER_MONITOR_MODEL: z.string().trim().min(1).default("haiku"),
   CLAUDE_WORKER_MONITOR_INTERVAL_MS: z.coerce
@@ -49,7 +40,6 @@ export const envSchema = z.object({
     .trim()
     .min(1)
     .default("./prompts/monitor.system.md"),
-  CLAUDE_WORKER_MONITOR_PERMISSION_MODE: z.enum(PERMISSION_MODES).optional(),
   CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   CLAUDE_WORKER_EXECUTOR_MODEL: z.string().trim().min(1).default("opus"),
   CLAUDE_WORKER_EXECUTOR_PROMPT_FILE: z
@@ -62,7 +52,6 @@ export const envSchema = z.object({
     .trim()
     .min(1)
     .default("./prompts/executor.system.md"),
-  CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE: z.enum(PERMISSION_MODES).optional(),
   CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -180,14 +169,12 @@ export async function loadWorkerConfig(
       intervalMs: env.CLAUDE_WORKER_MONITOR_INTERVAL_MS,
       promptPath: paths.monitor.promptPath,
       systemPromptPath: paths.monitor.systemPromptPath,
-      permissionMode: env.CLAUDE_WORKER_MONITOR_PERMISSION_MODE,
       sessionTimeoutMs: env.CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS,
     },
     executor: {
       model: env.CLAUDE_WORKER_EXECUTOR_MODEL,
       promptPath: paths.executor.promptPath,
       systemPromptPath: paths.executor.systemPromptPath,
-      permissionMode: env.CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE,
       sessionTimeoutMs: env.CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS,
     },
     streamPartial: env.CLAUDE_WORKER_STREAM_PARTIAL,

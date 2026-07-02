@@ -1,10 +1,7 @@
-import type { PermissionMode } from "./config.js";
-
 export interface AgentConfig {
   model: string;
   promptPath: string;
   systemPromptPath: string;
-  permissionMode?: PermissionMode | undefined;
   sessionTimeoutMs?: number | undefined;
 }
 

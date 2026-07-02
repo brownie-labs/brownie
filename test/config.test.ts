@@ -70,13 +70,11 @@ describe("envSchema", () => {
     expect(env.CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/monitor.system.md",
     );
-    expect(env.CLAUDE_WORKER_MONITOR_PERMISSION_MODE).toBeUndefined();
     expect(env.CLAUDE_WORKER_EXECUTOR_MODEL).toBe("opus");
     expect(env.CLAUDE_WORKER_EXECUTOR_PROMPT_FILE).toBe("./prompts/executor.prompt.md");
     expect(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/executor.system.md",
     );
-    expect(env.CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE).toBeUndefined();
     expect(env.CLAUDE_WORKER_TASKS_FILE).toBe("./data/tasks.json");
     expect(env.CLAUDE_WORKER_STREAM_PARTIAL).toBe(true);
     expect(env.CLAUDE_WORKER_CWD).toBe("./workspace");
@@ -122,25 +120,6 @@ describe("envSchema", () => {
     expect(
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "1.5" }).success,
     ).toBe(false);
-  });
-
-  it("odrzuca tryb uprawnień spoza enuma (dla obu agentów)", () => {
-    expect(
-      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_PERMISSION_MODE: "wymyślony" }).success,
-    ).toBe(false);
-    expect(
-      envSchema.safeParse({ CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE: "wymyślony" })
-        .success,
-    ).toBe(false);
-  });
-
-  it("akceptuje poprawne tryby uprawnień", () => {
-    const env = envSchema.parse({
-      CLAUDE_WORKER_MONITOR_PERMISSION_MODE: "plan",
-      CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE: "acceptEdits",
-    });
-    expect(env.CLAUDE_WORKER_MONITOR_PERMISSION_MODE).toBe("plan");
-    expect(env.CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE).toBe("acceptEdits");
   });
 });
 
@@ -218,7 +197,6 @@ describe("loadWorkerConfig", () => {
         "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
         "CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS=120000",
         "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
-        "CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE=acceptEdits",
         ...PROMPT_FILE_ENV,
         "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
         "CLAUDE_WORKER_CWD=./ws",
@@ -234,7 +212,6 @@ describe("loadWorkerConfig", () => {
     expect(config.monitor.promptPath).toBe(join(dir, "m.md"));
     expect(config.monitor.systemPromptPath).toBe(join(dir, "ms.md"));
     expect(config.executor.model).toBe("opus");
-    expect(config.executor.permissionMode).toBe("acceptEdits");
     expect(config.executor.promptPath).toBe(join(dir, "e.md"));
     expect(config.executor.systemPromptPath).toBe(join(dir, "es.md"));
     expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));

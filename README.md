@@ -51,23 +51,26 @@ na bazie `.env.example`.
 Konfiguracja jest środowiskowa i trzymana w `.env` (plik jest w `.gitignore`, nic nie jest
 zahardkodowane w repo):
 
-| Zmienna                                     | Opis                                                     | Domyślnie                      |
-| ------------------------------------------- | -------------------------------------------------------- | ------------------------------ |
-| `CLAUDE_WORKER_MONITOR_MODEL`               | Model monitora (z założenia tani)                        | `haiku`                        |
-| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                    | `300000` (5 min)               |
-| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`         | Prompt monitora (co obserwować)                          | `./prompts/monitor.prompt.md`  |
-| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`  | System prompt monitora (definicja roli)                  | `./prompts/monitor.system.md`  |
-| `CLAUDE_WORKER_MONITOR_PERMISSION_MODE`     | `default` / `acceptEdits` / `bypassPermissions` / `plan` | brak                           |
-| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`  | Twardy limit sesji monitora                              | brak                           |
-| `CLAUDE_WORKER_EXECUTOR_MODEL`              | Model egzekutora (z założenia mocny)                     | `opus`                         |
-| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`        | Prompt egzekutora (tożsamość, zasady pracy)              | `./prompts/executor.prompt.md` |
-| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE` | System prompt egzekutora (definicja roli)                | `./prompts/executor.system.md` |
-| `CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE`    | jak wyżej, dla egzekutora                                | brak                           |
-| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS` | Twardy limit sesji egzekutora                            | brak                           |
-| `CLAUDE_WORKER_TASKS_FILE`                  | Trwały magazyn zadań (dedup + historia)                  | `./data/tasks.json`            |
-| `CLAUDE_WORKER_STREAM_PARTIAL`              | Streaming tekstu token-po-tokenie (`true`/`false`)       | `true`                         |
-| `CLAUDE_WORKER_CWD`                         | Katalog roboczy sesji (izolacja od kodu agenta)          | `./workspace`                  |
-| `CLAUDE_CONFIG_DIR`                         | Osobny katalog konfiguracji Claude Code (inny profil)    | brak                           |
+| Zmienna                                     | Opis                                                  | Domyślnie                      |
+| ------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
+| `CLAUDE_WORKER_MONITOR_MODEL`               | Model monitora (z założenia tani)                     | `haiku`                        |
+| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`         | Interwał między cyklami monitora (ms)                 | `300000` (5 min)               |
+| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`         | Prompt monitora (co obserwować)                       | `./prompts/monitor.prompt.md`  |
+| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`  | System prompt monitora (definicja roli)               | `./prompts/monitor.system.md`  |
+| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`  | Twardy limit sesji monitora                           | brak                           |
+| `CLAUDE_WORKER_EXECUTOR_MODEL`              | Model egzekutora (z założenia mocny)                  | `opus`                         |
+| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`        | Prompt egzekutora (tożsamość, zasady pracy)           | `./prompts/executor.prompt.md` |
+| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE` | System prompt egzekutora (definicja roli)             | `./prompts/executor.system.md` |
+| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS` | Twardy limit sesji egzekutora                         | brak                           |
+| `CLAUDE_WORKER_TASKS_FILE`                  | Trwały magazyn zadań (dedup + historia)               | `./data/tasks.json`            |
+| `CLAUDE_WORKER_STREAM_PARTIAL`              | Streaming tekstu token-po-tokenie (`true`/`false`)    | `true`                         |
+| `CLAUDE_WORKER_CWD`                         | Katalog roboczy sesji (izolacja od kodu agenta)       | `./workspace`                  |
+| `CLAUDE_CONFIG_DIR`                         | Osobny katalog konfiguracji Claude Code (inny profil) | brak                           |
+
+Sesje obu agentów działają zawsze w trybie `bypassPermissions` (na stałe w kodzie) —
+worker jest w pełni autonomiczny i żadne narzędzie nie czeka na zatwierdzenie. Kontrola
+nad tym, co agenci robią, leży w promptach i izolacji katalogu roboczego
+(`CLAUDE_WORKER_CWD`).
 
 ## Uruchomienie
 

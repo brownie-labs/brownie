@@ -43,7 +43,8 @@ type-aware; formatter: Prettier (`eslint-config-prettier` wyłącza reguły styl
 kolidujące z Prettierem).
 Testy: Vitest, katalog `test/` (lustrzany do `src/`), atrapa binarki `claude`
 w `test/fixtures/claude` emitująca stream-json — sterowana env `FAKE_CLAUDE_MODE`,
-`FAKE_CLAUDE_RESULT_TEXT`, `FAKE_CLAUDE_PROMPT_OUT`, także w wariantach per model
+`FAKE_CLAUDE_RESULT_TEXT`, `FAKE_CLAUDE_PROMPT_OUT`, `FAKE_CLAUDE_ARGS_OUT` (zrzut argv),
+także w wariantach per model
 (sufiks `_<MODEL>` np. `FAKE_CLAUDE_RESULT_TEXT_HAIKU` — atrapa czyta `--model` z argv),
 dzięki czemu jedna binarka rozróżnia sesje monitora i egzekutora w E2E.
 Manager pakietów to **pnpm** (jest `pnpm-lock.yaml`).
@@ -80,8 +81,10 @@ Przepływ `start` (`src/start.ts`):
    `waker.wait(signal)`. Abort w trakcie sesji zostawia zadanie `in_progress`
    (reset przy kolejnym starcie).
 7. `runner.ts` (`runSession(spec: SessionSpec, signal)`) — `spawn` procesu `claude`
-   (`-p --model --system-prompt --output-format stream-json --verbose` + opcjonalnie
-   `--permission-mode`, `--include-partial-messages`). Przyjmuje **treści** promptów
+   (`-p --model --system-prompt --output-format stream-json --verbose
+--permission-mode bypassPermissions` + opcjonalnie `--include-partial-messages`).
+   Tryb uprawnień jest stały (nie konfigurowalny) — worker jest autonomiczny, żadne
+   narzędzie nie czeka na zatwierdzenie. Przyjmuje **treści** promptów
    (nie ścieżki — pliki czytają pętle przy każdej sesji) i per-agentowy logger. Prompt idzie
    przez stdin. Obsługuje timeout sesji (SIGTERM → po `KILL_GRACE_MS` SIGKILL) i abort.
 8. `stream.ts` (`StreamRenderer`) — parsuje linie stream-json (system/assistant/user/

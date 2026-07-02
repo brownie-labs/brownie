@@ -107,6 +107,19 @@ describe("runSession (integracja z atrapą claude)", () => {
     );
   }, 15_000);
 
+  it("zawsze uruchamia sesję w trybie bypassPermissions", async () => {
+    const out = join(dir, "otrzymane-argi.json");
+    const spec = buildSessionSpec(log.instance, {
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--permission-mode");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(args[flagIndex + 1]).toBe("bypassPermissions");
+  }, 15_000);
+
   it("przekazuje prompt ze speca na stdin procesu potomnego", async () => {
     const out = join(dir, "otrzymany-prompt.txt");
     const spec = buildSessionSpec(log.instance, {

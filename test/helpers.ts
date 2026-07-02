@@ -120,7 +120,6 @@ export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentCon
     model: "haiku",
     promptPath: "/dev/null",
     systemPromptPath: "/dev/null",
-    permissionMode: undefined,
     sessionTimeoutMs: undefined,
     ...overrides,
   };
@@ -158,7 +157,6 @@ export function buildSessionSpec(
     model: "haiku",
     systemPrompt: "system\n",
     prompt: "zadanie\n",
-    permissionMode: undefined,
     sessionTimeoutMs: undefined,
     streamPartial: false,
     cwd: process.cwd(),

@@ -12,7 +12,10 @@ function pick(name) {
 
 const mode = pick("FAKE_CLAUDE_MODE") ?? "ok";
 const promptOut = pick("FAKE_CLAUDE_PROMPT_OUT");
+const argsOut = pick("FAKE_CLAUDE_ARGS_OUT");
 const resultText = pick("FAKE_CLAUDE_RESULT_TEXT");
+
+if (argsOut) writeFileSync(argsOut, JSON.stringify(process.argv.slice(2)));
 
 function emit(event) {
   process.stdout.write(`${JSON.stringify(event)}\n`);

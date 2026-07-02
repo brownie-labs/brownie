@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ConsolaInstance } from "consola";
 import { StreamRenderer } from "./stream.js";
-import type { PermissionMode } from "./config.js";
 import type { SessionResult } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
@@ -14,7 +13,6 @@ export interface SessionSpec {
   model: string;
   systemPrompt: string;
   prompt: string;
-  permissionMode?: PermissionMode | undefined;
   sessionTimeoutMs?: number | undefined;
   streamPartial: boolean;
   cwd: string;
@@ -37,8 +35,9 @@ export async function runSession(
     "--output-format",
     "stream-json",
     "--verbose",
+    "--permission-mode",
+    "bypassPermissions",
   ];
-  if (spec.permissionMode) args.push("--permission-mode", spec.permissionMode);
   if (spec.streamPartial) args.push("--include-partial-messages");
 
   const child = spawn(spec.command, args, {

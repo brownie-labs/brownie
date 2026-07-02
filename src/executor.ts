@@ -59,7 +59,6 @@ export async function runExecutorLoop(
           model: executor.model,
           systemPrompt: `${systemPrompt}\n\n${TASK_EXECUTION_CONTRACT}`,
           prompt: composeTaskPrompt(prompt, task),
-          permissionMode: executor.permissionMode,
           sessionTimeoutMs: executor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
           cwd: config.cwd,

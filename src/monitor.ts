@@ -38,7 +38,6 @@ export async function runMonitorLoop(
           model: monitor.model,
           systemPrompt: `${systemPrompt}\n\n${TASK_REPORT_CONTRACT}`,
           prompt,
-          permissionMode: monitor.permissionMode,
           sessionTimeoutMs: monitor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
           cwd: config.cwd,
