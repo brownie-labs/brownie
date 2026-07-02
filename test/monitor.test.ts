@@ -20,7 +20,7 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 }));
 
 const { runMonitorLoop } = await import("../src/monitor.js");
-const { TASK_REPORT_CONTRACT } = await import("../src/report.js");
+const { TASK_REPORT_JSON_SCHEMA } = await import("../src/report.js");
 
 const INTERVAL = 300_000;
 
@@ -88,12 +88,14 @@ describe("runMonitorLoop", () => {
       prompt: string;
       model: string;
       effort: string;
+      jsonSchema: string;
       events: unknown;
     };
-    expect(spec.systemPrompt).toBe(`system\n\n\n${TASK_REPORT_CONTRACT}`);
+    expect(spec.systemPrompt).toBe("system\n");
     expect(spec.prompt).toBe("prompt\n");
     expect(spec.model).toBe("haiku");
     expect(spec.effort).toBe("medium");
+    expect(spec.jsonSchema).toBe(TASK_REPORT_JSON_SCHEMA);
     expect(spec.events).toBe(spy.reporter.session);
   });
 

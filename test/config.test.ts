@@ -77,6 +77,13 @@ describe("envSchema", () => {
     expect(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/executor.system.md",
     );
+    expect(env.CLAUDE_WORKER_SUMMARIZER_MODEL).toBe("haiku");
+    expect(env.CLAUDE_WORKER_SUMMARIZER_EFFORT).toBe("low");
+    expect(env.CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE).toBe(
+      "./prompts/summarizer.system.md",
+    );
+    expect(env.CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS).toBe(300_000);
+    expect(env.CLAUDE_WORKER_MEMORY_DB).toBe("./data/memory.db");
     expect(env.CLAUDE_WORKER_TASKS_FILE).toBe("./data/tasks.json");
     expect(env.CLAUDE_WORKER_LOGS_DIR).toBe("./logs");
     expect(env.CLAUDE_WORKER_STREAM_PARTIAL).toBe(true);
@@ -132,6 +139,9 @@ describe("envSchema", () => {
     expect(envSchema.safeParse({ CLAUDE_WORKER_EXECUTOR_EFFORT: "turbo" }).success).toBe(
       false,
     );
+    expect(
+      envSchema.safeParse({ CLAUDE_WORKER_SUMMARIZER_EFFORT: "turbo" }).success,
+    ).toBe(false);
   });
 
   it("domyślnie pozostawia godziny i dni pracy nieustawione", () => {
@@ -169,19 +179,21 @@ describe("envSchema", () => {
 });
 
 describe("resolvePromptPaths", () => {
-  it("rozwiązuje ścieżki obu agentów ze sparsowanego env", () => {
+  it("rozwiązuje ścieżki wszystkich agentów ze sparsowanego env", () => {
     const paths = resolvePromptPaths(
       envSchema.parse({
         CLAUDE_WORKER_MONITOR_PROMPT_FILE: "custom/m.md",
         CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE: "/abs/ms.md",
         CLAUDE_WORKER_EXECUTOR_PROMPT_FILE: "custom/e.md",
         CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE: "/abs/es.md",
+        CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE: "/abs/ss.md",
       }),
     );
     expect(paths.monitor.promptPath).toBe(resolve(process.cwd(), "custom/m.md"));
     expect(paths.monitor.systemPromptPath).toBe("/abs/ms.md");
     expect(paths.executor.promptPath).toBe(resolve(process.cwd(), "custom/e.md"));
     expect(paths.executor.systemPromptPath).toBe("/abs/es.md");
+    expect(paths.summarizer.systemPromptPath).toBe("/abs/ss.md");
   });
 
   it("używa domyślnych ścieżek przy pustym źródle", () => {
@@ -197,6 +209,9 @@ describe("resolvePromptPaths", () => {
     );
     expect(paths.executor.systemPromptPath).toBe(
       resolve(process.cwd(), "./prompts/executor.system.md"),
+    );
+    expect(paths.summarizer.systemPromptPath).toBe(
+      resolve(process.cwd(), "./prompts/summarizer.system.md"),
     );
   });
 });
@@ -226,10 +241,11 @@ describe("loadWorkerConfig", () => {
     "CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE=./ms.md",
     "CLAUDE_WORKER_EXECUTOR_PROMPT_FILE=./e.md",
     "CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE=./es.md",
+    "CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE=./ss.md",
   ];
 
   async function writePrompts(): Promise<void> {
-    for (const name of ["m.md", "ms.md", "e.md", "es.md"]) {
+    for (const name of ["m.md", "ms.md", "e.md", "es.md", "ss.md"]) {
       await writeFile(join(dir, name), `${name}\n`, "utf8");
     }
   }
@@ -244,8 +260,12 @@ describe("loadWorkerConfig", () => {
         "CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS=120000",
         "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
         "CLAUDE_WORKER_EXECUTOR_EFFORT=max",
+        "CLAUDE_WORKER_SUMMARIZER_MODEL=sonnet",
+        "CLAUDE_WORKER_SUMMARIZER_EFFORT=medium",
+        "CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS=90000",
         ...PROMPT_FILE_ENV,
         "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
+        "CLAUDE_WORKER_MEMORY_DB=./stan/memory.db",
         "CLAUDE_WORKER_LOGS_DIR=./dzienniki",
         "CLAUDE_WORKER_CWD=./ws",
       ].join("\n"),
@@ -264,7 +284,18 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.effort).toBe("max");
     expect(config.executor.promptPath).toBe(join(dir, "e.md"));
     expect(config.executor.systemPromptPath).toBe(join(dir, "es.md"));
+    expect(config.summarizer.model).toBe("sonnet");
+    expect(config.summarizer.effort).toBe("medium");
+    expect(config.summarizer.sessionTimeoutMs).toBe(90000);
+    expect(config.summarizer.systemPromptPath).toBe(join(dir, "ss.md"));
     expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));
+    expect(config.memoryDbPath).toBe(join(dir, "stan", "memory.db"));
+    const mcpConfig = JSON.parse(config.executor.mcpConfig) as {
+      mcpServers: { memory: { command: string; args: string[] } };
+    };
+    expect(mcpConfig.mcpServers.memory.command).toBe(process.execPath);
+    expect(mcpConfig.mcpServers.memory.args).toContain("mcp");
+    expect(mcpConfig.mcpServers.memory.args).toContain(join(dir, "stan", "memory.db"));
     expect(config.logsDir).toBe(join(dir, "dzienniki"));
     expect(config.cwd).toBe(join(dir, "ws"));
     expect(config.streamPartial).toBe(true);
@@ -317,6 +348,9 @@ describe("loadWorkerConfig", () => {
         promptPath: join(dir, "nie-ma-e.md"),
         systemPromptPath: join(dir, "nie-ma-es.md"),
       },
+      summarizer: {
+        systemPromptPath: join(dir, "nie-ma-ss.md"),
+      },
     };
 
     const config = await loadWorkerConfig(undefined, verified);
@@ -325,6 +359,17 @@ describe("loadWorkerConfig", () => {
     expect(config.monitor.systemPromptPath).toBe(verified.monitor.systemPromptPath);
     expect(config.executor.promptPath).toBe(verified.executor.promptPath);
     expect(config.executor.systemPromptPath).toBe(verified.executor.systemPromptPath);
+    expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
+  });
+
+  it("rzuca, gdy brak pliku system promptu podsumowującego", async () => {
+    await writePrompts();
+    await removeTempDir(join(dir, "ss.md"));
+    await writeEnv(PROMPT_FILE_ENV.join("\n"));
+
+    await expect(loadWorkerConfig()).rejects.toThrow(
+      /plik system promptu podsumowującego/,
+    );
   });
 
   it("rozwija ~ w CLAUDE_CONFIG_DIR w childEnv", async () => {

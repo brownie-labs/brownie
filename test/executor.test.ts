@@ -5,7 +5,9 @@ import { Waker } from "../src/waker.js";
 import {
   buildConfig,
   createExecutorReporterSpy,
+  createTaskSummarizerSpy,
   type ExecutorReporterSpy,
+  type TaskSummarizerSpy,
 } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
@@ -19,12 +21,8 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
   readFile: mocks.readFile,
 }));
 
-const {
-  runExecutorLoop,
-  composeTaskPrompt,
-  isTransientFailure,
-  TASK_EXECUTION_CONTRACT,
-} = await import("../src/executor.js");
+const { runExecutorLoop, composeTaskPrompt, isTransientFailure } =
+  await import("../src/executor.js");
 
 function task(id: string): Task {
   return {
@@ -98,10 +96,12 @@ describe("composeTaskPrompt", () => {
 
 describe("runExecutorLoop", () => {
   let spy: ExecutorReporterSpy;
+  let summarizerSpy: TaskSummarizerSpy;
 
   beforeEach(() => {
     vi.clearAllMocks();
     spy = createExecutorReporterSpy();
+    summarizerSpy = createTaskSummarizerSpy();
     mocks.readFile.mockImplementation((path: string) =>
       Promise.resolve(path.includes("system") ? "system\n" : "tożsamość\n"),
     );
@@ -130,6 +130,7 @@ describe("runExecutorLoop", () => {
       store,
       waker,
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -165,6 +166,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
@@ -176,14 +178,98 @@ describe("runExecutorLoop", () => {
       effort: string;
       systemPrompt: string;
       prompt: string;
+      mcpConfig: string;
+      jsonSchema?: string;
       events: unknown;
     };
     expect(spec.model).toBe("opus");
     expect(spec.effort).toBe("high");
-    expect(spec.systemPrompt).toBe(`system\n\n\n${TASK_EXECUTION_CONTRACT}`);
+    expect(spec.systemPrompt).toBe("system\n");
     expect(spec.prompt).toContain("tożsamość");
     expect(spec.prompt).toContain("ID: x");
+    expect(spec.mcpConfig).toBe('{"mcpServers":{}}');
+    expect(spec.jsonSchema).toBeUndefined();
     expect(spec.events).toBe(spy.reporter.session);
+  });
+
+  it("po ukończonym zadaniu uruchamia podsumowanie do pamięci", async () => {
+    const { store, complete } = fakeStore([task("a")]);
+    const controller = new AbortController();
+    const result = { ...ok(), sessionId: "sesja-a" };
+    mocks.runSession.mockResolvedValue(result);
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
+    controller.abort();
+    await promise;
+
+    expect(complete).toHaveBeenCalledWith("a");
+    expect(summarizerSpy.summarize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "a", attempts: 1 }),
+      result,
+      { willRetry: false },
+      controller.signal,
+    );
+    const finishedOrder = spy.taskFinished.mock.invocationCallOrder[0] ?? Infinity;
+    const summarizeOrder =
+      summarizerSpy.summarize.mock.invocationCallOrder[0] ?? -Infinity;
+    expect(summarizeOrder).toBeGreaterThan(finishedOrder);
+  });
+
+  it("po nieudanym zadaniu uruchamia podsumowanie z informacją o ponowieniu", async () => {
+    const { store } = fakeStore([task("chwiejne")]);
+    const controller = new AbortController();
+    const result = { ...transientFailure(), sessionId: "sesja-f" };
+    mocks.runSession.mockResolvedValue(result);
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
+    controller.abort();
+    await promise;
+
+    expect(summarizerSpy.summarize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "chwiejne" }),
+      result,
+      { willRetry: true },
+      controller.signal,
+    );
+  });
+
+  it("rzucający summarizer nie zmienia statusu zadania i nie przerywa pętli", async () => {
+    const { store, complete, fail } = fakeStore([task("a"), task("b")]);
+    const controller = new AbortController();
+    mocks.runSession.mockResolvedValue(ok());
+    summarizerSpy.summarize.mockRejectedValue(new Error("awaria pamięci"));
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
+    controller.abort();
+    await promise;
+
+    expect(complete).toHaveBeenNthCalledWith(1, "a");
+    expect(complete).toHaveBeenNthCalledWith(2, "b");
+    expect(fail).not.toHaveBeenCalled();
   });
 
   it("nieudana sesja oznacza zadanie jako failed z błędem", async () => {
@@ -200,6 +286,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -228,6 +315,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("dobre"));
@@ -252,6 +340,7 @@ describe("runExecutorLoop", () => {
       store,
       waker,
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -275,6 +364,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -303,6 +393,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await promise;
@@ -310,6 +401,7 @@ describe("runExecutorLoop", () => {
     expect(complete).not.toHaveBeenCalled();
     expect(fail).not.toHaveBeenCalled();
     expect(spy.taskFinished).not.toHaveBeenCalled();
+    expect(summarizerSpy.summarize).not.toHaveBeenCalled();
   });
 
   it("błąd przejściowy wraca do kolejki i jest ponawiany aż do sukcesu", async () => {
@@ -330,6 +422,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("chwiejne"));
@@ -368,6 +461,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -398,6 +492,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -433,6 +528,7 @@ describe("runExecutorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      summarizerSpy.summarizer,
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);

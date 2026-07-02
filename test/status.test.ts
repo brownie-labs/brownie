@@ -94,6 +94,61 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
+  it("summaryStarted ustawia fazę podsumowania bez czyszczenia taila", () => {
+    const store = createStore();
+    const task = buildTask();
+    store.executor.taskStarted(task);
+    store.executor.session({ type: "text", text: "praca nad zadaniem" });
+    store.executor.summaryStarted(task);
+    store.flush();
+
+    const status = store.getSnapshot().executor;
+    expect(status.phase.kind).toBe("summary");
+    if (status.phase.kind === "summary") expect(status.phase.task.id).toBe("t-1");
+    expect(status.tail).toContain("praca nad zadaniem");
+    store.dispose();
+  });
+
+  it("summaryFinished dokłada linię do taila i nie nadpisuje wyniku zadania", () => {
+    const store = createStore();
+    store.executor.taskFinished({
+      taskId: "t-1",
+      title: "Tytuł",
+      ok: true,
+      durationMs: 1200,
+      costUsd: undefined,
+      numTurns: undefined,
+      error: undefined,
+    });
+    store.executor.summaryFinished({
+      taskId: "t-1",
+      ok: true,
+      durationMs: 700,
+      costUsd: 0.0123,
+      error: undefined,
+    });
+    store.executor.summaryFinished({
+      taskId: "t-1",
+      ok: false,
+      durationMs: 300,
+      costUsd: undefined,
+      error: "niepoprawny raport podsumowania",
+    });
+    store.flush();
+
+    const status = store.getSnapshot().executor;
+    expect(status.lastOutcome?.taskId).toBe("t-1");
+    expect(status.tail.some((l) => l.includes("✔ pamięć: podsumowanie t-1"))).toBe(true);
+    expect(
+      status.tail.some(
+        (l) =>
+          l.includes("✖ pamięć: podsumowanie t-1") &&
+          l.includes("niepoprawny raport podsumowania"),
+      ),
+    ).toBe(true);
+    store.dispose();
+  });
+
   it("zapisuje wynik cyklu monitora z czasem zakończenia", () => {
     const store = createStore();
     store.monitor.cycleFinished({

@@ -1,19 +1,38 @@
 import { z } from "zod";
 import type { NewTask } from "./types.js";
 
-export const TASK_REPORT_CONTRACT = `## Kontrakt raportu zadań (techniczny, nadrzędny)
-
-Twoja końcowa odpowiedź MUSI kończyć się dokładnie jednym blokiem kodu w formacie:
-
-\`\`\`json
-{"tasks": [{"id": "...", "title": "...", "description": "..."}]}
-\`\`\`
-
-Zasady:
-- \`id\` musi być stabilny i pochodzić ze źródła zadania (np. \`redmine-123\`, \`email-<message-id>\`) — to samo zadanie musi zawsze dostawać ten sam \`id\`.
-- \`title\` to krótki tytuł zadania, a \`description\` ma zawierać cały kontekst potrzebny do samodzielnego wykonania zadania w osobnej sesji.
-- Jeśli nie wykryto żadnej pracy, zwróć pustą listę: \`{"tasks": []}\`.
-- Wyłącznie raportujesz — nigdy nie wykonuj wykrytych zadań ani nie zmieniaj ich stanu w źródle.`;
+export const TASK_REPORT_JSON_SCHEMA = JSON.stringify({
+  type: "object",
+  properties: {
+    tasks: {
+      type: "array",
+      description: "Wykryte zadania; pusta lista, gdy nie wykryto żadnej pracy",
+      items: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description:
+              "Stabilny identyfikator pochodzący ze źródła zadania (rodzaj źródła + " +
+              "identyfikator zadania w źródle) — to samo zadanie musi przy każdym " +
+              "cyklu dostawać ten sam id",
+          },
+          title: { type: "string", description: "Krótki tytuł zadania" },
+          description: {
+            type: "string",
+            description:
+              "Cały kontekst potrzebny do samodzielnego wykonania zadania " +
+              "w osobnej sesji",
+          },
+        },
+        required: ["id", "title", "description"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["tasks"],
+  additionalProperties: false,
+});
 
 export const taskReportSchema = z.object({
   tasks: z.array(
@@ -25,7 +44,7 @@ export const taskReportSchema = z.object({
   ),
 });
 
-function lastJsonBlock(text: string): string | undefined {
+export function lastJsonBlock(text: string): string | undefined {
   const matches = [...text.matchAll(/```json\s*([\s\S]*?)```/gi)];
   return matches.at(-1)?.[1];
 }
@@ -74,7 +93,7 @@ function escapeRawControlCharsInStrings(text: string): string {
   return result;
 }
 
-function parseLenient(candidate: string): unknown {
+export function parseLenient(candidate: string): unknown {
   try {
     return JSON.parse(candidate);
   } catch {

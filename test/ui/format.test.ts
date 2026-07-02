@@ -108,6 +108,15 @@ describe("formatExecutorPhase", () => {
     );
     expect(label).toContain("↻ ponowienie t-1 za 00:30");
   });
+
+  it("podsumowanie sesji do pamięci", () => {
+    const label = formatExecutorPhase(
+      { kind: "summary", task: task(), startedAt: now - 2_000 },
+      now,
+    );
+    expect(label).toContain("podsumowanie t-1");
+    expect(label).toContain("2.0s");
+  });
 });
 
 describe("formatMonitorOutcome", () => {

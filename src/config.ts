@@ -4,6 +4,7 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
+import { buildMcpConfig } from "./memory/mcp.js";
 import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
 
 export function expandHome(value: string): string {
@@ -77,6 +78,19 @@ export const envSchema = z.object({
     .positive()
     .optional(),
   CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  CLAUDE_WORKER_SUMMARIZER_MODEL: z.string().trim().min(1).default("haiku"),
+  CLAUDE_WORKER_SUMMARIZER_EFFORT: z.enum(EFFORT_LEVELS).default("low"),
+  CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE: z
+    .string()
+    .trim()
+    .min(1)
+    .default("./prompts/summarizer.system.md"),
+  CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(300_000),
+  CLAUDE_WORKER_MEMORY_DB: z.string().trim().min(1).default("./data/memory.db"),
   CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS: z.coerce
     .number()
     .int()
@@ -113,6 +127,7 @@ export interface PromptPaths {
 export interface WorkerPromptPaths {
   monitor: PromptPaths;
   executor: PromptPaths;
+  summarizer: Pick<PromptPaths, "systemPromptPath">;
 }
 
 export function parseEnv(source: NodeJS.ProcessEnv): Env {
@@ -133,6 +148,7 @@ export function resolvePromptPaths(
     | "CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE"
     | "CLAUDE_WORKER_EXECUTOR_PROMPT_FILE"
     | "CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE"
+    | "CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE"
   >,
 ): WorkerPromptPaths {
   return {
@@ -143,6 +159,9 @@ export function resolvePromptPaths(
     executor: {
       promptPath: resolveFromCwd(env.CLAUDE_WORKER_EXECUTOR_PROMPT_FILE),
       systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE),
+    },
+    summarizer: {
+      systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE),
     },
   };
 }
@@ -158,6 +177,10 @@ export const PROMPT_FILE_LABELS = {
     systemPromptPath:
       "plik system promptu egzekutora (CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE)",
   },
+  summarizer: {
+    systemPromptPath:
+      "plik system promptu podsumowującego (CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE)",
+  },
 } as const;
 
 async function assertPromptPathsReadable(paths: WorkerPromptPaths): Promise<void> {
@@ -166,6 +189,10 @@ async function assertPromptPathsReadable(paths: WorkerPromptPaths): Promise<void
       await assertReadable(paths[agent][key], PROMPT_FILE_LABELS[agent][key]);
     }
   }
+  await assertReadable(
+    paths.summarizer.systemPromptPath,
+    PROMPT_FILE_LABELS.summarizer.systemPromptPath,
+  );
 }
 
 export async function loadWorkerConfig(
@@ -182,6 +209,7 @@ export async function loadWorkerConfig(
 
   const cwd = resolveFromCwd(env.CLAUDE_WORKER_CWD);
   const tasksFilePath = resolveFromCwd(env.CLAUDE_WORKER_TASKS_FILE);
+  const memoryDbPath = resolveFromCwd(env.CLAUDE_WORKER_MEMORY_DB);
   const logsDir = resolveFromCwd(env.CLAUDE_WORKER_LOGS_DIR);
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -211,10 +239,18 @@ export async function loadWorkerConfig(
       sessionTimeoutMs: env.CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS,
       maxTaskAttempts: env.CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS,
       retryDelayMs: env.CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS,
+      mcpConfig: buildMcpConfig(memoryDbPath),
+    },
+    summarizer: {
+      model: env.CLAUDE_WORKER_SUMMARIZER_MODEL,
+      effort: env.CLAUDE_WORKER_SUMMARIZER_EFFORT,
+      systemPromptPath: paths.summarizer.systemPromptPath,
+      sessionTimeoutMs: env.CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS,
     },
     streamPartial: env.CLAUDE_WORKER_STREAM_PARTIAL,
     cwd,
     tasksFilePath,
+    memoryDbPath,
     logsDir,
     childEnv,
   };

@@ -137,6 +137,50 @@ describe("runSession (integracja z atrapą claude)", () => {
     expect(args[flagIndex + 1]).toBe("max");
   }, 15_000);
 
+  it("z mcpConfig dodaje flagę --mcp-config bez odcinania MCP z profilu", async () => {
+    const out = join(dir, "argi-mcp.json");
+    const mcpConfig = '{"mcpServers":{"memory":{"command":"node","args":[]}}}';
+    const spec = buildSessionSpec(collector.sink, {
+      mcpConfig,
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--mcp-config");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(args[flagIndex + 1]).toBe(mcpConfig);
+    expect(args).not.toContain("--strict-mcp-config");
+  }, 15_000);
+
+  it("bez mcpConfig i jsonSchema nie dodaje ich flag", async () => {
+    const out = join(dir, "argi-bez-mcp.json");
+    const spec = buildSessionSpec(collector.sink, {
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("--strict-mcp-config");
+    expect(args).not.toContain("--json-schema");
+  }, 15_000);
+
+  it("z jsonSchema dodaje flagę --json-schema", async () => {
+    const out = join(dir, "argi-json-schema.json");
+    const jsonSchema = '{"type":"object"}';
+    const spec = buildSessionSpec(collector.sink, {
+      jsonSchema,
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--json-schema");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(args[flagIndex + 1]).toBe(jsonSchema);
+  }, 15_000);
+
   it("przekazuje prompt ze speca na stdin procesu potomnego", async () => {
     const out = join(dir, "otrzymany-prompt.txt");
     const spec = buildSessionSpec(collector.sink, {

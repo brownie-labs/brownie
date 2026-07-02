@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { msUntilActive } from "./active-hours.js";
-import { parseTaskReport, TASK_REPORT_CONTRACT } from "./report.js";
+import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
 import type { MonitorReporter } from "./status.js";
 import { sleep } from "./timing.js";
@@ -43,10 +43,11 @@ export async function runMonitorLoop(
           command: config.command,
           model: monitor.model,
           effort: monitor.effort,
-          systemPrompt: `${systemPrompt}\n\n${TASK_REPORT_CONTRACT}`,
+          systemPrompt,
           prompt,
           sessionTimeoutMs: monitor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
+          jsonSchema: TASK_REPORT_JSON_SCHEMA,
           cwd: config.cwd,
           childEnv: config.childEnv,
           events: reporter.session,

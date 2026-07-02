@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   runExecutorLoop: vi.fn(),
   abortOnSignals: vi.fn(),
   taskStoreOpen: vi.fn(),
+  memoryStoreOpen: vi.fn(),
+  memoryStoreClose: vi.fn(),
   mountDashboard: vi.fn(),
   dashboardUnmount: vi.fn(),
   dashboardWaitUntilExit: vi.fn(),
@@ -21,6 +23,9 @@ vi.mock("../src/monitor.js", () => ({ runMonitorLoop: mocks.runMonitorLoop }));
 vi.mock("../src/executor.js", () => ({ runExecutorLoop: mocks.runExecutorLoop }));
 vi.mock("../src/shutdown.js", () => ({ abortOnSignals: mocks.abortOnSignals }));
 vi.mock("../src/tasks.js", () => ({ TaskStore: { open: mocks.taskStoreOpen } }));
+vi.mock("../src/memory/store.js", () => ({
+  MemoryStore: { open: mocks.memoryStoreOpen },
+}));
 vi.mock("../src/ui/mount.js", () => ({ mountDashboard: mocks.mountDashboard }));
 vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
@@ -29,6 +34,7 @@ vi.mock("../src/logger.js", async () =>
 const { startCommand } = await import("../src/start.js");
 const { Waker } = await import("../src/waker.js");
 const { WorkerStatusStore } = await import("../src/status.js");
+const { SessionSummarizer } = await import("../src/memory/summarizer.js");
 const { logger } = await import("../src/logger.js");
 
 function runStart(envFile?: string): Promise<void> {
@@ -61,6 +67,7 @@ describe("startCommand", () => {
       unmount: mocks.dashboardUnmount,
       waitUntilExit: mocks.dashboardWaitUntilExit,
     });
+    mocks.memoryStoreOpen.mockReturnValue({ close: mocks.memoryStoreClose });
     dir = await createTempDir();
     savedExitCode = process.exitCode;
   });
@@ -96,11 +103,13 @@ describe("startCommand", () => {
       expect.objectContaining({ cycleStarted: expect.any(Function) as unknown }),
       signal,
     );
+    expect(mocks.memoryStoreOpen).toHaveBeenCalledWith(config.memoryDbPath);
     expect(mocks.runExecutorLoop).toHaveBeenCalledWith(
       config,
       store,
       expect.any(Waker),
       expect.objectContaining({ taskStarted: expect.any(Function) as unknown }),
+      expect.any(SessionSummarizer),
       signal,
     );
     const monitorWaker = mocks.runMonitorLoop.mock.calls[0]?.[2] as unknown;
@@ -126,6 +135,7 @@ describe("startCommand", () => {
     expect(executorReporter.session).not.toBe(executor.session);
     expect(mocks.dashboardUnmount).toHaveBeenCalledTimes(1);
     expect(mocks.dashboardWaitUntilExit).toHaveBeenCalledTimes(1);
+    expect(mocks.memoryStoreClose).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(savedExitCode);
   });
 

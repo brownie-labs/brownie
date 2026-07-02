@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTaskReport, TASK_REPORT_CONTRACT } from "../src/report.js";
-
-describe("TASK_REPORT_CONTRACT", () => {
-  it("opisuje wymagany format bloku json", () => {
-    expect(TASK_REPORT_CONTRACT).toContain("```json");
-    expect(TASK_REPORT_CONTRACT).toContain('"tasks"');
-  });
-});
+import { parseTaskReport } from "../src/report.js";
 
 describe("parseTaskReport", () => {
   it("parsuje blok json otoczony prozą", () => {

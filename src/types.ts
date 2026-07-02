@@ -24,15 +24,20 @@ export interface MonitorConfig extends AgentConfig {
 export interface ExecutorConfig extends AgentConfig {
   maxTaskAttempts: number;
   retryDelayMs: number;
+  mcpConfig: string;
 }
+
+export type SummarizerConfig = Omit<AgentConfig, "promptPath">;
 
 export interface WorkerConfig {
   command: string;
   monitor: MonitorConfig;
   executor: ExecutorConfig;
+  summarizer: SummarizerConfig;
   streamPartial: boolean;
   cwd: string;
   tasksFilePath: string;
+  memoryDbPath: string;
   logsDir: string;
   childEnv: NodeJS.ProcessEnv;
 }

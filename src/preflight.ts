@@ -89,6 +89,10 @@ export async function ensureReady(envFile?: string): Promise<WorkerPromptPaths> 
       paths.executor.systemPromptPath,
       PROMPT_FILE_LABELS.executor.systemPromptPath,
     ),
+    checkFile(
+      paths.summarizer.systemPromptPath,
+      PROMPT_FILE_LABELS.summarizer.systemPromptPath,
+    ),
   ]);
 
   for (const result of checks) {

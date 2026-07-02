@@ -1,17 +1,11 @@
 import { readFile } from "node:fs/promises";
+import type { TaskSummarizer } from "./memory/summarizer.js";
 import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
 import { sleep } from "./timing.js";
 import type { TaskStore } from "./tasks.js";
 import type { SessionResult, Task, WorkerConfig } from "./types.js";
 import type { Waker } from "./waker.js";
-
-export const TASK_EXECUTION_CONTRACT = `## Kontrakt wykonania (techniczny, nadrzędny)
-
-Pracujesz nad dokładnie jednym zadaniem — opisanym w sekcji „Zadanie do wykonania".
-Nie podejmuj innych zadań, nawet jeśli je zauważysz — zajmą się nimi osobne sesje.
-Wykonuj pracę tak, aby jej powtórzenie było bezpieczne (idempotentnie) — sesja może
-zostać przerwana i uruchomiona ponownie.`;
 
 const TRANSIENT_RESULT_PATTERN =
   /API Error|Connection (closed|error|reset)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EPIPE|socket hang up|overloaded|rate.?limit|Request timed out/i;
@@ -39,6 +33,7 @@ export async function runExecutorLoop(
   store: TaskStore,
   waker: Waker,
   reporter: ExecutorReporter,
+  summarizer: TaskSummarizer,
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
@@ -66,10 +61,11 @@ export async function runExecutorLoop(
           command: config.command,
           model: executor.model,
           effort: executor.effort,
-          systemPrompt: `${systemPrompt}\n\n${TASK_EXECUTION_CONTRACT}`,
+          systemPrompt,
           prompt: composeTaskPrompt(prompt, task),
           sessionTimeoutMs: executor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
+          mcpConfig: executor.mcpConfig,
           cwd: config.cwd,
           childEnv: config.childEnv,
           events: reporter.session,
@@ -89,6 +85,9 @@ export async function runExecutorLoop(
           costUsd: result.costUsd,
           numTurns: result.numTurns,
         });
+        await summarizer
+          .summarize(task, result, { willRetry: false }, signal)
+          .catch(() => undefined);
       } else {
         const error = result.error ?? "nieznany błąd";
         const willRetry =
@@ -110,6 +109,9 @@ export async function runExecutorLoop(
           attempt: task.attempts,
           maxAttempts: executor.maxTaskAttempts,
         });
+        await summarizer
+          .summarize(task, result, { willRetry }, signal)
+          .catch(() => undefined);
         if (willRetry && executor.retryDelayMs > 0) {
           reporter.retryScheduled(task, new Date(Date.now() + executor.retryDelayMs));
           await sleep(executor.retryDelayMs, signal);

@@ -81,6 +81,45 @@ describe("SessionLog", () => {
     expect(content).toBe("[11:30:00] stderr: coś poszło nie tak\n");
   });
 
+  it("pathFor zwraca ścieżkę pliku logu sesji po init", async () => {
+    const now = vi
+      .fn(() => new Date(2026, 6, 2, 10, 0, 5))
+      .mockReturnValueOnce(new Date(2026, 6, 2, 10, 0, 0));
+    const log = new SessionLog(dir, now);
+
+    expect(log.pathFor("a")).toBeUndefined();
+    log.sink({ type: "init", model: "haiku", sessionId: "a", toolCount: 0 });
+    log.sink({ type: "init", model: "opus", sessionId: "b", toolCount: 0 });
+    await log.close();
+
+    expect(log.pathFor("a")).toBe(join(dir, "2026-07-02", "10-00-00-a.log"));
+    expect(log.pathFor("b")).toBe(join(dir, "2026-07-02", "10-00-05-b.log"));
+    expect(log.pathFor("nieistniejąca")).toBeUndefined();
+  });
+
+  it("flush gwarantuje, że zapisane linie są w pliku bez zamykania logu", async () => {
+    const at = new Date(2026, 6, 2, 10, 0, 0);
+    const log = new SessionLog(dir, () => at);
+    log.sink({ type: "init", model: "haiku", sessionId: "s", toolCount: 0 });
+    log.sink({ type: "text", text: "wynik sesji" });
+
+    await log.flush();
+
+    const path = log.pathFor("s");
+    expect(path).toBeDefined();
+    const content = await readFile(path ?? "", "utf8");
+    expect(content).toContain("wynik sesji");
+
+    log.sink({ type: "text", text: "dalszy ciąg" });
+    await log.close();
+    expect(await readFile(path ?? "", "utf8")).toContain("dalszy ciąg");
+  });
+
+  it("flush bez otwartej sesji kończy się natychmiast", async () => {
+    const log = new SessionLog(dir);
+    await expect(log.flush()).resolves.toBeUndefined();
+  });
+
   it("porządkuje sesje w foldery według dnia startu", async () => {
     const now = vi
       .fn(() => new Date(2026, 6, 3, 0, 0, 1))

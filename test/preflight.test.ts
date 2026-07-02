@@ -36,7 +36,7 @@ describe("ensureReady", () => {
     await removeTempDir(dir);
   });
 
-  it("przechodzi i zwraca zweryfikowane ścieżki promptów obu agentów", async () => {
+  it("przechodzi i zwraca zweryfikowane ścieżki promptów wszystkich agentów", async () => {
     await expect(ensureReady()).resolves.toEqual({
       monitor: {
         promptPath: join(dir, "prompts", "monitor.prompt.md"),
@@ -45,6 +45,9 @@ describe("ensureReady", () => {
       executor: {
         promptPath: join(dir, "prompts", "executor.prompt.md"),
         systemPromptPath: join(dir, "prompts", "executor.system.md"),
+      },
+      summarizer: {
+        systemPromptPath: join(dir, "prompts", "summarizer.system.md"),
       },
     });
   });

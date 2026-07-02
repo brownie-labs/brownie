@@ -3,6 +3,7 @@ import {
   type SessionEvent,
   type SessionEventSink,
 } from "./session-events.js";
+import { formatDuration } from "./timing.js";
 import type { Task } from "./types.js";
 
 export type MonitorPhase =
@@ -14,6 +15,7 @@ export type MonitorPhase =
 export type ExecutorPhase =
   | { kind: "waiting" }
   | { kind: "session"; task: Task; startedAt: number }
+  | { kind: "summary"; task: Task; startedAt: number }
   | { kind: "backoff"; task: Task; resumeAt: number };
 
 export interface MonitorCycleOutcome {
@@ -38,6 +40,15 @@ export interface ExecutorTaskOutcome {
   willRetry?: boolean | undefined;
   attempt?: number | undefined;
   maxAttempts?: number | undefined;
+  finishedAt: number;
+}
+
+export interface SummaryOutcome {
+  taskId: string;
+  ok: boolean;
+  durationMs: number;
+  costUsd?: number | undefined;
+  error?: string | undefined;
   finishedAt: number;
 }
 
@@ -69,7 +80,15 @@ export interface ExecutorReporter {
   taskFinished(outcome: Omit<ExecutorTaskOutcome, "finishedAt">): void;
   retryScheduled(task: Task, resumeAt: Date): void;
   waiting(): void;
+  summaryStarted(task: Task): void;
+  summaryFinished(outcome: Omit<SummaryOutcome, "finishedAt">): void;
   session: SessionEventSink;
+}
+
+function formatSummaryOutcome(outcome: SummaryOutcome): string {
+  const cost = outcome.costUsd != null ? ` · koszt=$${outcome.costUsd.toFixed(4)}` : "";
+  const base = `pamięć: podsumowanie ${outcome.taskId} · czas=${formatDuration(outcome.durationMs)}${cost}`;
+  return outcome.ok ? `✔ ${base}` : `✖ ${base} · ${outcome.error ?? "nieznany błąd"}`;
 }
 
 const TAIL_LINE_MAX = 300;
@@ -168,6 +187,21 @@ export class WorkerStatusStore {
     },
     waiting: () => {
       this.executorState.phase = { kind: "waiting" };
+      this.markDirty();
+    },
+    summaryStarted: (task) => {
+      this.executorState.phase = {
+        kind: "summary",
+        task,
+        startedAt: Date.now(),
+      };
+      this.markDirty();
+    },
+    summaryFinished: (outcome) => {
+      this.pushTail(
+        this.executorState,
+        formatSummaryOutcome({ ...outcome, finishedAt: Date.now() }),
+      );
       this.markDirty();
     },
     session: (event) => this.handleSessionEvent(this.executorState, event),

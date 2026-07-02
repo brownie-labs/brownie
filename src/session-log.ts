@@ -25,6 +25,7 @@ function safeName(value: string): string {
 export class SessionLog {
   private stream: WriteStream | null = null;
   private readonly closing: Promise<void>[] = [];
+  private readonly sessionPaths = new Map<string, string>();
 
   constructor(
     private readonly dir: string,
@@ -44,6 +45,16 @@ export class SessionLog {
     }
   };
 
+  pathFor(sessionId: string): string | undefined {
+    return this.sessionPaths.get(sessionId);
+  }
+
+  flush(): Promise<void> {
+    const stream = this.stream;
+    if (!stream) return Promise.resolve();
+    return new Promise((resolve) => stream.write("", () => resolve()));
+  }
+
   async close(): Promise<void> {
     if (this.stream) this.endStream(this.stream);
     this.stream = null;
@@ -54,10 +65,9 @@ export class SessionLog {
     if (this.stream) this.endStream(this.stream);
     const dayDir = join(this.dir, dayStamp(at));
     mkdirSync(dayDir, { recursive: true });
-    this.stream = createWriteStream(
-      join(dayDir, `${clockStamp(at)}-${safeName(sessionId)}.log`),
-      { flags: "a" },
-    );
+    const path = join(dayDir, `${clockStamp(at)}-${safeName(sessionId)}.log`);
+    this.sessionPaths.set(sessionId, path);
+    this.stream = createWriteStream(path, { flags: "a" });
     return this.stream;
   }
 

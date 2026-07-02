@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
+import type { TaskSummarizer } from "../src/memory/summarizer.js";
 import type { SessionSpec } from "../src/runner.js";
 import type { SessionEvent, SessionEventSink } from "../src/session-events.js";
 import type { ExecutorReporter, MonitorReporter } from "../src/status.js";
@@ -10,6 +11,7 @@ import type {
   AgentConfig,
   ExecutorConfig,
   MonitorConfig,
+  SummarizerConfig,
   WorkerConfig,
 } from "../src/types.js";
 
@@ -40,6 +42,7 @@ export interface SeedWorkerFilesOptions {
   monitorSystem?: string;
   executorPrompt?: string;
   executorSystem?: string;
+  summarizerSystem?: string;
 }
 
 export async function seedWorkerFiles(
@@ -52,6 +55,7 @@ export async function seedWorkerFiles(
     monitorSystem = "system monitora\n",
     executorPrompt = "wykonuj\n",
     executorSystem = "system egzekutora\n",
+    summarizerSystem = "system podsumowującego\n",
   } = options;
   const promptsDir = join(dir, "prompts");
   await mkdir(promptsDir, { recursive: true });
@@ -59,6 +63,7 @@ export async function seedWorkerFiles(
   await writeFile(join(promptsDir, "monitor.system.md"), monitorSystem, "utf8");
   await writeFile(join(promptsDir, "executor.prompt.md"), executorPrompt, "utf8");
   await writeFile(join(promptsDir, "executor.system.md"), executorSystem, "utf8");
+  await writeFile(join(promptsDir, "summarizer.system.md"), summarizerSystem, "utf8");
   if (env !== false) await writeFile(join(dir, ".env"), env, "utf8");
 }
 
@@ -135,6 +140,8 @@ export interface ExecutorReporterSpy {
   taskFinished: ReturnType<typeof vi.fn>;
   retryScheduled: ReturnType<typeof vi.fn>;
   waiting: ReturnType<typeof vi.fn>;
+  summaryStarted: ReturnType<typeof vi.fn>;
+  summaryFinished: ReturnType<typeof vi.fn>;
   session: ReturnType<typeof vi.fn>;
 }
 
@@ -144,9 +151,21 @@ export function createExecutorReporterSpy(): ExecutorReporterSpy {
     taskFinished: vi.fn(),
     retryScheduled: vi.fn(),
     waiting: vi.fn(),
+    summaryStarted: vi.fn(),
+    summaryFinished: vi.fn(),
     session: vi.fn(),
   };
   return { ...spies, reporter: spies };
+}
+
+export interface TaskSummarizerSpy {
+  summarizer: TaskSummarizer;
+  summarize: ReturnType<typeof vi.fn>;
+}
+
+export function createTaskSummarizerSpy(): TaskSummarizerSpy {
+  const summarize = vi.fn().mockResolvedValue(undefined);
+  return { summarize, summarizer: { summarize } };
 }
 
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -178,6 +197,19 @@ export function buildExecutorConfig(
     ...buildAgentConfig({ model: "opus", effort: "high" }),
     maxTaskAttempts: 3,
     retryDelayMs: 0,
+    mcpConfig: '{"mcpServers":{}}',
+    ...overrides,
+  };
+}
+
+export function buildSummarizerConfig(
+  overrides: Partial<SummarizerConfig> = {},
+): SummarizerConfig {
+  return {
+    model: "haiku",
+    effort: "low",
+    systemPromptPath: "/dev/null",
+    sessionTimeoutMs: undefined,
     ...overrides,
   };
 }
@@ -187,9 +219,11 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     command: fakeClaudePath,
     monitor: buildMonitorConfig(),
     executor: buildExecutorConfig(),
+    summarizer: buildSummarizerConfig(),
     streamPartial: false,
     cwd: process.cwd(),
     tasksFilePath: join(process.cwd(), "data", "tasks.json"),
+    memoryDbPath: join(process.cwd(), "data", "memory.db"),
     logsDir: join(process.cwd(), "logs"),
     childEnv: { ...process.env },
     ...overrides,

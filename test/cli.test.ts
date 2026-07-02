@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -79,18 +80,18 @@ function runCli(
   });
 }
 
-async function taskHasStatus(
-  tasksPath: string,
-  id: string,
-  status: string,
-): Promise<boolean> {
+function readSummaries(dbPath: string, taskId: string): { headline: string }[] {
   try {
-    const store = JSON.parse(await readFile(tasksPath, "utf8")) as {
-      tasks: { id: string; status: string }[];
-    };
-    return store.tasks.some((task) => task.id === id && task.status === status);
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      return db
+        .prepare("SELECT headline FROM summaries WHERE task_id = ?")
+        .all(taskId) as { headline: string }[];
+    } finally {
+      db.close();
+    }
   } catch {
-    return false;
+    return [];
   }
 }
 
@@ -103,11 +104,12 @@ describe("CLI start (smoke E2E)", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it("monitor zgłasza zadanie, egzekutor je wykonuje, oba kończą czysto po SIGINT", async () => {
+  it("monitor zgłasza zadanie, egzekutor je wykonuje, podsumowanie trafia do pamięci, całość kończy się czysto po SIGINT", async () => {
     await seedWorkerFiles(dir, {
       env: [
         "CLAUDE_WORKER_MONITOR_MODEL=haiku",
         "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
+        "CLAUDE_WORKER_SUMMARIZER_MODEL=sonnet",
         "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
         "",
       ].join("\n"),
@@ -118,11 +120,18 @@ describe("CLI start (smoke E2E)", () => {
         tasks: [{ id: "e2e-1", title: "Zadanie testowe", description: "Opis e2e" }],
       }),
       FAKE_CLAUDE_PROMPT_OUT_OPUS: join(dir, "prompt-egzekutora.txt"),
+      FAKE_CLAUDE_RESULT_TEXT_SONNET: JSON.stringify({
+        headline: "Podsumowanie e2e",
+        summary: "Egzekutor wykonał zadanie testowe.",
+      }),
+      FAKE_CLAUDE_PROMPT_OUT_SONNET: join(dir, "prompt-podsumowania.txt"),
+      FAKE_CLAUDE_ARGS_OUT_OPUS: join(dir, "argi-egzekutora.json"),
     });
     const tasksPath = join(dir, "data", "tasks.json");
+    const memoryDbPath = join(dir, "data", "memory.db");
 
     const result = await runCli(dir, env, () =>
-      taskHasStatus(tasksPath, "e2e-1", "done"),
+      Promise.resolve(readSummaries(memoryDbPath, "e2e-1").length > 0),
     );
 
     const store = JSON.parse(await readFile(tasksPath, "utf8")) as {
@@ -136,6 +145,22 @@ describe("CLI start (smoke E2E)", () => {
     expect(executorPrompt).toContain("## Zadanie do wykonania");
     expect(executorPrompt).toContain("ID: e2e-1");
     expect(executorPrompt).toContain("wykonuj");
+
+    const executorArgs = JSON.parse(
+      await readFile(join(dir, "argi-egzekutora.json"), "utf8"),
+    ) as string[];
+    const mcpFlagIndex = executorArgs.indexOf("--mcp-config");
+    expect(mcpFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(executorArgs[mcpFlagIndex + 1]).toContain(memoryDbPath);
+    expect(executorArgs).not.toContain("--strict-mcp-config");
+
+    const summarizerPrompt = await readFile(join(dir, "prompt-podsumowania.txt"), "utf8");
+    expect(summarizerPrompt).toContain("ID: e2e-1");
+    expect(summarizerPrompt).toContain(join(dir, "logs", "executor"));
+
+    expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([
+      { headline: "Podsumowanie e2e" },
+    ]);
 
     expect(result.output).toContain("model=haiku");
     expect(result.output).toContain("e2e-1");

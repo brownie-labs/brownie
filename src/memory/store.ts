@@ -1,0 +1,157 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { z } from "zod";
+
+export interface TaskSummaryRecord {
+  id: number;
+  taskId: string;
+  attempt: number;
+  ok: boolean;
+  title: string;
+  headline: string;
+  summary: string;
+  error: string | undefined;
+  sessionId: string | undefined;
+  createdAt: string;
+}
+
+export type NewTaskSummaryRecord = Omit<TaskSummaryRecord, "id">;
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL,
+  ok INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  headline TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  error TEXT,
+  session_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS summaries_task_id ON summaries (task_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS summaries_fts USING fts5(
+  task_id, title, headline, summary,
+  content='summaries', content_rowid='id'
+);
+`;
+
+const rowSchema = z.object({
+  id: z.number().int(),
+  task_id: z.string(),
+  attempt: z.number().int(),
+  ok: z.number(),
+  title: z.string(),
+  headline: z.string(),
+  summary: z.string(),
+  error: z.string().nullable(),
+  session_id: z.string().nullable(),
+  created_at: z.string(),
+});
+
+function toRecord(row: unknown): TaskSummaryRecord {
+  const parsed = rowSchema.parse(row);
+  return {
+    id: parsed.id,
+    taskId: parsed.task_id,
+    attempt: parsed.attempt,
+    ok: parsed.ok !== 0,
+    title: parsed.title,
+    headline: parsed.headline,
+    summary: parsed.summary,
+    error: parsed.error ?? undefined,
+    sessionId: parsed.session_id ?? undefined,
+    createdAt: parsed.created_at,
+  };
+}
+
+export function toMatchQuery(query: string): string | null {
+  const tokens = query.match(/[\p{L}\p{N}_]+/gu);
+  if (!tokens || tokens.length === 0) return null;
+  return tokens.map((token) => `"${token}"`).join(" OR ");
+}
+
+export interface MemoryStoreOptions {
+  readOnly?: boolean;
+}
+
+export class MemoryStore {
+  private constructor(private readonly db: DatabaseSync) {}
+
+  static open(path: string, options: MemoryStoreOptions = {}): MemoryStore {
+    const readOnly = options.readOnly ?? false;
+    if (!readOnly) {
+      mkdirSync(dirname(path), { recursive: true });
+    }
+    const db = new DatabaseSync(path, { readOnly });
+    if (!readOnly) {
+      db.exec("PRAGMA journal_mode = WAL;");
+      db.exec(SCHEMA);
+    }
+    return new MemoryStore(db);
+  }
+
+  add(record: NewTaskSummaryRecord): TaskSummaryRecord {
+    this.db.exec("BEGIN");
+    try {
+      const inserted = this.db
+        .prepare(
+          `INSERT INTO summaries
+             (task_id, attempt, ok, title, headline, summary, error, session_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          record.taskId,
+          record.attempt,
+          record.ok ? 1 : 0,
+          record.title,
+          record.headline,
+          record.summary,
+          record.error ?? null,
+          record.sessionId ?? null,
+          record.createdAt,
+        );
+      const id = Number(inserted.lastInsertRowid);
+      this.db
+        .prepare(
+          `INSERT INTO summaries_fts (rowid, task_id, title, headline, summary)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, record.taskId, record.title, record.headline, record.summary);
+      this.db.exec("COMMIT");
+      return { ...record, id };
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  search(query: string, limit = 10): TaskSummaryRecord[] {
+    const match = toMatchQuery(query);
+    if (match === null) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT s.*
+         FROM summaries_fts
+         JOIN summaries s ON s.id = summaries_fts.rowid
+         WHERE summaries_fts MATCH ?
+         ORDER BY bm25(summaries_fts)
+         LIMIT ?`,
+      )
+      .all(match, limit);
+    return rows.map(toRecord);
+  }
+
+  get(taskId: string): TaskSummaryRecord[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM summaries WHERE task_id = ? ORDER BY id`)
+      .all(taskId);
+    return rows.map(toRecord);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}

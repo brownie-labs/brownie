@@ -50,6 +50,8 @@ export function formatExecutorPhase(phase: ExecutorPhase, now: number): string {
       return "⏳ oczekiwanie na zadania";
     case "session":
       return `▶ ${phase.task.id}: ${phase.task.title} · trwa ${formatDuration(now - phase.startedAt)}`;
+    case "summary":
+      return `✎ podsumowanie ${phase.task.id} do pamięci · trwa ${formatDuration(now - phase.startedAt)}`;
     case "backoff":
       return `↻ ponowienie ${phase.task.id} za ${formatCountdown(phase.resumeAt - now)}`;
   }

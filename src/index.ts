@@ -2,6 +2,7 @@
 import { defineCommand, runMain } from "citty";
 import { startCommand } from "./start.js";
 import { configureCommand } from "./configure.js";
+import { mcpCommand } from "./memory/mcp.js";
 
 const main = defineCommand({
   meta: {
@@ -12,6 +13,7 @@ const main = defineCommand({
   subCommands: {
     start: startCommand,
     configure: configureCommand,
+    mcp: mcpCommand,
   },
 });
 

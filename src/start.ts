@@ -4,6 +4,8 @@ import { defineCommand, type ArgsDef } from "citty";
 import { loadWorkerConfig } from "./config.js";
 import { runExecutorLoop } from "./executor.js";
 import { logger } from "./logger.js";
+import { MemoryStore } from "./memory/store.js";
+import { SessionSummarizer } from "./memory/summarizer.js";
 import { runMonitorLoop } from "./monitor.js";
 import { ensureReady } from "./preflight.js";
 import { SessionLog, teeSession } from "./session-log.js";
@@ -23,11 +25,13 @@ const envFileArg = {
 async function startWorker(envFile?: string): Promise<void> {
   let config;
   let store;
+  let memory;
   try {
     const paths = await ensureReady(envFile);
     config = await loadWorkerConfig(envFile, paths);
     await mkdir(config.cwd, { recursive: true });
     store = await TaskStore.open(config.tasksFilePath);
+    memory = MemoryStore.open(config.memoryDbPath);
   } catch (err) {
     logger.error(err instanceof Error ? err.message : err);
     process.exitCode = 1;
@@ -44,6 +48,21 @@ async function startWorker(envFile?: string): Promise<void> {
 
   const monitorLog = new SessionLog(join(config.logsDir, "monitor"));
   const executorLog = new SessionLog(join(config.logsDir, "executor"));
+  const summarizerLog = new SessionLog(join(config.logsDir, "summarizer"));
+
+  const summarizer = new SessionSummarizer({
+    command: config.command,
+    summarizer: config.summarizer,
+    streamPartial: config.streamPartial,
+    cwd: config.cwd,
+    childEnv: config.childEnv,
+    store: memory,
+    resolveLogPath: async (sessionId) => {
+      await executorLog.flush();
+      return executorLog.pathFor(sessionId);
+    },
+    reporter: teeSession(status.executor, summarizerLog.sink),
+  });
 
   let loopError: unknown;
   try {
@@ -60,13 +79,15 @@ async function startWorker(envFile?: string): Promise<void> {
         store,
         waker,
         teeSession(status.executor, executorLog.sink),
+        summarizer,
         signal,
       ),
     ]);
   } catch (err) {
     loopError = err;
   } finally {
-    await Promise.all([monitorLog.close(), executorLog.close()]);
+    await Promise.all([monitorLog.close(), executorLog.close(), summarizerLog.close()]);
+    memory.close();
     dashboard.unmount();
     await dashboard.waitUntilExit();
     status.dispose();
