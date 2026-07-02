@@ -14,7 +14,7 @@ import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
-const CONFIGURE_HINT = "create configuration: pnpm configure";
+const CONFIGURE_HINT = 'run "brownie --configure" to create the configuration';
 
 interface Check {
   label: string;

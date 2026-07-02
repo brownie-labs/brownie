@@ -72,24 +72,23 @@ Two loops run in parallel and communicate only through the shared task store:
 ```bash
 pnpm install
 
-# interactively generate .env and the prompts
-pnpm configure
-
-# release the sprite
+# release the sprite — the first run walks you through configuration,
+# every next run goes straight to the dashboard
 pnpm start        # or: pnpm dev (watch)
 ```
 
-Binary subcommands:
+Binary usage:
 
 ```bash
-brownie start        # run both loops + dashboard
-brownie configure    # interactive configuration (.env, prompts)
-brownie mcp --db …   # memory MCP server (used internally by the executor)
+brownie                # first run: configuration wizard, then both loops + dashboard
+brownie --configure    # rerun the configuration wizard (.env, prompts)
+brownie --env ./x.env  # use a custom .env file
+brownie mcp --db …     # memory MCP server (used internally by the executor)
 ```
 
 ## Configuration
 
-Everything through `CLAUDE_WORKER_*` variables in `.env` (validated with zod — a typo won't get through). `pnpm configure` walks you through all of it, but you can also do it by hand:
+Everything through `CLAUDE_WORKER_*` variables in `.env` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie --configure`) walks you through all of it, but you can also do it by hand:
 
 | Variable                                      | Default                          | Description                                       |
 | --------------------------------------------- | -------------------------------- | ------------------------------------------------- |

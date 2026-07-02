@@ -59,7 +59,7 @@ describe("ensureReady", () => {
 
   it("throws with a configure hint when a prompt file is missing", async () => {
     await removeTempDir(join(dir, "prompts"));
-    await expect(ensureReady()).rejects.toThrow(/pnpm configure/);
+    await expect(ensureReady()).rejects.toThrow(/brownie --configure/);
   });
 
   it("throws when the .env file is missing", async () => {

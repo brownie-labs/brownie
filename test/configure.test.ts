@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { consola } from "consola";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,18 +9,14 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
-const { configureCommand } = await import("../src/configure.js");
-
-function runConfigure(): Promise<void> {
-  return (configureCommand.run as (ctx: unknown) => Promise<void>)({});
-}
+const { isConfigured, runConfigure } = await import("../src/configure.js");
 
 function queueAnswers(...answers: unknown[]): void {
   const prompt = vi.spyOn(consola, "prompt");
   for (const answer of answers) prompt.mockResolvedValueOnce(answer as never);
 }
 
-describe("configureCommand", () => {
+describe("runConfigure", () => {
   let dir: string;
   let envPath: string;
   let monitorPromptPath: string;
@@ -52,7 +48,7 @@ describe("configureCommand", () => {
       "execute diligently",
       false,
     );
-    await runConfigure();
+    await expect(runConfigure()).resolves.toBe(true);
 
     const env = await readFile(envPath, "utf8");
     expect(env).toContain("CLAUDE_WORKER_MONITOR_MODEL=haiku");
@@ -207,12 +203,35 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=90000");
   });
 
+  it("treats empty text and multiselect answers (undefined from consola) as defaults", async () => {
+    queueAnswers(
+      "haiku",
+      "medium",
+      "15",
+      undefined,
+      undefined,
+      undefined,
+      "opus",
+      "high",
+      undefined,
+      false,
+    );
+
+    await expect(runConfigure()).resolves.toBe(true);
+
+    const env = await readFile(envPath, "utf8");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+    expect(await readFile(monitorPromptPath, "utf8")).toBe("\n");
+    expect(await readFile(executorPromptPath, "utf8")).toBe("\n");
+  });
+
   it("cancelling writes no files", async () => {
     const cancelled = new Error("cancelled");
     cancelled.name = "ConsolaPromptCancelledError";
     vi.spyOn(consola, "prompt").mockRejectedValueOnce(cancelled);
 
-    await expect(runConfigure()).resolves.toBeUndefined();
+    await expect(runConfigure()).resolves.toBe(false);
     expect(existsSync(envPath)).toBe(false);
     expect(existsSync(monitorPromptPath)).toBe(false);
     expect(existsSync(executorPromptPath)).toBe(false);
@@ -222,9 +241,75 @@ describe("configureCommand", () => {
     await writeFile(envPath, "OLD=1\n", "utf8");
     vi.spyOn(consola, "prompt").mockResolvedValueOnce(false);
 
-    await runConfigure();
+    await expect(runConfigure()).resolves.toBe(false);
 
     expect(await readFile(envPath, "utf8")).toBe("OLD=1\n");
     expect(existsSync(monitorPromptPath)).toBe(false);
+  });
+
+  it("writes .env at the path given via envFile", async () => {
+    const customEnvPath = join(dir, "custom.env");
+    queueAnswers(
+      "haiku",
+      "medium",
+      "15",
+      "",
+      [],
+      "watch",
+      "opus",
+      "high",
+      "execute",
+      false,
+    );
+
+    await expect(runConfigure(customEnvPath)).resolves.toBe(true);
+
+    expect(existsSync(customEnvPath)).toBe(true);
+    expect(existsSync(envPath)).toBe(false);
+  });
+});
+
+describe("isConfigured", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await createTempDir();
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await removeTempDir(dir);
+  });
+
+  async function seedAll(): Promise<void> {
+    await mkdir(join(dir, "prompts"), { recursive: true });
+    await writeFile(join(dir, ".env"), "X=1\n", "utf8");
+    await writeFile(join(dir, "prompts", "monitor.prompt.md"), "watch\n", "utf8");
+    await writeFile(join(dir, "prompts", "executor.prompt.md"), "execute\n", "utf8");
+  }
+
+  it("returns true when .env and both prompt files exist", async () => {
+    await seedAll();
+    expect(isConfigured()).toBe(true);
+  });
+
+  it("returns false when .env is missing", async () => {
+    await seedAll();
+    await rm(join(dir, ".env"));
+    expect(isConfigured()).toBe(false);
+  });
+
+  it("returns false when a prompt file is missing", async () => {
+    await seedAll();
+    await rm(join(dir, "prompts", "executor.prompt.md"));
+    expect(isConfigured()).toBe(false);
+  });
+
+  it("checks the custom env path when envFile is given", async () => {
+    await seedAll();
+    expect(isConfigured(join(dir, "custom.env"))).toBe(false);
+    await writeFile(join(dir, "custom.env"), "X=1\n", "utf8");
+    expect(isConfigured(join(dir, "custom.env"))).toBe(true);
   });
 });

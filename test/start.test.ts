@@ -31,16 +31,14 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
-const { startCommand } = await import("../src/start.js");
+const { startWorker } = await import("../src/start.js");
 const { Waker } = await import("../src/waker.js");
 const { WorkerStatusStore } = await import("../src/status.js");
 const { SessionSummarizer } = await import("../src/memory/summarizer.js");
 const { logger } = await import("../src/logger.js");
 
 function runStart(envFile?: string): Promise<void> {
-  return (startCommand.run as (ctx: unknown) => Promise<void>)({
-    args: { "env-file": envFile },
-  });
+  return startWorker(envFile);
 }
 
 function verifiedPaths(dir: string) {
@@ -56,7 +54,7 @@ function verifiedPaths(dir: string) {
   };
 }
 
-describe("startCommand", () => {
+describe("startWorker", () => {
   let dir: string;
   let savedExitCode: typeof process.exitCode;
 

@@ -44,7 +44,7 @@ function runCli(
     ]).then(([out, err]) => `${out}${err}`);
 
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(tsxBin, [entry, "start"], {
+    const child = spawn(tsxBin, [entry], {
       cwd,
       env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
       stdio: ["ignore", outFd, errFd],

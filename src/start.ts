@@ -1,6 +1,5 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { defineCommand, type ArgsDef } from "citty";
 import { loadWorkerConfig } from "./config.js";
 import { runExecutorLoop } from "./executor.js";
 import { logger } from "./logger.js";
@@ -15,14 +14,7 @@ import { TaskStore } from "./tasks.js";
 import { mountDashboard } from "./ui/mount.js";
 import { Waker } from "./waker.js";
 
-const envFileArg = {
-  "env-file": {
-    type: "string",
-    description: "Path to the .env file (defaults to ./.env)",
-  },
-} satisfies ArgsDef;
-
-async function startWorker(envFile?: string): Promise<void> {
+export async function startWorker(envFile?: string): Promise<void> {
   let config;
   let store;
   let memory;
@@ -98,13 +90,3 @@ async function startWorker(envFile?: string): Promise<void> {
     process.exitCode = 1;
   }
 }
-
-export const startCommand = defineCommand({
-  meta: {
-    name: "start",
-    description:
-      "Starts the worker: the monitor reports tasks on a cycle, the executor completes them",
-  },
-  args: envFileArg,
-  run: ({ args }) => startWorker(args["env-file"]),
-});

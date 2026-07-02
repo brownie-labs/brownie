@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 pnpm dev                  # start with watch (tsx)
-pnpm start                # start without watch
-pnpm configure            # interactive generation of .env and prompts
+pnpm start                # start without watch (first run opens the configuration wizard)
+pnpm configure            # force the configuration wizard (brownie --configure)
 pnpm check                # typecheck + lint + format:check + test (run before committing)
 pnpm typecheck
 pnpm lint / pnpm lint:fix
@@ -25,9 +25,9 @@ pnpm build                # tsup -> dist/
 
 ## Architecture
 
-The entry point `src/index.ts` (citty) has three subcommands: `start`, `configure`, `mcp`.
+The entry point `src/index.ts` dispatches manually on `argv`: `brownie mcp …` goes to `mcpCommand`, everything else to `mainCommand` (`src/main.ts`, citty). `runBrownie` in `main.ts` runs the interactive configuration wizard (`runConfigure` in `configure.ts`) when the setup is missing (`isConfigured`: `.env` + both user prompt files) or when `--configure` is passed — but only in a TTY — and then starts the worker. The manual dispatch exists because citty treats the first positional raw arg as a subcommand name (breaking value-bearing flags like `--env ./x`) and runs the parent `run` after a subcommand. The flag is named `--env` (not `--env-file`) because Node consumes `--env-file` itself, even after the script path.
 
-`src/start.ts` wires everything together: after preflight (`preflight.ts`) and loading the configuration, it runs **two loops in parallel** (`Promise.all`) that communicate only through shared objects:
+`src/start.ts` (`startWorker`) wires everything together: after preflight (`preflight.ts`) and loading the configuration, it runs **two loops in parallel** (`Promise.all`) that communicate only through shared objects:
 
 - **`runMonitorLoop` (`monitor.ts`)** — every `intervalMs` (and only within the window from `active-hours.ts`) it fires a Claude session with an enforced task-report JSON schema (`report.ts`), adds tasks to the `TaskStore` (deduplicated by `id`), and wakes the executor via the `Waker`.
 - **`runExecutorLoop` (`executor.ts`)** — pulls `pending` tasks from the `TaskStore`, appends the task description to the prompt, and runs a session with access to memory (MCP). Transient failures (`isTransientFailure`: a timeout or a pattern in the result text) are retried up to `maxTaskAttempts` with a delay; the rest are marked `failed`. After each session (success or failure) it fires the `SessionSummarizer`.
