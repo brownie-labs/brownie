@@ -5,6 +5,9 @@ node_modules
 dist
 *.tsbuildinfo
 
+# Pokrycie testów
+coverage/
+
 # Logi
 *.log
 npm-debug.log*

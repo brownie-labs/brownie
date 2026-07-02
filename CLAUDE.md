@@ -18,11 +18,16 @@ pnpm start                        # uruchamia workera (używa ./.env)
 pnpm start --env-file ./inny.env  # inny plik konfiguracji
 pnpm dev                          # tsx watch (auto-restart przy zmianach)
 pnpm build                        # tsup → dist/ (ESM), binarka claude-worker
-pnpm typecheck                    # tsc --noEmit (jedyna forma weryfikacji — brak testów)
+pnpm typecheck                    # tsc --noEmit
+pnpm test                         # vitest run (testy jednostkowe + integracyjne)
+pnpm test:watch                   # vitest w trybie watch
+pnpm test:coverage                # vitest run --coverage (raport v8)
 ```
 
-Brak testów i lintera w repo. Weryfikacja poprawności = `pnpm typecheck`.
-Manager pakietów to **pnpm** (jest `pnpm-lock.yaml`).
+Brak lintera w repo. Weryfikacja poprawności = `pnpm typecheck` **i** `pnpm test`.
+Testy: Vitest, katalog `test/` (lustrzany do `src/`), atrapa binarki `claude`
+w `test/fixtures/claude` emitująca stream-json. Manager pakietów to **pnpm**
+(jest `pnpm-lock.yaml`).
 
 ## Architektura
 

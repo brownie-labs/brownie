@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+
+import { writeFileSync } from "node:fs";
+
+const mode = process.env.FAKE_CLAUDE_MODE ?? "ok";
+const promptOut = process.env.FAKE_CLAUDE_PROMPT_OUT;
+
+function emit(event) {
+  process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+function emitOk(isError) {
+  emit({
+    type: "system",
+    subtype: "init",
+    model: "haiku",
+    session_id: "sess-1",
+    tools: ["Read", "Bash"],
+  });
+  emit({
+    type: "assistant",
+    message: { content: [{ type: "text", text: "Wynik pracy workera" }] },
+  });
+  emit({
+    type: "result",
+    is_error: isError,
+    total_cost_usd: 0.0123,
+    num_turns: 2,
+    session_id: "sess-1",
+  });
+}
+
+let stdin = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  stdin += chunk;
+});
+process.stdin.on("end", () => {
+  if (promptOut) writeFileSync(promptOut, stdin);
+  run();
+});
+
+function run() {
+  switch (mode) {
+    case "ok":
+      emitOk(false);
+      process.exit(0);
+      break;
+    case "error_result":
+      emitOk(true);
+      process.exit(0);
+      break;
+    case "exit_nonzero":
+      process.stderr.write("coś poszło nie tak\n");
+      process.exit(2);
+      break;
+    case "hang":
+      process.on("SIGTERM", () => process.exit(143));
+      setInterval(() => {}, 1000);
+      break;
+    default:
+      process.stderr.write(`nieznany FAKE_CLAUDE_MODE=${mode}\n`);
+      process.exit(1);
+  }
+}
