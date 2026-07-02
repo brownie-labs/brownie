@@ -25,6 +25,9 @@ prompts/prompt.md
 # Trwały magazyn zadań workera
 data/
 
+# Logi sesji Claude Code (monitor/egzekutor, z podziałem na dni)
+logs/
+
 # Katalog roboczy sesji Claude (izolacja od kodu agenta)
 workspace/
 

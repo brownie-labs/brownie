@@ -1,10 +1,12 @@
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { defineCommand, type ArgsDef } from "citty";
 import { loadWorkerConfig } from "./config.js";
 import { runExecutorLoop } from "./executor.js";
 import { logger } from "./logger.js";
 import { runMonitorLoop } from "./monitor.js";
 import { ensureReady } from "./preflight.js";
+import { SessionLog, teeSession } from "./session-log.js";
 import { abortOnSignals } from "./shutdown.js";
 import { WorkerStatusStore } from "./status.js";
 import { TaskStore } from "./tasks.js";
@@ -40,15 +42,31 @@ async function startWorker(envFile?: string): Promise<void> {
   const waker = new Waker();
   const dashboard = mountDashboard(status, config);
 
+  const monitorLog = new SessionLog(join(config.logsDir, "monitor"));
+  const executorLog = new SessionLog(join(config.logsDir, "executor"));
+
   let loopError: unknown;
   try {
     await Promise.all([
-      runMonitorLoop(config, store, waker, status.monitor, signal),
-      runExecutorLoop(config, store, waker, status.executor, signal),
+      runMonitorLoop(
+        config,
+        store,
+        waker,
+        teeSession(status.monitor, monitorLog.sink),
+        signal,
+      ),
+      runExecutorLoop(
+        config,
+        store,
+        waker,
+        teeSession(status.executor, executorLog.sink),
+        signal,
+      ),
     ]);
   } catch (err) {
     loopError = err;
   } finally {
+    await Promise.all([monitorLog.close(), executorLog.close()]);
     dashboard.unmount();
     await dashboard.waitUntilExit();
     status.dispose();

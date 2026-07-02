@@ -114,8 +114,16 @@ describe("startCommand", () => {
     const statusStore = mocks.mountDashboard.mock.calls[0]?.[0] as InstanceType<
       typeof WorkerStatusStore
     >;
-    expect(mocks.runMonitorLoop.mock.calls[0]?.[3]).toBe(statusStore.monitor);
-    expect(mocks.runExecutorLoop.mock.calls[0]?.[3]).toBe(statusStore.executor);
+    const asRecord = (value: unknown): Record<string, unknown> =>
+      value as Record<string, unknown>;
+    const monitorReporter = asRecord(mocks.runMonitorLoop.mock.calls[0]?.[3]);
+    const executorReporter = asRecord(mocks.runExecutorLoop.mock.calls[0]?.[3]);
+    const monitor = asRecord(statusStore.monitor);
+    const executor = asRecord(statusStore.executor);
+    expect(monitorReporter.cycleStarted).toBe(monitor.cycleStarted);
+    expect(monitorReporter.session).not.toBe(monitor.session);
+    expect(executorReporter.taskStarted).toBe(executor.taskStarted);
+    expect(executorReporter.session).not.toBe(executor.session);
     expect(mocks.dashboardUnmount).toHaveBeenCalledTimes(1);
     expect(mocks.dashboardWaitUntilExit).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(savedExitCode);

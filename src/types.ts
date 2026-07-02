@@ -28,6 +28,7 @@ export interface WorkerConfig {
   streamPartial: boolean;
   cwd: string;
   tasksFilePath: string;
+  logsDir: string;
   childEnv: NodeJS.ProcessEnv;
 }
 

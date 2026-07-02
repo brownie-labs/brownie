@@ -22,6 +22,13 @@ z parametrami agentów, dwa panele na żywo (faza + tail wyjścia sesji + ostatn
 i tabela zadań ze statusami. Dashboard zastępuje logi całkowicie — consola służy tylko
 błędom startu i kreatorowi `configure`.
 
+Niezależnie od dashboardu wszystkie zdarzenia sesji Claude Code trafiają na trwałe do
+plików: `logs/<agent>/<YYYY-MM-DD>/<HH-MM-SS>-<sessionId>.log` — osobno `monitor`
+i `executor`, dzień to **folder**, a każda sesja to **osobny plik** (nazwa: godzina
+startu + `sessionId` z `init`; zdarzenia przed `init` lądują w pliku `…-nieznana.log`).
+Katalog `logs/` jest w `.gitignore`. To zapis do plików — nie koliduje z zakazem consoli
+po montażu dashboardu.
+
 ## Komendy
 
 ```bash
@@ -131,6 +138,18 @@ Przepływ `start` (`src/start.ts`):
     `format.ts` (czyste formatery faz/wyników/odliczań), `use-now.ts` (tykanie 1 s).
     `start.ts` montuje dashboard po otwarciu magazynu, a odmontowuje w `finally`
     przed zalogowaniem ewentualnego błędu pętli.
+11. `session-log.ts` (`SessionLog`) — trwały log sesji per agent, **plik na sesję**.
+    `SessionLog(dir, now?)` wystawia `sink: SessionEventSink` (pomija `partial`,
+    formatuje przez `formatSessionEvent`, prefiksuje `[HH:MM:SS]`); na zdarzeniu `init`
+    otwiera nowy plik `dir/<YYYY-MM-DD>/<HH-MM-SS>-<sessionId>.log` (folder dnia tworzony
+    leniwie), zdarzenia przed pierwszym `init` idą do pliku `…-nieznana.log`; kolejny
+    `init` zamyka poprzedni plik i otwiera następny. `close()` (async) czeka na flush
+    strumieni. `teeSession(reporter, sink)` zwraca kopię reportera z `session`
+    rozgałęzionym do reportera i do sinku logu.
+    `start.ts` tworzy po jednym `SessionLog` na agenta (`logs/monitor`, `logs/executor`),
+    owija nimi reportery przez `teeSession` i zamyka je w `finally`.
+    `formatSessionEvent` mieszka w `session-events.ts` (obok definicji zdarzeń), używany
+    zarówno przez `status.ts` (tail dashboardu), jak i `session-log.ts` (plik logu).
 
 `report.ts` — kontrakt raportu zadań (`TASK_REPORT_CONTRACT`, `taskReportSchema`,
 `parseTaskReport`: ostatni blok ` ```json ` albo surowy JSON → walidacja zod →
@@ -152,9 +171,10 @@ po każdym utrwaleniu zmiany zasilają tabelę zadań dashboardu.
 
 - **Model danych konfiguracji jest środowiskowy** — jedynym źródłem prawdy jest `.env`
   (walidowany zod w `config.ts`), zmienne w przestrzeniach `CLAUDE_WORKER_MONITOR_*`
-  i `CLAUDE_WORKER_EXECUTOR_*` + wspólne (`TASKS_FILE`, `STREAM_PARTIAL`, `CWD`).
+  i `CLAUDE_WORKER_EXECUTOR_*` + wspólne (`TASKS_FILE`, `LOGS_DIR`, `STREAM_PARTIAL`, `CWD`).
   `.env` i `prompts/*.prompt.md` są w `.gitignore`; `prompts/*.system.md` (definicje ról)
-  są wersjonowane.
+  są wersjonowane. `CLAUDE_WORKER_LOGS_DIR` (domyślnie `./logs`) wskazuje katalog logów
+  sesji; sam katalog `logs/` jest w `.gitignore`.
 - **Kontrakty techniczne wstrzykuje kod** — `TASK_REPORT_CONTRACT` (monitor)
   i `TASK_EXECUTION_CONTRACT` (egzekutor) doklejane do system promptów w pętlach;
   użytkownik nie może ich zepsuć edycją plików promptów.

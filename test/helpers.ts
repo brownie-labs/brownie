@@ -189,6 +189,7 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     streamPartial: false,
     cwd: process.cwd(),
     tasksFilePath: join(process.cwd(), "data", "tasks.json"),
+    logsDir: join(process.cwd(), "logs"),
     childEnv: { ...process.env },
     ...overrides,
   };

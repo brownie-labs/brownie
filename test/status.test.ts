@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatSessionEvent, WorkerStatusStore } from "../src/status.js";
+import { formatSessionEvent } from "../src/session-events.js";
+import { WorkerStatusStore } from "../src/status.js";
 import type { Task } from "../src/types.js";
 
 function createStore(

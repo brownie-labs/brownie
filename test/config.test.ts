@@ -76,6 +76,7 @@ describe("envSchema", () => {
       "./prompts/executor.system.md",
     );
     expect(env.CLAUDE_WORKER_TASKS_FILE).toBe("./data/tasks.json");
+    expect(env.CLAUDE_WORKER_LOGS_DIR).toBe("./logs");
     expect(env.CLAUDE_WORKER_STREAM_PARTIAL).toBe(true);
     expect(env.CLAUDE_WORKER_CWD).toBe("./workspace");
   });
@@ -232,6 +233,7 @@ describe("loadWorkerConfig", () => {
         "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
         ...PROMPT_FILE_ENV,
         "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
+        "CLAUDE_WORKER_LOGS_DIR=./dzienniki",
         "CLAUDE_WORKER_CWD=./ws",
       ].join("\n"),
     );
@@ -248,6 +250,7 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.promptPath).toBe(join(dir, "e.md"));
     expect(config.executor.systemPromptPath).toBe(join(dir, "es.md"));
     expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));
+    expect(config.logsDir).toBe(join(dir, "dzienniki"));
     expect(config.cwd).toBe(join(dir, "ws"));
     expect(config.streamPartial).toBe(true);
     expect(config.monitor.schedule).toBeNull();

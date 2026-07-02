@@ -1,4 +1,8 @@
-import type { SessionEvent, SessionEventSink } from "./session-events.js";
+import {
+  formatSessionEvent,
+  type SessionEvent,
+  type SessionEventSink,
+} from "./session-events.js";
 import type { Task } from "./types.js";
 
 export type MonitorPhase =
@@ -72,29 +76,6 @@ const TAIL_LINE_MAX = 300;
 
 function clipLine(line: string): string {
   return line.length > TAIL_LINE_MAX ? `${line.slice(0, TAIL_LINE_MAX)}…` : line;
-}
-
-export function formatSessionEvent(
-  event: Exclude<SessionEvent, { type: "partial" }>,
-): string {
-  switch (event.type) {
-    case "init":
-      return `init · model=${event.model} · session=${event.sessionId} · narzędzia: ${event.toolCount}`;
-    case "text":
-      return event.text;
-    case "toolUse":
-      return `🔧 ${event.name} ${event.input}`;
-    case "toolResult":
-      return `${event.isError ? "⚠ wynik(błąd)" : "↳ wynik"} ${event.content}`;
-    case "raw":
-      return `(nie-JSON) ${event.line}`;
-    case "stderr":
-      return `stderr: ${event.line}`;
-    case "killing":
-      return `⏹ Zatrzymuję sesję (${event.reason})…`;
-    case "procError":
-      return `✖ ${event.message}`;
-  }
 }
 
 interface AgentState<Phase, Outcome> {

@@ -81,6 +81,7 @@ export const envSchema = z.object({
     .nonnegative()
     .default(30_000),
   CLAUDE_WORKER_TASKS_FILE: z.string().trim().min(1).default("./data/tasks.json"),
+  CLAUDE_WORKER_LOGS_DIR: z.string().trim().min(1).default("./logs"),
   CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv(true),
   CLAUDE_WORKER_CWD: z.string().trim().min(1).default("./workspace"),
 });
@@ -179,6 +180,7 @@ export async function loadWorkerConfig(
 
   const cwd = resolveFromCwd(env.CLAUDE_WORKER_CWD);
   const tasksFilePath = resolveFromCwd(env.CLAUDE_WORKER_TASKS_FILE);
+  const logsDir = resolveFromCwd(env.CLAUDE_WORKER_LOGS_DIR);
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   if (childEnv.CLAUDE_CONFIG_DIR) {
@@ -209,6 +211,7 @@ export async function loadWorkerConfig(
     streamPartial: env.CLAUDE_WORKER_STREAM_PARTIAL,
     cwd,
     tasksFilePath,
+    logsDir,
     childEnv,
   };
 }
