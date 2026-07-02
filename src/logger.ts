@@ -8,4 +8,5 @@ export const logger = createConsola({
   },
 });
 
-export const sessionLogger = logger.withTag("session");
+export const monitorLogger = logger.withTag("monitor");
+export const executorLogger = logger.withTag("executor");

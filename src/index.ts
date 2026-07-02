@@ -6,7 +6,8 @@ import { configureCommand } from "./configure.js";
 const main = defineCommand({
   meta: {
     name: "claude-worker",
-    description: "Cyklicznie uruchamia sesje Claude Code (claude -p) w stałym rytmie",
+    description:
+      "Dwuagentowy worker Claude Code: monitor cyklicznie zgłasza zadania, egzekutor je wykonuje",
   },
   subCommands: {
     start: startCommand,

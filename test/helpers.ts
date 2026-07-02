@@ -4,7 +4,8 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { ConsolaInstance } from "consola";
-import type { WorkerConfig } from "../src/types.js";
+import type { SessionSpec } from "../src/runner.js";
+import type { AgentConfig, MonitorConfig, WorkerConfig } from "../src/types.js";
 
 export function createTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "claude-worker-test-"));
@@ -28,10 +29,11 @@ export function snapshotEnv(): () => void {
 }
 
 export interface SeedWorkerFilesOptions {
-  layout?: "prompts" | "flat";
   env?: string | false;
-  prompt?: string;
-  system?: string;
+  monitorPrompt?: string;
+  monitorSystem?: string;
+  executorPrompt?: string;
+  executorSystem?: string;
 }
 
 export async function seedWorkerFiles(
@@ -39,15 +41,18 @@ export async function seedWorkerFiles(
   options: SeedWorkerFilesOptions = {},
 ): Promise<void> {
   const {
-    layout = "prompts",
-    env = "CLAUDE_WORKER_MODEL=haiku\n",
-    prompt = "zadanie\n",
-    system = "system\n",
+    env = "CLAUDE_WORKER_MONITOR_MODEL=haiku\n",
+    monitorPrompt = "obserwuj\n",
+    monitorSystem = "system monitora\n",
+    executorPrompt = "wykonuj\n",
+    executorSystem = "system egzekutora\n",
   } = options;
-  const promptsDir = layout === "prompts" ? join(dir, "prompts") : dir;
+  const promptsDir = join(dir, "prompts");
   await mkdir(promptsDir, { recursive: true });
-  await writeFile(join(promptsDir, "prompt.md"), prompt, "utf8");
-  await writeFile(join(promptsDir, "system.md"), system, "utf8");
+  await writeFile(join(promptsDir, "monitor.prompt.md"), monitorPrompt, "utf8");
+  await writeFile(join(promptsDir, "monitor.system.md"), monitorSystem, "utf8");
+  await writeFile(join(promptsDir, "executor.prompt.md"), executorPrompt, "utf8");
+  await writeFile(join(promptsDir, "executor.system.md"), executorSystem, "utf8");
   if (env !== false) await writeFile(join(dir, ".env"), env, "utf8");
 }
 
@@ -80,7 +85,7 @@ export function loggerModuleMock(): Record<string, unknown> {
     success: vi.fn(),
     start: vi.fn(),
   };
-  return { logger: shared, sessionLogger: shared };
+  return { logger: shared, monitorLogger: shared, executorLogger: shared };
 }
 
 export interface FakeLogger {
@@ -110,18 +115,55 @@ export function createFakeLogger(): FakeLogger {
   };
 }
 
+export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
+  return {
+    model: "haiku",
+    promptPath: "/dev/null",
+    systemPromptPath: "/dev/null",
+    permissionMode: undefined,
+    sessionTimeoutMs: undefined,
+    ...overrides,
+  };
+}
+
+export function buildMonitorConfig(
+  overrides: Partial<MonitorConfig> = {},
+): MonitorConfig {
+  return {
+    ...buildAgentConfig(),
+    intervalMs: 300_000,
+    ...overrides,
+  };
+}
+
 export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig {
   return {
     command: fakeClaudePath,
+    monitor: buildMonitorConfig(),
+    executor: buildAgentConfig({ model: "opus" }),
+    streamPartial: false,
+    cwd: process.cwd(),
+    tasksFilePath: join(process.cwd(), "data", "tasks.json"),
+    childEnv: { ...process.env },
+    ...overrides,
+  };
+}
+
+export function buildSessionSpec(
+  log: ConsolaInstance,
+  overrides: Partial<SessionSpec> = {},
+): SessionSpec {
+  return {
+    command: fakeClaudePath,
     model: "haiku",
-    intervalMs: 300_000,
-    promptPath: "/dev/null",
-    systemPromptPath: "/dev/null",
+    systemPrompt: "system\n",
+    prompt: "zadanie\n",
     permissionMode: undefined,
     sessionTimeoutMs: undefined,
     streamPartial: false,
     cwd: process.cwd(),
     childEnv: { ...process.env },
+    log,
     ...overrides,
   };
 }

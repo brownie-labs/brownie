@@ -18,8 +18,12 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 
-# Prompt jest częścią konfiguracji środowiska (system.md zostaje w repo)
+# Prompty agentów są częścią konfiguracji środowiska (pliki *.system.md zostają w repo)
+prompts/*.prompt.md
 prompts/prompt.md
+
+# Trwały magazyn zadań workera
+data/
 
 # Katalog roboczy sesji Claude (izolacja od kodu agenta)
 workspace/

@@ -23,12 +23,14 @@ function queueAnswers(...answers: unknown[]): void {
 describe("configureCommand", () => {
   let dir: string;
   let envPath: string;
-  let promptPath: string;
+  let monitorPromptPath: string;
+  let executorPromptPath: string;
 
   beforeEach(async () => {
     dir = await createTempDir();
     envPath = join(dir, ".env");
-    promptPath = join(dir, "prompts", "prompt.md");
+    monitorPromptPath = join(dir, "prompts", "monitor.prompt.md");
+    executorPromptPath = join(dir, "prompts", "executor.prompt.md");
     vi.spyOn(process, "cwd").mockReturnValue(dir);
   });
 
@@ -37,39 +39,42 @@ describe("configureCommand", () => {
     await removeTempDir(dir);
   });
 
-  it("zapisuje .env i prompt bez CLAUDE_CONFIG_DIR", async () => {
-    queueAnswers("sonnet", "5", "zrób raport", false);
+  it("zapisuje .env i prompty obu agentów bez CLAUDE_CONFIG_DIR", async () => {
+    queueAnswers("haiku", "5", "obserwuj Redmine", "opus", "wykonuj rzetelnie", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MODEL=sonnet");
-    expect(env).toContain("CLAUDE_WORKER_INTERVAL_MS=300000");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_MODEL=haiku");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=300000");
+    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=opus");
     expect(env).not.toContain("CLAUDE_CONFIG_DIR");
-    expect(await readFile(promptPath, "utf8")).toBe("zrób raport\n");
+    expect(await readFile(monitorPromptPath, "utf8")).toBe("obserwuj Redmine\n");
+    expect(await readFile(executorPromptPath, "utf8")).toBe("wykonuj rzetelnie\n");
   });
 
   it("dopisuje CLAUDE_CONFIG_DIR gdy wybrany", async () => {
-    queueAnswers("haiku", "2", "zadanie", true, "~/profil-claude");
+    queueAnswers("haiku", "2", "obserwuj", "sonnet", "wykonuj", true, "~/profil-claude");
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
     expect(env).toContain("CLAUDE_CONFIG_DIR=~/profil-claude");
+    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=sonnet");
   });
 
   it("ponawia pytanie o interwał przy błędnej wartości", async () => {
-    queueAnswers("haiku", "0", "abc", "3", "zadanie", false);
+    queueAnswers("haiku", "0", "abc", "3", "obserwuj", "opus", "wykonuj", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_INTERVAL_MS=180000");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=180000");
   });
 
   it("obsługuje przecinek dziesiętny w interwale", async () => {
-    queueAnswers("haiku", "1,5", "zadanie", false);
+    queueAnswers("haiku", "1,5", "obserwuj", "opus", "wykonuj", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_INTERVAL_MS=90000");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=90000");
   });
 
   it("anulowanie nie zapisuje żadnych plików", async () => {
@@ -79,7 +84,8 @@ describe("configureCommand", () => {
 
     await expect(runConfigure()).resolves.toBeUndefined();
     expect(existsSync(envPath)).toBe(false);
-    expect(existsSync(promptPath)).toBe(false);
+    expect(existsSync(monitorPromptPath)).toBe(false);
+    expect(existsSync(executorPromptPath)).toBe(false);
   });
 
   it("odmowa nadpisania istniejących plików kończy bez zmian", async () => {
@@ -89,5 +95,6 @@ describe("configureCommand", () => {
     await runConfigure();
 
     expect(await readFile(envPath, "utf8")).toBe("STARE=1\n");
+    expect(existsSync(monitorPromptPath)).toBe(false);
   });
 });

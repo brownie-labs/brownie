@@ -8,6 +8,7 @@ import { logger } from "./logger.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
 const CANCEL_MESSAGE = "Przerwano — nic nie zmieniono.";
+const MODELS = ["haiku", "sonnet", "opus"];
 
 function ask<T extends PromptOptions>(message: string, options: T) {
   return consola.prompt(message, { ...options, cancel: "reject" as const });
@@ -24,10 +25,29 @@ async function confirmOverwrite(paths: string[]): Promise<boolean> {
   return ask("Nadpisać?", { type: "confirm", initial: false });
 }
 
-function buildEnv(model: string, intervalMs: number, configDir?: string): string {
+async function askIntervalMinutes(): Promise<number> {
+  let minutes = NaN;
+  while (!(minutes > 0)) {
+    const raw = await ask("Interwał monitora w minutach", {
+      type: "text",
+      initial: "5",
+    });
+    minutes = Number(raw.replace(",", "."));
+    if (!(minutes > 0)) logger.warn("Podaj dodatnią liczbę minut.");
+  }
+  return minutes;
+}
+
+function buildEnv(
+  monitorModel: string,
+  executorModel: string,
+  intervalMs: number,
+  configDir?: string,
+): string {
   const lines = [
-    `CLAUDE_WORKER_MODEL=${model}`,
-    `CLAUDE_WORKER_INTERVAL_MS=${intervalMs}`,
+    `CLAUDE_WORKER_MONITOR_MODEL=${monitorModel}`,
+    `CLAUDE_WORKER_MONITOR_INTERVAL_MS=${intervalMs}`,
+    `CLAUDE_WORKER_EXECUTOR_MODEL=${executorModel}`,
   ];
   if (configDir) lines.push("", `CLAUDE_CONFIG_DIR=${configDir}`);
   return `${lines.join("\n")}\n`;
@@ -36,36 +56,54 @@ function buildEnv(model: string, intervalMs: number, configDir?: string): string
 export const configureCommand = defineCommand({
   meta: {
     name: "configure",
-    description: "Interaktywnie tworzy pliki .env oraz prompts/prompt.md",
+    description:
+      "Interaktywnie tworzy .env oraz prompty obu agentów (monitora i egzekutora)",
   },
   async run() {
     const envPath = resolveEnvPath();
-    const promptPath = resolve(process.cwd(), "prompts", "prompt.md");
+    const promptsDir = resolve(process.cwd(), "prompts");
+    const monitorPromptPath = resolve(promptsDir, "monitor.prompt.md");
+    const executorPromptPath = resolve(promptsDir, "executor.prompt.md");
 
     try {
-      if (!(await confirmOverwrite([envPath, promptPath]))) {
+      if (!(await confirmOverwrite([envPath, monitorPromptPath, executorPromptPath]))) {
         logger.info(CANCEL_MESSAGE);
         return;
       }
 
-      const model = await ask("Model sesji", {
+      logger.info(
+        "Worker składa się z dwóch agentów: monitor cyklicznie wykrywa pracę do zrobienia " +
+          "i dodaje zadania na listę, a egzekutor wykonuje zadania z listy — każde w osobnej sesji.",
+      );
+
+      const monitorModel = await ask("Model monitora (tani — tylko wykrywa zadania)", {
         type: "select",
-        options: ["haiku", "sonnet", "opus"],
+        options: MODELS,
         initial: "haiku",
       });
 
-      let intervalMinutes = NaN;
-      while (!(intervalMinutes > 0)) {
-        const raw = await ask("Interwał w minutach", {
-          type: "text",
-          initial: "5",
-        });
-        intervalMinutes = Number(raw.replace(",", "."));
-        if (!(intervalMinutes > 0)) logger.warn("Podaj dodatnią liczbę minut.");
-      }
+      const intervalMinutes = await askIntervalMinutes();
       const intervalMs = Math.round(intervalMinutes * 60_000);
 
-      const prompt = (await ask("Zadanie workera (prompt)", { type: "text" })).trim();
+      const monitorPrompt = (
+        await ask(
+          "Co monitor ma obserwować? (np. „zadania w Redmine przypisane do mnie ze statusem Open”)",
+          { type: "text" },
+        )
+      ).trim();
+
+      const executorModel = await ask("Model egzekutora (mocny — wykonuje zadania)", {
+        type: "select",
+        options: MODELS,
+        initial: "opus",
+      });
+
+      const executorPrompt = (
+        await ask(
+          "Kim jest egzekutor i jak ma wykonywać zadania? (tożsamość, zasady pracy, dostępne narzędzia)",
+          { type: "text" },
+        )
+      ).trim();
 
       const useConfigDir = await ask(
         "Użyć osobnego katalogu konfiguracji Claude (CLAUDE_CONFIG_DIR)?",
@@ -81,14 +119,21 @@ export const configureCommand = defineCommand({
         ).trim();
       }
 
-      await mkdir(dirname(promptPath), { recursive: true });
-      await writeFile(envPath, buildEnv(model, intervalMs, configDir), "utf8");
-      await writeFile(promptPath, `${prompt}\n`, "utf8");
+      await mkdir(dirname(monitorPromptPath), { recursive: true });
+      await writeFile(
+        envPath,
+        buildEnv(monitorModel, executorModel, intervalMs, configDir),
+        "utf8",
+      );
+      await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");
+      await writeFile(executorPromptPath, `${executorPrompt}\n`, "utf8");
 
       logger.success(`Zapisano ${envPath}`);
-      logger.success(`Zapisano ${promptPath}`);
+      logger.success(`Zapisano ${monitorPromptPath}`);
+      logger.success(`Zapisano ${executorPromptPath}`);
       logger.info(
-        "System prompt jest w prompts/system.md (wersjonowany w repo) — możesz go edytować ręcznie.",
+        "Definicje ról agentów są w prompts/monitor.system.md i prompts/executor.system.md " +
+          "(wersjonowane w repo) — możesz je edytować ręcznie.",
       );
       logger.info("Uruchom workera: pnpm start");
     } catch (err) {

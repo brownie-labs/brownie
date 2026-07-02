@@ -2,8 +2,17 @@
 
 import { writeFileSync } from "node:fs";
 
-const mode = process.env.FAKE_CLAUDE_MODE ?? "ok";
-const promptOut = process.env.FAKE_CLAUDE_PROMPT_OUT;
+const modelIndex = process.argv.indexOf("--model");
+const model = modelIndex >= 0 ? process.argv[modelIndex + 1] : undefined;
+const suffix = model ? `_${model.toUpperCase()}` : "";
+
+function pick(name) {
+  return process.env[name + suffix] ?? process.env[name];
+}
+
+const mode = pick("FAKE_CLAUDE_MODE") ?? "ok";
+const promptOut = pick("FAKE_CLAUDE_PROMPT_OUT");
+const resultText = pick("FAKE_CLAUDE_RESULT_TEXT");
 
 function emit(event) {
   process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -13,7 +22,7 @@ function emitOk(isError) {
   emit({
     type: "system",
     subtype: "init",
-    model: "haiku",
+    model: model ?? "haiku",
     session_id: "sess-1",
     tools: ["Read", "Bash"],
   });
@@ -27,6 +36,7 @@ function emitOk(isError) {
     total_cost_usd: 0.0123,
     num_turns: 2,
     session_id: "sess-1",
+    ...(resultText !== undefined ? { result: resultText } : {}),
   });
 }
 

@@ -64,13 +64,22 @@ describe("resolveFromCwd", () => {
 describe("envSchema", () => {
   it("stosuje wartości domyślne", () => {
     const env = envSchema.parse({});
-    expect(env.CLAUDE_WORKER_MODEL).toBe("haiku");
-    expect(env.CLAUDE_WORKER_INTERVAL_MS).toBe(300_000);
-    expect(env.CLAUDE_WORKER_PROMPT_FILE).toBe("./prompts/prompt.md");
-    expect(env.CLAUDE_WORKER_SYSTEM_PROMPT_FILE).toBe("./prompts/system.md");
+    expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("haiku");
+    expect(env.CLAUDE_WORKER_MONITOR_INTERVAL_MS).toBe(300_000);
+    expect(env.CLAUDE_WORKER_MONITOR_PROMPT_FILE).toBe("./prompts/monitor.prompt.md");
+    expect(env.CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE).toBe(
+      "./prompts/monitor.system.md",
+    );
+    expect(env.CLAUDE_WORKER_MONITOR_PERMISSION_MODE).toBeUndefined();
+    expect(env.CLAUDE_WORKER_EXECUTOR_MODEL).toBe("opus");
+    expect(env.CLAUDE_WORKER_EXECUTOR_PROMPT_FILE).toBe("./prompts/executor.prompt.md");
+    expect(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE).toBe(
+      "./prompts/executor.system.md",
+    );
+    expect(env.CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE).toBeUndefined();
+    expect(env.CLAUDE_WORKER_TASKS_FILE).toBe("./data/tasks.json");
     expect(env.CLAUDE_WORKER_STREAM_PARTIAL).toBe(true);
     expect(env.CLAUDE_WORKER_CWD).toBe("./workspace");
-    expect(env.CLAUDE_WORKER_PERMISSION_MODE).toBeUndefined();
   });
 
   it.each(["1", "true", "yes", "on", "ON", "True"])(
@@ -100,45 +109,71 @@ describe("envSchema", () => {
     ).toBe(true);
   });
 
-  it("odrzuca niepozytywny interwał", () => {
-    expect(envSchema.safeParse({ CLAUDE_WORKER_INTERVAL_MS: "0" }).success).toBe(false);
-    expect(envSchema.safeParse({ CLAUDE_WORKER_INTERVAL_MS: "-5" }).success).toBe(false);
+  it("odrzuca niepozytywny interwał monitora", () => {
+    expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "0" }).success).toBe(
+      false,
+    );
+    expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "-5" }).success).toBe(
+      false,
+    );
   });
 
-  it("odrzuca niecałkowity interwał", () => {
-    expect(envSchema.safeParse({ CLAUDE_WORKER_INTERVAL_MS: "1.5" }).success).toBe(false);
-  });
-
-  it("odrzuca tryb uprawnień spoza enuma", () => {
+  it("odrzuca niecałkowity interwał monitora", () => {
     expect(
-      envSchema.safeParse({ CLAUDE_WORKER_PERMISSION_MODE: "wymyślony" }).success,
+      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "1.5" }).success,
     ).toBe(false);
   });
 
-  it("akceptuje poprawny tryb uprawnień", () => {
+  it("odrzuca tryb uprawnień spoza enuma (dla obu agentów)", () => {
     expect(
-      envSchema.parse({ CLAUDE_WORKER_PERMISSION_MODE: "plan" })
-        .CLAUDE_WORKER_PERMISSION_MODE,
-    ).toBe("plan");
+      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_PERMISSION_MODE: "wymyślony" }).success,
+    ).toBe(false);
+    expect(
+      envSchema.safeParse({ CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE: "wymyślony" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("akceptuje poprawne tryby uprawnień", () => {
+    const env = envSchema.parse({
+      CLAUDE_WORKER_MONITOR_PERMISSION_MODE: "plan",
+      CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE: "acceptEdits",
+    });
+    expect(env.CLAUDE_WORKER_MONITOR_PERMISSION_MODE).toBe("plan");
+    expect(env.CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE).toBe("acceptEdits");
   });
 });
 
 describe("resolvePromptPaths", () => {
-  it("rozwiązuje ścieżki ze sparsowanego env", () => {
-    const { promptPath, systemPromptPath } = resolvePromptPaths(
+  it("rozwiązuje ścieżki obu agentów ze sparsowanego env", () => {
+    const paths = resolvePromptPaths(
       envSchema.parse({
-        CLAUDE_WORKER_PROMPT_FILE: "custom/p.md",
-        CLAUDE_WORKER_SYSTEM_PROMPT_FILE: "/abs/s.md",
+        CLAUDE_WORKER_MONITOR_PROMPT_FILE: "custom/m.md",
+        CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE: "/abs/ms.md",
+        CLAUDE_WORKER_EXECUTOR_PROMPT_FILE: "custom/e.md",
+        CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE: "/abs/es.md",
       }),
     );
-    expect(promptPath).toBe(resolve(process.cwd(), "custom/p.md"));
-    expect(systemPromptPath).toBe("/abs/s.md");
+    expect(paths.monitor.promptPath).toBe(resolve(process.cwd(), "custom/m.md"));
+    expect(paths.monitor.systemPromptPath).toBe("/abs/ms.md");
+    expect(paths.executor.promptPath).toBe(resolve(process.cwd(), "custom/e.md"));
+    expect(paths.executor.systemPromptPath).toBe("/abs/es.md");
   });
 
   it("używa domyślnych ścieżek przy pustym źródle", () => {
-    const { promptPath, systemPromptPath } = resolvePromptPaths(envSchema.parse({}));
-    expect(promptPath).toBe(resolve(process.cwd(), "./prompts/prompt.md"));
-    expect(systemPromptPath).toBe(resolve(process.cwd(), "./prompts/system.md"));
+    const paths = resolvePromptPaths(envSchema.parse({}));
+    expect(paths.monitor.promptPath).toBe(
+      resolve(process.cwd(), "./prompts/monitor.prompt.md"),
+    );
+    expect(paths.monitor.systemPromptPath).toBe(
+      resolve(process.cwd(), "./prompts/monitor.system.md"),
+    );
+    expect(paths.executor.promptPath).toBe(
+      resolve(process.cwd(), "./prompts/executor.prompt.md"),
+    );
+    expect(paths.executor.systemPromptPath).toBe(
+      resolve(process.cwd(), "./prompts/executor.system.md"),
+    );
   });
 });
 
@@ -162,19 +197,30 @@ describe("loadWorkerConfig", () => {
     await writeFile(join(dir, ".env"), content, "utf8");
   }
 
+  const PROMPT_FILE_ENV = [
+    "CLAUDE_WORKER_MONITOR_PROMPT_FILE=./m.md",
+    "CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE=./ms.md",
+    "CLAUDE_WORKER_EXECUTOR_PROMPT_FILE=./e.md",
+    "CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE=./es.md",
+  ];
+
   async function writePrompts(): Promise<void> {
-    await writeFile(join(dir, "prompt.md"), "zadanie\n", "utf8");
-    await writeFile(join(dir, "system.md"), "system\n", "utf8");
+    for (const name of ["m.md", "ms.md", "e.md", "es.md"]) {
+      await writeFile(join(dir, name), `${name}\n`, "utf8");
+    }
   }
 
   it("buduje pełny WorkerConfig z poprawnego .env", async () => {
     await writePrompts();
     await writeEnv(
       [
-        "CLAUDE_WORKER_MODEL=sonnet",
-        "CLAUDE_WORKER_INTERVAL_MS=60000",
-        "CLAUDE_WORKER_PROMPT_FILE=./prompt.md",
-        "CLAUDE_WORKER_SYSTEM_PROMPT_FILE=./system.md",
+        "CLAUDE_WORKER_MONITOR_MODEL=sonnet",
+        "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
+        "CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS=120000",
+        "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
+        "CLAUDE_WORKER_EXECUTOR_PERMISSION_MODE=acceptEdits",
+        ...PROMPT_FILE_ENV,
+        "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
         "CLAUDE_WORKER_CWD=./ws",
       ].join("\n"),
     );
@@ -182,34 +228,32 @@ describe("loadWorkerConfig", () => {
     const config = await loadWorkerConfig();
 
     expect(config.command).toBe(COMMAND);
-    expect(config.model).toBe("sonnet");
-    expect(config.intervalMs).toBe(60000);
-    expect(config.promptPath).toBe(join(dir, "prompt.md"));
-    expect(config.systemPromptPath).toBe(join(dir, "system.md"));
+    expect(config.monitor.model).toBe("sonnet");
+    expect(config.monitor.intervalMs).toBe(60000);
+    expect(config.monitor.sessionTimeoutMs).toBe(120000);
+    expect(config.monitor.promptPath).toBe(join(dir, "m.md"));
+    expect(config.monitor.systemPromptPath).toBe(join(dir, "ms.md"));
+    expect(config.executor.model).toBe("opus");
+    expect(config.executor.permissionMode).toBe("acceptEdits");
+    expect(config.executor.promptPath).toBe(join(dir, "e.md"));
+    expect(config.executor.systemPromptPath).toBe(join(dir, "es.md"));
+    expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));
     expect(config.cwd).toBe(join(dir, "ws"));
     expect(config.streamPartial).toBe(true);
   });
 
-  it("rzuca, gdy brak pliku promptu", async () => {
-    await writeFile(join(dir, "system.md"), "system\n", "utf8");
-    await writeEnv(
-      [
-        "CLAUDE_WORKER_PROMPT_FILE=./prompt.md",
-        "CLAUDE_WORKER_SYSTEM_PROMPT_FILE=./system.md",
-      ].join("\n"),
-    );
+  it("rzuca, gdy brak któregokolwiek pliku promptu", async () => {
+    await writePrompts();
+    await removeTempDir(join(dir, "e.md"));
+    await writeEnv(PROMPT_FILE_ENV.join("\n"));
 
-    await expect(loadWorkerConfig()).rejects.toThrow(/plik promptu/);
+    await expect(loadWorkerConfig()).rejects.toThrow(/plik promptu egzekutora/);
   });
 
   it("rzuca czytelny błąd walidacji przy błędnym env", async () => {
     await writePrompts();
     await writeEnv(
-      [
-        "CLAUDE_WORKER_INTERVAL_MS=-1",
-        "CLAUDE_WORKER_PROMPT_FILE=./prompt.md",
-        "CLAUDE_WORKER_SYSTEM_PROMPT_FILE=./system.md",
-      ].join("\n"),
+      ["CLAUDE_WORKER_MONITOR_INTERVAL_MS=-1", ...PROMPT_FILE_ENV].join("\n"),
     );
 
     await expect(loadWorkerConfig()).rejects.toThrow(/Nieprawidłowa konfiguracja/);
@@ -217,25 +261,27 @@ describe("loadWorkerConfig", () => {
 
   it("z przekazanymi zweryfikowanymi ścieżkami pomija ponowną walidację plików", async () => {
     const verified = {
-      promptPath: join(dir, "nie-ma-prompt.md"),
-      systemPromptPath: join(dir, "nie-ma-system.md"),
+      monitor: {
+        promptPath: join(dir, "nie-ma-m.md"),
+        systemPromptPath: join(dir, "nie-ma-ms.md"),
+      },
+      executor: {
+        promptPath: join(dir, "nie-ma-e.md"),
+        systemPromptPath: join(dir, "nie-ma-es.md"),
+      },
     };
 
     const config = await loadWorkerConfig(undefined, verified);
 
-    expect(config.promptPath).toBe(verified.promptPath);
-    expect(config.systemPromptPath).toBe(verified.systemPromptPath);
+    expect(config.monitor.promptPath).toBe(verified.monitor.promptPath);
+    expect(config.monitor.systemPromptPath).toBe(verified.monitor.systemPromptPath);
+    expect(config.executor.promptPath).toBe(verified.executor.promptPath);
+    expect(config.executor.systemPromptPath).toBe(verified.executor.systemPromptPath);
   });
 
   it("rozwija ~ w CLAUDE_CONFIG_DIR w childEnv", async () => {
     await writePrompts();
-    await writeEnv(
-      [
-        "CLAUDE_WORKER_PROMPT_FILE=./prompt.md",
-        "CLAUDE_WORKER_SYSTEM_PROMPT_FILE=./system.md",
-        "CLAUDE_CONFIG_DIR=~/profil-claude",
-      ].join("\n"),
-    );
+    await writeEnv([...PROMPT_FILE_ENV, "CLAUDE_CONFIG_DIR=~/profil-claude"].join("\n"));
     delete process.env.CLAUDE_CONFIG_DIR;
 
     const config = await loadWorkerConfig();

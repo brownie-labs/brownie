@@ -173,7 +173,21 @@ describe("StreamRenderer", () => {
       costUsd: 0.5,
       numTurns: 4,
       sessionId: "sess-3",
+      resultText: undefined,
     });
+  });
+
+  it("getSummary przekazuje tekst z pola result", () => {
+    const r = new StreamRenderer(logger.instance, false);
+    r.handleLine(
+      line({
+        type: "result",
+        is_error: false,
+        session_id: "sess-5",
+        result: '{"tasks": []}',
+      }),
+    );
+    expect(r.getSummary().resultText).toBe('{"tasks": []}');
   });
 
   it("getSummary zwraca isError=true dla result z is_error", () => {

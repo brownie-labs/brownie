@@ -84,15 +84,43 @@ describe("CLI start (smoke E2E)", () => {
 
   afterEach(() => removeTempDir(dir));
 
-  it("uruchamia sesję i kończy czysto po SIGINT", async () => {
-    await seedWorkerFiles(dir, { env: "CLAUDE_WORKER_INTERVAL_MS=60000\n" });
-    const env = fakeClaudeCliEnv("ok", { CONSOLA_LEVEL: "5" });
+  it("monitor zgłasza zadanie, egzekutor je wykonuje, oba kończą czysto po SIGINT", async () => {
+    await seedWorkerFiles(dir, {
+      env: [
+        "CLAUDE_WORKER_MONITOR_MODEL=haiku",
+        "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
+        "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
+        "",
+      ].join("\n"),
+    });
+    const env = fakeClaudeCliEnv("ok", {
+      CONSOLA_LEVEL: "5",
+      FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({
+        tasks: [{ id: "e2e-1", title: "Zadanie testowe", description: "Opis e2e" }],
+      }),
+      FAKE_CLAUDE_PROMPT_OUT_OPUS: join(dir, "prompt-egzekutora.txt"),
+    });
 
-    const result = await runCli(dir, env, /Koniec sesji #1/);
+    const result = await runCli(dir, env, /Zadanie e2e-1 wykonane/);
 
-    expect(result.output).toMatch(/Worker uruchomiony/);
-    expect(result.output).toMatch(/Koniec sesji #1/);
-    expect(result.output).toMatch(/Scheduler zatrzymany/);
+    expect(result.output).toMatch(/Monitor uruchomiony/);
+    expect(result.output).toMatch(/Egzekutor uruchomiony/);
+    expect(result.output).toMatch(/nowe zadania: 1/);
+    expect(result.output).toMatch(/Zadanie e2e-1 wykonane/);
+    expect(result.output).toMatch(/Monitor zatrzymany/);
+    expect(result.output).toMatch(/Egzekutor zatrzymany/);
+
+    const store = JSON.parse(await readFile(join(dir, "data", "tasks.json"), "utf8")) as {
+      tasks: { id: string; status: string }[];
+    };
+    expect(store.tasks).toEqual([
+      expect.objectContaining({ id: "e2e-1", status: "done" }),
+    ]);
+
+    const executorPrompt = await readFile(join(dir, "prompt-egzekutora.txt"), "utf8");
+    expect(executorPrompt).toContain("## Zadanie do wykonania");
+    expect(executorPrompt).toContain("ID: e2e-1");
+    expect(executorPrompt).toContain("wykonuj");
   }, 30_000);
 
   it("kończy z kodem 1, gdy preflight nie przechodzi (brak .env)", async () => {

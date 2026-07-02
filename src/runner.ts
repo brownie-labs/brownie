@@ -1,54 +1,62 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { sessionLogger } from "./logger.js";
+import type { ConsolaInstance } from "consola";
 import { StreamRenderer } from "./stream.js";
-import type { SessionResult, WorkerConfig } from "./types.js";
+import type { PermissionMode } from "./config.js";
+import type { SessionResult } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
 
 type KillReason = "timeout" | "abort";
 
+export interface SessionSpec {
+  command: string;
+  model: string;
+  systemPrompt: string;
+  prompt: string;
+  permissionMode?: PermissionMode | undefined;
+  sessionTimeoutMs?: number | undefined;
+  streamPartial: boolean;
+  cwd: string;
+  childEnv: NodeJS.ProcessEnv;
+  log: ConsolaInstance;
+}
+
 export async function runSession(
-  config: WorkerConfig,
+  spec: SessionSpec,
   signal: AbortSignal,
 ): Promise<SessionResult> {
   const startedAt = Date.now();
 
-  const [prompt, systemPrompt] = await Promise.all([
-    readFile(config.promptPath, "utf8"),
-    readFile(config.systemPromptPath, "utf8"),
-  ]);
-
   const args = [
     "-p",
     "--model",
-    config.model,
+    spec.model,
     "--system-prompt",
-    systemPrompt,
+    spec.systemPrompt,
     "--output-format",
     "stream-json",
     "--verbose",
   ];
-  if (config.permissionMode) args.push("--permission-mode", config.permissionMode);
-  if (config.streamPartial) args.push("--include-partial-messages");
+  if (spec.permissionMode) args.push("--permission-mode", spec.permissionMode);
+  if (spec.streamPartial) args.push("--include-partial-messages");
 
-  const child = spawn(config.command, args, {
-    cwd: config.cwd,
-    env: config.childEnv,
+  const child = spawn(spec.command, args, {
+    cwd: spec.cwd,
+    env: spec.childEnv,
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const renderer = new StreamRenderer(sessionLogger, config.streamPartial);
+  const renderer = new StreamRenderer(spec.log, spec.streamPartial);
 
   const killState: { reason: KillReason | null } = { reason: null };
   const kill = (reason: KillReason): void => {
     killState.reason ??= reason;
-    killChild(child, reason);
+    killChild(child, reason, spec.log);
   };
 
-  const timeout = config.sessionTimeoutMs
-    ? setTimeout(() => kill("timeout"), config.sessionTimeoutMs)
+  const timeout = spec.sessionTimeoutMs
+    ? setTimeout(() => kill("timeout"), spec.sessionTimeoutMs)
     : undefined;
   const onAbort = () => kill("abort");
   signal.addEventListener("abort", onAbort, { once: true });
@@ -58,7 +66,7 @@ export async function runSession(
 
   const stderrRl = createInterface({ input: child.stderr });
   stderrRl.on("line", (line) => {
-    if (line.trim()) sessionLogger.debug(`stderr: ${line}`);
+    if (line.trim()) spec.log.debug(`stderr: ${line}`);
   });
 
   try {
@@ -71,13 +79,13 @@ export async function runSession(
       return {
         ok: false,
         durationMs: Date.now() - startedAt,
-        error: `Nie udało się uruchomić "${config.command}": ${spawnError.message}`,
+        error: `Nie udało się uruchomić "${spec.command}": ${spawnError.message}`,
       };
     }
 
-    child.on("error", (err) => sessionLogger.error(`Błąd procesu: ${err.message}`));
-    child.stdin.on("error", (err) => sessionLogger.debug(`stdin: ${err.message}`));
-    child.stdin.write(prompt);
+    child.on("error", (err) => spec.log.error(`Błąd procesu: ${err.message}`));
+    child.stdin.on("error", (err) => spec.log.debug(`stdin: ${err.message}`));
+    child.stdin.write(spec.prompt);
     child.stdin.end();
 
     const { code, exitSignal } = await new Promise<{
@@ -98,6 +106,7 @@ export async function runSession(
       costUsd: summary.costUsd,
       numTurns: summary.numTurns,
       sessionId: summary.sessionId,
+      resultText: summary.resultText,
       error: ok
         ? undefined
         : describeFailure(killState.reason, summary.isError, code, exitSignal),
@@ -123,9 +132,9 @@ function describeFailure(
   return `Proces zakończony sygnałem ${exitSignal ?? "?"}`;
 }
 
-function killChild(child: ChildProcess, reason: KillReason): void {
+function killChild(child: ChildProcess, reason: KillReason, log: ConsolaInstance): void {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  sessionLogger.warn(`Zatrzymuję sesję (${reason})…`);
+  log.warn(`Zatrzymuję sesję (${reason})…`);
   child.kill("SIGTERM");
   setTimeout(() => {
     if (child.exitCode === null && child.signalCode === null) {

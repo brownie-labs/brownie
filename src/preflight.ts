@@ -5,9 +5,10 @@ import {
   COMMAND,
   loadEnvFile,
   parseEnv,
+  PROMPT_FILE_LABELS,
   resolveEnvPath,
   resolvePromptPaths,
-  type PromptPaths,
+  type WorkerPromptPaths,
 } from "./config.js";
 import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
@@ -70,7 +71,7 @@ async function checkFile(path: string, label: string): Promise<Check> {
   );
 }
 
-export async function ensureReady(envFile?: string): Promise<PromptPaths> {
+export async function ensureReady(envFile?: string): Promise<WorkerPromptPaths> {
   loadEnvFile(envFile);
   const env = parseEnv(process.env);
   const paths = resolvePromptPaths(env);
@@ -78,8 +79,16 @@ export async function ensureReady(envFile?: string): Promise<PromptPaths> {
   const checks = await Promise.all([
     checkClaude(),
     Promise.resolve(checkEnvFile(envFile)),
-    checkFile(paths.promptPath, "plik promptu"),
-    checkFile(paths.systemPromptPath, "plik system promptu"),
+    checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
+    checkFile(
+      paths.monitor.systemPromptPath,
+      PROMPT_FILE_LABELS.monitor.systemPromptPath,
+    ),
+    checkFile(paths.executor.promptPath, PROMPT_FILE_LABELS.executor.promptPath),
+    checkFile(
+      paths.executor.systemPromptPath,
+      PROMPT_FILE_LABELS.executor.systemPromptPath,
+    ),
   ]);
 
   for (const result of checks) {

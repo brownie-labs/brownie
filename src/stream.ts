@@ -115,6 +115,7 @@ export class StreamRenderer {
           costUsd: event.total_cost_usd,
           numTurns: event.num_turns,
           sessionId: event.session_id,
+          resultText: event.result,
         };
         break;
     }
