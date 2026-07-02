@@ -6,8 +6,8 @@ export interface WorkerConfig {
   intervalMs: number;
   promptPath: string;
   systemPromptPath: string;
-  permissionMode?: PermissionMode;
-  sessionTimeoutMs?: number;
+  permissionMode?: PermissionMode | undefined;
+  sessionTimeoutMs?: number | undefined;
   streamPartial: boolean;
   cwd: string;
   childEnv: NodeJS.ProcessEnv;
@@ -16,15 +16,15 @@ export interface WorkerConfig {
 export interface SessionResult {
   ok: boolean;
   durationMs: number;
-  costUsd?: number;
-  numTurns?: number;
-  sessionId?: string;
-  error?: string;
+  costUsd?: number | undefined;
+  numTurns?: number | undefined;
+  sessionId?: string | undefined;
+  error?: string | undefined;
 }
 
 export interface SessionSummary {
-  costUsd?: number;
-  numTurns?: number;
-  sessionId?: string;
-  is_error?: boolean;
+  costUsd?: number | undefined;
+  numTurns?: number | undefined;
+  sessionId?: string | undefined;
+  isError?: boolean | undefined;
 }

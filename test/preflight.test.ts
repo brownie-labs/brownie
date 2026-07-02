@@ -1,34 +1,30 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTempDir, removeTempDir } from "./helpers.js";
+import { createTempDir, removeTempDir, seedWorkerFiles, snapshotEnv } from "./helpers.js";
 
-vi.mock("../src/logger.js", () => ({
-  logger: { success: vi.fn(), error: vi.fn() },
-  sessionLogger: { warn: vi.fn() },
-}));
+vi.mock("../src/logger.js", async () =>
+  (await import("./helpers.js")).loggerModuleMock(),
+);
 
 const { ensureReady } = await import("../src/preflight.js");
 
 describe("ensureReady", () => {
   let dir: string;
   let binDir: string;
-  let savedEnv: NodeJS.ProcessEnv;
+  let restoreEnv: () => void;
 
   beforeEach(async () => {
     dir = await createTempDir();
     binDir = join(dir, "bin");
-    savedEnv = { ...process.env };
+    restoreEnv = snapshotEnv();
 
     await mkdir(binDir, { recursive: true });
     const claude = join(binDir, "claude");
     await writeFile(claude, "#!/bin/sh\nexit 0\n", "utf8");
     await chmod(claude, 0o755);
 
-    await mkdir(join(dir, "prompts"), { recursive: true });
-    await writeFile(join(dir, "prompts", "prompt.md"), "zadanie\n", "utf8");
-    await writeFile(join(dir, "prompts", "system.md"), "system\n", "utf8");
-    await writeFile(join(dir, ".env"), "CLAUDE_WORKER_MODEL=haiku\n", "utf8");
+    await seedWorkerFiles(dir);
 
     vi.spyOn(process, "cwd").mockReturnValue(dir);
     process.env.PATH = binDir;
@@ -36,15 +32,15 @@ describe("ensureReady", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    for (const key of Object.keys(process.env)) {
-      if (!(key in savedEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, savedEnv);
+    restoreEnv();
     await removeTempDir(dir);
   });
 
-  it("przechodzi, gdy wszystko jest na miejscu", async () => {
-    await expect(ensureReady()).resolves.toBeUndefined();
+  it("przechodzi i zwraca zweryfikowane ścieżki promptów", async () => {
+    await expect(ensureReady()).resolves.toEqual({
+      promptPath: join(dir, "prompts", "prompt.md"),
+      systemPromptPath: join(dir, "prompts", "system.md"),
+    });
   });
 
   it("rzuca z podpowiedzią instalacji, gdy brak claude w PATH", async () => {

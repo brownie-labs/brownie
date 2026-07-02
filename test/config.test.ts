@@ -11,7 +11,7 @@ import {
   resolveFromCwd,
   resolvePromptPaths,
 } from "../src/config.js";
-import { createTempDir, removeTempDir } from "./helpers.js";
+import { createTempDir, removeTempDir, snapshotEnv } from "./helpers.js";
 
 describe("expandHome", () => {
   it("zamienia samo ~ na katalog domowy", () => {
@@ -124,17 +124,19 @@ describe("envSchema", () => {
 });
 
 describe("resolvePromptPaths", () => {
-  it("rozwiązuje ścieżki z przekazanego źródła env", () => {
-    const { promptPath, systemPromptPath } = resolvePromptPaths({
-      CLAUDE_WORKER_PROMPT_FILE: "custom/p.md",
-      CLAUDE_WORKER_SYSTEM_PROMPT_FILE: "/abs/s.md",
-    });
+  it("rozwiązuje ścieżki ze sparsowanego env", () => {
+    const { promptPath, systemPromptPath } = resolvePromptPaths(
+      envSchema.parse({
+        CLAUDE_WORKER_PROMPT_FILE: "custom/p.md",
+        CLAUDE_WORKER_SYSTEM_PROMPT_FILE: "/abs/s.md",
+      }),
+    );
     expect(promptPath).toBe(resolve(process.cwd(), "custom/p.md"));
     expect(systemPromptPath).toBe("/abs/s.md");
   });
 
   it("używa domyślnych ścieżek przy pustym źródle", () => {
-    const { promptPath, systemPromptPath } = resolvePromptPaths({});
+    const { promptPath, systemPromptPath } = resolvePromptPaths(envSchema.parse({}));
     expect(promptPath).toBe(resolve(process.cwd(), "./prompts/prompt.md"));
     expect(systemPromptPath).toBe(resolve(process.cwd(), "./prompts/system.md"));
   });
@@ -142,20 +144,17 @@ describe("resolvePromptPaths", () => {
 
 describe("loadWorkerConfig", () => {
   let dir: string;
-  let savedEnv: NodeJS.ProcessEnv;
+  let restoreEnv: () => void;
 
   beforeEach(async () => {
     dir = await createTempDir();
-    savedEnv = { ...process.env };
+    restoreEnv = snapshotEnv();
     vi.spyOn(process, "cwd").mockReturnValue(dir);
   });
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    for (const key of Object.keys(process.env)) {
-      if (!(key in savedEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, savedEnv);
+    restoreEnv();
     await removeTempDir(dir);
   });
 
@@ -214,6 +213,18 @@ describe("loadWorkerConfig", () => {
     );
 
     await expect(loadWorkerConfig()).rejects.toThrow(/Nieprawidłowa konfiguracja/);
+  });
+
+  it("z przekazanymi zweryfikowanymi ścieżkami pomija ponowną walidację plików", async () => {
+    const verified = {
+      promptPath: join(dir, "nie-ma-prompt.md"),
+      systemPromptPath: join(dir, "nie-ma-system.md"),
+    };
+
+    const config = await loadWorkerConfig(undefined, verified);
+
+    expect(config.promptPath).toBe(verified.promptPath);
+    expect(config.systemPromptPath).toBe(verified.systemPromptPath);
   });
 
   it("rozwija ~ w CLAUDE_CONFIG_DIR w childEnv", async () => {

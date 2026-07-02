@@ -9,7 +9,7 @@ kolejna startuje natychmiast po jej zakończeniu (rytm liczony od startu sesji, 
 
 ## Wymagania
 
-- Node.js 20.6+ (wbudowana obsługa `.env`)
+- Node.js 22+
 - Zainstalowane i zalogowane Claude Code
 
 ## Instalacja i konfiguracja
@@ -32,7 +32,7 @@ zahardkodowane w repo):
 | `CLAUDE_WORKER_INTERVAL_MS`        | Interwał między startami sesji (ms)                      | `300000` (5 min) |
 | `CLAUDE_WORKER_PERMISSION_MODE`    | `default` / `acceptEdits` / `bypassPermissions` / `plan` | brak             |
 | `CLAUDE_WORKER_SESSION_TIMEOUT_MS` | Twardy limit sesji (kill po przekroczeniu)               | brak             |
-| `CLAUDE_WORKER_STREAM_PARTIAL`     | Streaming tekstu token-po-tokenie (`true`/`false`)       | `false`          |
+| `CLAUDE_WORKER_STREAM_PARTIAL`     | Streaming tekstu token-po-tokenie (`true`/`false`)       | `true`           |
 | `CLAUDE_WORKER_CWD`                | Katalog roboczy sesji (izolacja od kodu agenta)          | `./workspace`    |
 | `CLAUDE_CONFIG_DIR`                | Osobny katalog konfiguracji Claude Code (inny profil)    | brak             |
 
@@ -48,6 +48,7 @@ Zatrzymanie: `Ctrl+C` (SIGINT) — worker kończy pętlę i ubija ewentualną tr
 ## Jakość kodu
 
 ```bash
+pnpm check        # wszystko naraz: typecheck + lint + format:check + test
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # ESLint (typescript-eslint, type-aware)
 pnpm lint:fix     # ESLint z auto-poprawkami

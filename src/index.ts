@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { startCommand } from "./start.js";
 import { configureCommand } from "./configure.js";

@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { defineCommand, type ArgsDef } from "citty";
 import { loadWorkerConfig } from "./config.js";
 import { ensureReady } from "./preflight.js";
@@ -15,8 +16,9 @@ const envFileArg = {
 async function startWorker(envFile?: string): Promise<void> {
   let config;
   try {
-    await ensureReady(envFile);
-    config = await loadWorkerConfig(envFile);
+    const paths = await ensureReady(envFile);
+    config = await loadWorkerConfig(envFile, paths);
+    await mkdir(config.cwd, { recursive: true });
   } catch (err) {
     logger.error(err instanceof Error ? err.message : err);
     process.exitCode = 1;

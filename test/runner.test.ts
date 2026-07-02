@@ -1,29 +1,26 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildConfig, createTempDir, fakeClaudePath, removeTempDir } from "./helpers.js";
+import {
+  buildConfig,
+  createTempDir,
+  fakeClaudeEnv,
+  fakeClaudePath,
+  removeTempDir,
+} from "./helpers.js";
 
-vi.mock("../src/logger.js", () => {
-  const noop = {
-    info: vi.fn(),
-    log: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  };
-  return { logger: noop, sessionLogger: noop };
-});
+vi.mock("../src/logger.js", async () =>
+  (await import("./helpers.js")).loggerModuleMock(),
+);
 
 const { runSession } = await import("../src/runner.js");
-
-function childEnv(mode: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  return { ...process.env, FAKE_CLAUDE_MODE: mode, ...extra };
-}
+const { sessionLogger } = await import("../src/logger.js");
 
 describe("runSession (integracja z atrapą claude)", () => {
   let dir: string;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     dir = await createTempDir();
   });
 
@@ -32,7 +29,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   it("zwraca sukces i podsumowanie z result", async () => {
     const config = buildConfig({
       command: fakeClaudePath,
-      childEnv: childEnv("ok"),
+      childEnv: fakeClaudeEnv("ok"),
     });
     const result = await runSession(config, new AbortController().signal);
 
@@ -46,7 +43,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   it("zwraca błąd, gdy result ma is_error", async () => {
     const config = buildConfig({
       command: fakeClaudePath,
-      childEnv: childEnv("error_result"),
+      childEnv: fakeClaudeEnv("error_result"),
     });
     const result = await runSession(config, new AbortController().signal);
 
@@ -57,7 +54,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   it("zwraca błąd z kodem wyjścia przy niezerowym kodzie", async () => {
     const config = buildConfig({
       command: fakeClaudePath,
-      childEnv: childEnv("exit_nonzero"),
+      childEnv: fakeClaudeEnv("exit_nonzero"),
     });
     const result = await runSession(config, new AbortController().signal);
 
@@ -76,24 +73,49 @@ describe("runSession (integracja z atrapą claude)", () => {
   it("ubija sesję po przekroczeniu timeoutu", async () => {
     const config = buildConfig({
       command: fakeClaudePath,
-      childEnv: childEnv("hang"),
+      childEnv: fakeClaudeEnv("hang"),
       sessionTimeoutMs: 200,
     });
     const result = await runSession(config, new AbortController().signal);
 
     expect(result.ok).toBe(false);
+    expect(result.error).toBe("Przekroczono limit czasu sesji");
   }, 15_000);
 
   it("przerywa sesję na sygnał abort", async () => {
     const config = buildConfig({
       command: fakeClaudePath,
-      childEnv: childEnv("hang"),
+      childEnv: fakeClaudeEnv("hang"),
     });
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 150);
     const result = await runSession(config, controller.signal);
 
     expect(result.ok).toBe(false);
+    expect(result.error).toBe("Sesja przerwana");
+  }, 15_000);
+
+  it("loguje stderr procesu potomnego jako debug", async () => {
+    const config = buildConfig({
+      command: fakeClaudePath,
+      childEnv: fakeClaudeEnv("exit_nonzero"),
+    });
+    await runSession(config, new AbortController().signal);
+
+    expect(sessionLogger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("stderr: coś poszło nie tak"),
+    );
+  }, 15_000);
+
+  it("rzuca, gdy plik promptu nie istnieje", async () => {
+    const config = buildConfig({
+      command: fakeClaudePath,
+      promptPath: join(dir, "nie-ma.md"),
+      childEnv: fakeClaudeEnv("ok"),
+    });
+    await expect(runSession(config, new AbortController().signal)).rejects.toThrow(
+      /ENOENT/,
+    );
   }, 15_000);
 
   it("przekazuje prompt na stdin procesu potomnego", async () => {
@@ -104,7 +126,7 @@ describe("runSession (integracja z atrapą claude)", () => {
     const config = buildConfig({
       command: fakeClaudePath,
       promptPath,
-      childEnv: childEnv("ok", { FAKE_CLAUDE_PROMPT_OUT: out }),
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_PROMPT_OUT: out }),
     });
     await runSession(config, new AbortController().signal);
 

@@ -169,11 +169,19 @@ describe("StreamRenderer", () => {
     );
     const summary = r.getSummary();
     expect(summary).toEqual({
-      is_error: false,
+      isError: false,
       costUsd: 0.5,
       numTurns: 4,
       sessionId: "sess-3",
     });
+  });
+
+  it("getSummary zwraca isError=true dla result z is_error", () => {
+    const r = new StreamRenderer(logger.instance, false);
+    r.handleLine(line({ type: "result", is_error: true, session_id: "sess-err" }));
+    const summary = r.getSummary();
+    expect(summary.isError).toBe(true);
+    expect(summary.sessionId).toBe("sess-err");
   });
 
   it("truncate obcina długie wejście narzędzia z wielokropkiem", () => {

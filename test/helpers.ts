@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { ConsolaInstance } from "consola";
@@ -16,6 +16,72 @@ export function removeTempDir(dir: string): Promise<void> {
 
 export const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
 export const fakeClaudePath = join(fixturesDir, "claude");
+
+export function snapshotEnv(): () => void {
+  const saved = { ...process.env };
+  return () => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in saved)) delete process.env[key];
+    }
+    Object.assign(process.env, saved);
+  };
+}
+
+export interface SeedWorkerFilesOptions {
+  layout?: "prompts" | "flat";
+  env?: string | false;
+  prompt?: string;
+  system?: string;
+}
+
+export async function seedWorkerFiles(
+  dir: string,
+  options: SeedWorkerFilesOptions = {},
+): Promise<void> {
+  const {
+    layout = "prompts",
+    env = "CLAUDE_WORKER_MODEL=haiku\n",
+    prompt = "zadanie\n",
+    system = "system\n",
+  } = options;
+  const promptsDir = layout === "prompts" ? join(dir, "prompts") : dir;
+  await mkdir(promptsDir, { recursive: true });
+  await writeFile(join(promptsDir, "prompt.md"), prompt, "utf8");
+  await writeFile(join(promptsDir, "system.md"), system, "utf8");
+  if (env !== false) await writeFile(join(dir, ".env"), env, "utf8");
+}
+
+export function fakeClaudeEnv(
+  mode: string,
+  extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  return { ...process.env, FAKE_CLAUDE_MODE: mode, ...extra };
+}
+
+export function fakeClaudeCliEnv(
+  mode: string,
+  extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
+    FAKE_CLAUDE_MODE: mode,
+    ...extra,
+  };
+}
+
+export function loggerModuleMock(): Record<string, unknown> {
+  const shared = {
+    info: vi.fn(),
+    log: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    start: vi.fn(),
+  };
+  return { logger: shared, sessionLogger: shared };
+}
 
 export interface FakeLogger {
   instance: ConsolaInstance;

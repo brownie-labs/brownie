@@ -5,10 +5,9 @@ import { consola } from "consola";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTempDir, removeTempDir } from "./helpers.js";
 
-vi.mock("../src/logger.js", () => ({
-  logger: { success: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  sessionLogger: { warn: vi.fn() },
-}));
+vi.mock("../src/logger.js", async () =>
+  (await import("./helpers.js")).loggerModuleMock(),
+);
 
 const { configureCommand } = await import("../src/configure.js");
 

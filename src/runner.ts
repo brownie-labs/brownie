@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { sessionLogger } from "./logger.js";
@@ -6,6 +6,8 @@ import { StreamRenderer } from "./stream.js";
 import type { SessionResult, WorkerConfig } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
+
+type KillReason = "timeout" | "abort";
 
 export async function runSession(
   config: WorkerConfig,
@@ -39,10 +41,16 @@ export async function runSession(
 
   const renderer = new StreamRenderer(sessionLogger, config.streamPartial);
 
+  const killState: { reason: KillReason | null } = { reason: null };
+  const kill = (reason: KillReason): void => {
+    killState.reason ??= reason;
+    killChild(child, reason);
+  };
+
   const timeout = config.sessionTimeoutMs
-    ? setTimeout(() => killChild(child, "timeout"), config.sessionTimeoutMs)
+    ? setTimeout(() => kill("timeout"), config.sessionTimeoutMs)
     : undefined;
-  const onAbort = () => killChild(child, "abort");
+  const onAbort = () => kill("abort");
   signal.addEventListener("abort", onAbort, { once: true });
 
   const rl = createInterface({ input: child.stdout });
@@ -50,50 +58,51 @@ export async function runSession(
 
   const stderrRl = createInterface({ input: child.stderr });
   stderrRl.on("line", (line) => {
-    if (line.trim()) sessionLogger.warn(`stderr: ${line}`);
+    if (line.trim()) sessionLogger.debug(`stderr: ${line}`);
   });
 
-  child.stdin.write(prompt);
-  child.stdin.end();
+  try {
+    const spawnError = await new Promise<Error | null>((resolvePromise) => {
+      child.once("error", (err) => resolvePromise(err));
+      child.once("spawn", () => resolvePromise(null));
+    });
 
-  const spawnError = await new Promise<Error | null>((resolvePromise) => {
-    child.once("error", (err) => resolvePromise(err));
-    child.once("spawn", () => resolvePromise(null));
-  });
+    if (spawnError) {
+      return {
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        error: `Nie udało się uruchomić "${config.command}": ${spawnError.message}`,
+      };
+    }
 
-  if (spawnError) {
-    cleanup();
+    child.on("error", (err) => sessionLogger.error(`Błąd procesu: ${err.message}`));
+    child.stdin.on("error", (err) => sessionLogger.debug(`stdin: ${err.message}`));
+    child.stdin.write(prompt);
+    child.stdin.end();
+
+    const { code, exitSignal } = await new Promise<{
+      code: number | null;
+      exitSignal: NodeJS.Signals | null;
+    }>((resolvePromise) => {
+      child.once("close", (exitCode, closeSignal) =>
+        resolvePromise({ code: exitCode, exitSignal: closeSignal }),
+      );
+    });
+
+    const summary = renderer.getSummary();
+    const ok = code === 0 && !summary.isError && killState.reason === null;
+
     return {
-      ok: false,
+      ok,
       durationMs: Date.now() - startedAt,
-      error: `Nie udało się uruchomić "${config.command}": ${spawnError.message}`,
+      costUsd: summary.costUsd,
+      numTurns: summary.numTurns,
+      sessionId: summary.sessionId,
+      error: ok
+        ? undefined
+        : describeFailure(killState.reason, summary.isError, code, exitSignal),
     };
-  }
-
-  const code = await new Promise<number | null>((resolvePromise) => {
-    child.once("close", (exitCode) => resolvePromise(exitCode));
-  });
-
-  cleanup();
-
-  const summary = renderer.getSummary();
-  const durationMs = Date.now() - startedAt;
-  const ok = code === 0 && !summary.is_error;
-
-  return {
-    ok,
-    durationMs,
-    costUsd: summary.costUsd,
-    numTurns: summary.numTurns,
-    sessionId: summary.sessionId,
-    error: ok
-      ? undefined
-      : summary.is_error
-        ? "Sesja zakończona błędem (is_error)"
-        : `Proces zakończył się kodem ${code}`,
-  };
-
-  function cleanup(): void {
+  } finally {
     if (timeout) clearTimeout(timeout);
     signal.removeEventListener("abort", onAbort);
     rl.close();
@@ -101,7 +110,20 @@ export async function runSession(
   }
 }
 
-function killChild(child: ReturnType<typeof spawn>, reason: string): void {
+function describeFailure(
+  killReason: KillReason | null,
+  isError: boolean | undefined,
+  code: number | null,
+  exitSignal: NodeJS.Signals | null,
+): string {
+  if (killReason === "timeout") return "Przekroczono limit czasu sesji";
+  if (killReason === "abort") return "Sesja przerwana";
+  if (isError) return "Sesja zakończona błędem (is_error)";
+  if (code !== null) return `Proces zakończył się kodem ${code}`;
+  return `Proces zakończony sygnałem ${exitSignal ?? "?"}`;
+}
+
+function killChild(child: ChildProcess, reason: KillReason): void {
   if (child.exitCode !== null || child.signalCode !== null) return;
   sessionLogger.warn(`Zatrzymuję sesję (${reason})…`);
   child.kill("SIGTERM");

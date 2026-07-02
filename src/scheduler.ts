@@ -4,7 +4,10 @@ import type { WorkerConfig } from "./types.js";
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolvePromise) => {
-    if (signal.aborted) return resolvePromise();
+    if (signal.aborted) {
+      resolvePromise();
+      return;
+    }
     const timer = setTimeout(() => {
       signal.removeEventListener("abort", onAbort);
       resolvePromise();
@@ -29,8 +32,10 @@ export async function runScheduler(
     `Worker uruchomiony · komenda=${config.command} · model=${config.model} · interwał=${formatDuration(config.intervalMs)}`,
   );
 
+  const aborted = (): boolean => signal.aborted;
+
   let session = 0;
-  while (!signal.aborted) {
+  while (!aborted()) {
     session += 1;
     const start = Date.now();
     logger.start(
@@ -39,7 +44,7 @@ export async function runScheduler(
 
     try {
       const result = await runSession(config, signal);
-      if (signal.aborted) {
+      if (aborted()) {
         logger.info(`⏹ Sesja #${session} przerwana (zamykanie).`);
         break;
       }
@@ -51,20 +56,20 @@ export async function runScheduler(
         );
       } else {
         logger.error(
-          `✖ Sesja #${session} niepowodzenie · czas=${formatDuration(result.durationMs)} · ${result.error}`,
+          `✖ Sesja #${session} niepowodzenie · czas=${formatDuration(result.durationMs)} · ${result.error ?? "nieznany błąd"}`,
         );
       }
     } catch (err) {
       logger.error(`✖ Sesja #${session} wyjątek:`, err);
     }
 
-    if (signal.aborted) break;
+    if (aborted()) break;
 
-    const wait = Math.max(0, config.intervalMs - (Date.now() - start));
+    const wait = config.intervalMs - (Date.now() - start);
     if (wait > 0) {
       logger.info(`⏳ Następna sesja za ${formatDuration(wait)}`);
       await sleep(wait, signal);
-    } else {
+    } else if (wait < 0) {
       logger.info("⏭ Interwał przekroczony — kolejna sesja startuje natychmiast");
     }
   }

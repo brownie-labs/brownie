@@ -81,7 +81,7 @@ export class StreamRenderer {
           if (block.type === "text" && block.text?.trim()) {
             this.log.log(block.text.trim());
           } else if (block.type === "tool_use") {
-            this.log.info(`🔧 ${block.name} ${truncate(block.input, 300)}`);
+            this.log.info(`🔧 ${block.name ?? "?"} ${truncate(block.input, 300)}`);
           }
         }
         break;
@@ -111,7 +111,7 @@ export class StreamRenderer {
       case "result":
         this.endPartial();
         this.summary = {
-          is_error: event.is_error,
+          isError: event.is_error,
           costUsd: event.total_cost_usd,
           numTurns: event.num_turns,
           sessionId: event.session_id,

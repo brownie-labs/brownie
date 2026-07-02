@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
@@ -67,41 +66,50 @@ export function loadEnvFile(envFile?: string): void {
   }
 }
 
-export function resolvePromptPaths(source: NodeJS.ProcessEnv = process.env): {
+export type Env = z.infer<typeof envSchema>;
+
+export interface PromptPaths {
   promptPath: string;
   systemPromptPath: string;
-} {
-  const { CLAUDE_WORKER_PROMPT_FILE, CLAUDE_WORKER_SYSTEM_PROMPT_FILE } = envSchema
-    .pick({ CLAUDE_WORKER_PROMPT_FILE: true, CLAUDE_WORKER_SYSTEM_PROMPT_FILE: true })
-    .parse(source);
-  return {
-    promptPath: resolveFromCwd(CLAUDE_WORKER_PROMPT_FILE),
-    systemPromptPath: resolveFromCwd(CLAUDE_WORKER_SYSTEM_PROMPT_FILE),
-  };
 }
 
-export async function loadWorkerConfig(envFile?: string): Promise<WorkerConfig> {
-  loadEnvFile(envFile);
-
-  const parsed = envSchema.safeParse(process.env);
+export function parseEnv(source: NodeJS.ProcessEnv): Env {
+  const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
     throw new Error(`Nieprawidłowa konfiguracja (.env):\n${issues}`);
   }
-  const env = parsed.data;
+  return parsed.data;
+}
 
-  const { promptPath, systemPromptPath } = resolvePromptPaths(process.env);
+export function resolvePromptPaths(
+  env: Pick<Env, "CLAUDE_WORKER_PROMPT_FILE" | "CLAUDE_WORKER_SYSTEM_PROMPT_FILE">,
+): PromptPaths {
+  return {
+    promptPath: resolveFromCwd(env.CLAUDE_WORKER_PROMPT_FILE),
+    systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_SYSTEM_PROMPT_FILE),
+  };
+}
 
-  await assertReadable(promptPath, "plik promptu (CLAUDE_WORKER_PROMPT_FILE)");
-  await assertReadable(
-    systemPromptPath,
-    "plik system promptu (CLAUDE_WORKER_SYSTEM_PROMPT_FILE)",
-  );
+export async function loadWorkerConfig(
+  envFile?: string,
+  verified?: PromptPaths,
+): Promise<WorkerConfig> {
+  if (!verified) loadEnvFile(envFile);
+  const env = parseEnv(process.env);
+
+  const { promptPath, systemPromptPath } = verified ?? resolvePromptPaths(env);
+  if (!verified) {
+    await assertReadable(promptPath, "plik promptu (CLAUDE_WORKER_PROMPT_FILE)");
+    await assertReadable(
+      systemPromptPath,
+      "plik system promptu (CLAUDE_WORKER_SYSTEM_PROMPT_FILE)",
+    );
+  }
 
   const cwd = resolveFromCwd(env.CLAUDE_WORKER_CWD);
-  await mkdir(cwd, { recursive: true });
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   if (childEnv.CLAUDE_CONFIG_DIR) {

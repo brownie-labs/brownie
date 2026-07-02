@@ -4,21 +4,15 @@ import { buildConfig } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   runSession: vi.fn(),
-  logger: {
-    success: vi.fn(),
-    start: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-  },
 }));
 
 vi.mock("../src/runner.js", () => ({ runSession: mocks.runSession }));
-vi.mock("../src/logger.js", () => ({
-  logger: mocks.logger,
-  sessionLogger: mocks.logger,
-}));
+vi.mock("../src/logger.js", async () =>
+  (await import("./helpers.js")).loggerModuleMock(),
+);
 
 const { runScheduler } = await import("../src/scheduler.js");
+const { logger } = await import("../src/logger.js");
 
 const INTERVAL = 300_000;
 
@@ -45,7 +39,7 @@ describe("runScheduler", () => {
 
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.success).toHaveBeenCalledWith(
+    expect(logger.success).toHaveBeenCalledWith(
       expect.stringContaining("Koniec sesji #1"),
     );
 
@@ -71,7 +65,7 @@ describe("runScheduler", () => {
     await promise;
 
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.info).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("Scheduler zatrzymany"),
     );
   });
@@ -89,10 +83,10 @@ describe("runScheduler", () => {
     await promise;
 
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.success).not.toHaveBeenCalledWith(
+    expect(logger.success).not.toHaveBeenCalledWith(
       expect.stringContaining("Koniec sesji"),
     );
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining("przerwana"));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("przerwana"));
   });
 
   it("wyjątek z sesji jest łapany, pętla trwa dalej", async () => {
@@ -102,9 +96,35 @@ describe("runScheduler", () => {
 
     const promise = runScheduler(config, controller.signal);
     await vi.advanceTimersByTimeAsync(1);
-    expect(mocks.logger.error).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("wyjątek"),
       expect.anything(),
+    );
+
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("nieudana sesja jest logowana jako błąd, pętla trwa dalej", async () => {
+    mocks.runSession
+      .mockResolvedValueOnce({
+        ok: false,
+        durationMs: 100,
+        error: "Przekroczono limit czasu sesji",
+      } satisfies SessionResult)
+      .mockResolvedValue(ok());
+    const controller = new AbortController();
+    const config = buildConfig({ intervalMs: INTERVAL });
+
+    const promise = runScheduler(config, controller.signal);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("niepowodzenie"));
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("Przekroczono limit czasu sesji"),
     );
 
     await vi.advanceTimersByTimeAsync(INTERVAL);
@@ -126,9 +146,7 @@ describe("runScheduler", () => {
     const promise = runScheduler(config, controller.signal);
 
     await vi.advanceTimersByTimeAsync(INTERVAL + 1000);
-    expect(mocks.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("natychmiast"),
-    );
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("natychmiast"));
     expect(mocks.runSession).toHaveBeenCalledTimes(2);
 
     controller.abort();

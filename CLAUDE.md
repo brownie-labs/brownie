@@ -25,10 +25,11 @@ pnpm format                       # prettier --write .
 pnpm format:check                 # prettier --check .
 pnpm test                         # vitest run (testy jednostkowe + integracyjne)
 pnpm test:watch                   # vitest w trybie watch
-pnpm test:coverage                # vitest run --coverage (raport v8)
+pnpm test:coverage                # vitest run --coverage (raport v8, egzekwowane progi)
+pnpm check                        # wszystko naraz: typecheck + lint + format:check + test
 ```
 
-Weryfikacja poprawności = `pnpm typecheck`, `pnpm lint` **i** `pnpm test`.
+Weryfikacja poprawności = `pnpm check`.
 Linter: ESLint (flat config `eslint.config.js`) + typescript-eslint w trybie
 type-aware; formatter: Prettier (`eslint-config-prettier` wyłącza reguły stylistyczne
 kolidujące z Prettierem).
@@ -42,10 +43,14 @@ Wejście `src/index.ts` (citty) → dwie subkomendy: `start` i `configure`.
 
 Przepływ `start` (`src/start.ts`):
 
-1. `preflight.ts` (`ensureReady`) — sprawdza obecność `claude` w PATH, pliku `.env` oraz
-   plików promptów; przy braku rzuca błąd z podpowiedzią `pnpm configure`.
-2. `config.ts` (`loadWorkerConfig`) — ładuje `.env` przez `process.loadEnvFile`, waliduje
-   zmienne schematem zod (`envSchema`), rozwiązuje ścieżki, tworzy `cwd`, buduje `childEnv`.
+1. `preflight.ts` (`ensureReady`) — ładuje `.env` (`process.loadEnvFile`), waliduje env
+   (`parseEnv` + `envSchema`), sprawdza obecność `claude` w PATH, pliku `.env` oraz plików
+   promptów; przy braku rzuca błąd z podpowiedzią `pnpm configure`. Zwraca zweryfikowane
+   `PromptPaths`.
+2. `config.ts` (`loadWorkerConfig`) — waliduje zmienne schematem zod (`parseEnv`),
+   rozwiązuje ścieżki, buduje `childEnv`. Przyjmuje opcjonalnie `PromptPaths` z preflightu
+   — wtedy pomija ponowne ładowanie `.env` i walidację czytelności plików promptów.
+   Katalog `cwd` tworzy `start.ts` po zbudowaniu configu.
 3. `shutdown.ts` (`abortOnSignals`) — zwraca `AbortSignal` reagujący na SIGINT/SIGTERM.
 4. `scheduler.ts` (`runScheduler`) — pętla: uruchamia sesję, mierzy czas, czeka do końca
    interwału. `AbortSignal` przerywa zarówno `sleep`, jak i trwającą sesję.
@@ -55,7 +60,7 @@ Przepływ `start` (`src/start.ts`):
    timeout sesji (SIGTERM → po `KILL_GRACE_MS` SIGKILL) i abort.
 6. `stream.ts` (`StreamRenderer`) — parsuje linie stream-json (system/assistant/user/
    stream_event/result), renderuje przez consola, agreguje podsumowanie (koszt, tury,
-   sessionId, is_error).
+   sessionId, isError — konwersja z wire-formatu `is_error` na granicy).
 
 `configure.ts` — interaktywny kreator (consola prompt); anulowanie (Ctrl+C) rzuca
 `ConsolaPromptCancelledError`, wykrywany przez `isCancellation` i traktowany jako czyste
@@ -76,8 +81,8 @@ przerwanie bez zmian. Zapisuje `.env` i `prompts/prompt.md`.
   (rozwijane przez `expandHome`). Pozwala użyć innego profilu Claude Code (osobne MCP/subskrypcja).
 - **Ścieżki** — względne rozwiązywane od `process.cwd()` przez `resolveFromCwd`
   (z rozwinięciem `~`). Ścieżki promptów w jednym miejscu: `resolvePromptPaths` w
-  `config.ts` parsuje defaulty z `envSchema` i resolwuje je; używają jej zarówno
-  `preflight.ts`, jak i `loadWorkerConfig`.
+  `config.ts` przyjmuje **sparsowane** env (wynik `parseEnv`) i tylko resolwuje ścieżki;
+  w przepływie `start` liczy je raz `ensureReady` i przekazuje do `loadWorkerConfig`.
 - **Dostęp do plików** — wspólne helpery w `src/fs.ts` (`canAccess`, `assertReadable`);
   nie duplikuj wzorca `fs.access(...) + try/catch`.
 - **ESM + verbatimModuleSyntax** — importy muszą mieć rozszerzenie `.js` (mimo plików `.ts`),

@@ -1,7 +1,14 @@
 import { constants } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { COMMAND, loadEnvFile, resolveEnvPath, resolvePromptPaths } from "./config.js";
+import {
+  COMMAND,
+  loadEnvFile,
+  parseEnv,
+  resolveEnvPath,
+  resolvePromptPaths,
+  type PromptPaths,
+} from "./config.js";
 import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
 
@@ -12,6 +19,10 @@ interface Check {
   label: string;
   ok: boolean;
   problem?: string;
+}
+
+function check(label: string, ok: boolean, problem: string): Check {
+  return ok ? { label, ok } : { label, ok, problem };
 }
 
 const WINDOWS_EXTENSIONS = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
@@ -35,53 +46,52 @@ async function findOnPath(command: string): Promise<string | undefined> {
 
 async function checkClaude(): Promise<Check> {
   const found = await findOnPath(COMMAND);
-  return found
-    ? { label: `Claude Code (${COMMAND})`, ok: true }
-    : {
-        label: `Claude Code (${COMMAND})`,
-        ok: false,
-        problem: `nie znaleziono polecenia "${COMMAND}" w PATH — zainstaluj Claude Code: ${INSTALL_HINT}`,
-      };
+  return check(
+    `Claude Code (${COMMAND})`,
+    found !== undefined,
+    `nie znaleziono polecenia "${COMMAND}" w PATH — zainstaluj Claude Code: ${INSTALL_HINT}`,
+  );
 }
 
 function checkEnvFile(envFile?: string): Check {
   const path = resolveEnvPath(envFile);
-  const ok = existsSync(path);
-  return {
-    label: `plik .env (${path})`,
-    ok,
-    problem: ok ? undefined : `brak pliku: ${path} — ${CONFIGURE_HINT}`,
-  };
+  return check(
+    `plik .env (${path})`,
+    existsSync(path),
+    `brak pliku: ${path} — ${CONFIGURE_HINT}`,
+  );
 }
 
 async function checkFile(path: string, label: string): Promise<Check> {
-  const ok = await canAccess(path, constants.R_OK);
-  return {
-    label: `${label} (${path})`,
-    ok,
-    problem: ok ? undefined : `brak pliku: ${path} — ${CONFIGURE_HINT}`,
-  };
+  return check(
+    `${label} (${path})`,
+    await canAccess(path, constants.R_OK),
+    `brak pliku: ${path} — ${CONFIGURE_HINT}`,
+  );
 }
 
-export async function ensureReady(envFile?: string): Promise<void> {
+export async function ensureReady(envFile?: string): Promise<PromptPaths> {
   loadEnvFile(envFile);
-  const { promptPath, systemPromptPath } = resolvePromptPaths(process.env);
+  const env = parseEnv(process.env);
+  const paths = resolvePromptPaths(env);
 
   const checks = await Promise.all([
     checkClaude(),
     Promise.resolve(checkEnvFile(envFile)),
-    checkFile(promptPath, "plik promptu"),
-    checkFile(systemPromptPath, "plik system promptu"),
+    checkFile(paths.promptPath, "plik promptu"),
+    checkFile(paths.systemPromptPath, "plik system promptu"),
   ]);
 
-  for (const check of checks) {
-    if (check.ok) logger.success(check.label);
-    else logger.error(check.label);
+  for (const result of checks) {
+    if (result.ok) logger.success(result.label);
+    else logger.error(result.label);
   }
 
   const problems = checks.filter((c) => !c.ok);
   if (problems.length > 0) {
-    const details = problems.map((c) => `  - ${c.problem}`).join("\n");
+    const details = problems.map((c) => `  - ${c.problem ?? c.label}`).join("\n");
     throw new Error(`Preflight nieudany — brakuje wymaganych elementów:\n${details}`);
   }
+
+  return paths;
 }
