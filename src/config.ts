@@ -40,7 +40,7 @@ const boolFromEnv = (defaultValue = false) =>
 export const COMMAND = "claude";
 
 export const envSchema = z.object({
-  CLAUDE_WORKER_MONITOR_MODEL: z.string().trim().min(1).default("haiku"),
+  CLAUDE_WORKER_MONITOR_MODEL: z.string().trim().min(1).default("sonnet"),
   CLAUDE_WORKER_MONITOR_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
   CLAUDE_WORKER_MONITOR_INTERVAL_MS: z.coerce
     .number()
@@ -78,8 +78,8 @@ export const envSchema = z.object({
     .positive()
     .optional(),
   CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS: z.coerce.number().int().positive().default(3),
-  CLAUDE_WORKER_SUMMARIZER_MODEL: z.string().trim().min(1).default("haiku"),
-  CLAUDE_WORKER_SUMMARIZER_EFFORT: z.enum(EFFORT_LEVELS).default("low"),
+  CLAUDE_WORKER_SUMMARIZER_MODEL: z.string().trim().min(1).default("sonnet"),
+  CLAUDE_WORKER_SUMMARIZER_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
   CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE: z
     .string()
     .trim()

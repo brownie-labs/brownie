@@ -28,13 +28,13 @@ Brownie to CLI, które cyklicznie uruchamia sesje [Claude Code](https://claude.c
                           ▼
                   ┌───────────────┐   raport JSON   ┌───────────────┐
                   │    MONITOR    │ ───────────────▶│   TaskStore   │
-                  │    (haiku)    │    (zadania)    │  tasks.json   │
+                  │   (sonnet)    │    (zadania)    │  tasks.json   │
                   └───────────────┘                 └───────┬───────┘
                                                             │ budzi (Waker)
                                                             │
 ┌───────────────┐   log sesji   ┌───────────────┐  pending  │
 │  SUMMARIZER   │ ◀──────────── │   EGZEKUTOR   │ ◀─────────┘
-│    (haiku)    │               │    (opus)     │
+│   (sonnet)    │               │    (opus)     │
 └───────┬───────┘               └───────┬───────┘
         │ wnioski                       │ memory_search / memory_get
         ▼                               ▼
@@ -58,7 +58,7 @@ Dwie pętle działają równolegle i komunikują się wyłącznie przez współd
 - 🔂 **Ponawianie z głową** — rozróżnia błędy przejściowe od trwałych, konfigurowalna liczba prób i opóźnienie.
 - 📺 **Dashboard TUI** — podgląd obu pętli na żywo (Ink/React): statusy sesji, zadania, zdarzenia.
 - 🗂️ **Trwałe logi sesji** — każda sesja ląduje w `logs/<agent>/<dzień>/<godzina>_<sessionId>.log`.
-- 🎛️ **Modele i effort per agent** — tani haiku do patrolu, opus do roboty; wszystko konfigurowalne.
+- 🎛️ **Modele i effort per agent** — sonnet do patrolu, opus do roboty; wszystko konfigurowalne.
 - 🧾 **Zadania w JSON** — `data/tasks.json` z zapisem atomowym; zawieszone `in_progress` wracają do `pending` po restarcie.
 - 📝 **Prompty w plikach** — cała osobowość agentów w `prompts/*.md`, żadnych promptów zaszytych w kodzie.
 
@@ -93,7 +93,7 @@ Wszystko przez zmienne `CLAUDE_WORKER_*` w `.env` (walidowane zodem — literów
 
 | Zmienna                                       | Domyślnie                        | Opis                                                 |
 | --------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
-| `CLAUDE_WORKER_MONITOR_MODEL`                 | `haiku`                          | model monitora                                       |
+| `CLAUDE_WORKER_MONITOR_MODEL`                 | `sonnet`                         | model monitora                                       |
 | `CLAUDE_WORKER_MONITOR_EFFORT`                | `medium`                         | effort monitora                                      |
 | `CLAUDE_WORKER_MONITOR_INTERVAL_MS`           | `900000` (15 min)                | interwał patrolu                                     |
 | `CLAUDE_WORKER_MONITOR_ACTIVE_HOURS`          | _(całą dobę)_                    | okno pracy, np. `08:00-18:00`                        |
@@ -108,8 +108,8 @@ Wszystko przez zmienne `CLAUDE_WORKER_*` w `.env` (walidowane zodem — literów
 | `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS`   | _(brak)_                         | timeout sesji egzekutora                             |
 | `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`        | `3`                              | maks. liczba prób zadania                            |
 | `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`       | `30000`                          | opóźnienie między próbami                            |
-| `CLAUDE_WORKER_SUMMARIZER_MODEL`              | `haiku`                          | model podsumowującego                                |
-| `CLAUDE_WORKER_SUMMARIZER_EFFORT`             | `low`                            | effort podsumowującego                               |
+| `CLAUDE_WORKER_SUMMARIZER_MODEL`              | `sonnet`                         | model podsumowującego                                |
+| `CLAUDE_WORKER_SUMMARIZER_EFFORT`             | `medium`                         | effort podsumowującego                               |
 | `CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE` | `./prompts/summarizer.system.md` | system prompt podsumowującego                        |
 | `CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS` | `300000` (5 min)                 | timeout sesji podsumowującego                        |
 | `CLAUDE_WORKER_MEMORY_DB`                     | `./data/memory.db`               | baza pamięci długoterminowej                         |

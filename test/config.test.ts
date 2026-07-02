@@ -64,7 +64,7 @@ describe("resolveFromCwd", () => {
 describe("envSchema", () => {
   it("stosuje wartości domyślne", () => {
     const env = envSchema.parse({});
-    expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("haiku");
+    expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("sonnet");
     expect(env.CLAUDE_WORKER_MONITOR_EFFORT).toBe("medium");
     expect(env.CLAUDE_WORKER_MONITOR_INTERVAL_MS).toBe(900_000);
     expect(env.CLAUDE_WORKER_MONITOR_PROMPT_FILE).toBe("./prompts/monitor.prompt.md");
@@ -77,8 +77,8 @@ describe("envSchema", () => {
     expect(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/executor.system.md",
     );
-    expect(env.CLAUDE_WORKER_SUMMARIZER_MODEL).toBe("haiku");
-    expect(env.CLAUDE_WORKER_SUMMARIZER_EFFORT).toBe("low");
+    expect(env.CLAUDE_WORKER_SUMMARIZER_MODEL).toBe("sonnet");
+    expect(env.CLAUDE_WORKER_SUMMARIZER_EFFORT).toBe("medium");
     expect(env.CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/summarizer.system.md",
     );

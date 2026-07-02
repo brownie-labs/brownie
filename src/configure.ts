@@ -145,7 +145,7 @@ export const configureCommand = defineCommand({
       const monitorModel = await ask("Model monitora (tani — tylko wykrywa zadania)", {
         type: "select",
         options: MODELS,
-        initial: "haiku",
+        initial: "sonnet",
       });
 
       const monitorEffort = await ask("Effort monitora (poziom wysiłku rozumowania)", {
