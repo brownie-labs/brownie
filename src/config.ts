@@ -11,14 +11,19 @@ export function expandHome(value: string): string {
   return value;
 }
 
-const boolFromEnv = z
-  .string()
-  .optional()
-  .transform((v) => /^(1|true|yes|on)$/i.test((v ?? "").trim()));
+const boolFromEnv = (defaultValue = false) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      const s = (v ?? "").trim();
+      if (s === "") return defaultValue;
+      return /^(1|true|yes|on)$/i.test(s);
+    });
 
-const COMMAND = "claude";
+export const COMMAND = "claude";
 
-const envSchema = z.object({
+export const envSchema = z.object({
   CLAUDE_WORKER_MODEL: z.string().trim().min(1).default("haiku"),
   CLAUDE_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
   CLAUDE_WORKER_PROMPT_FILE: z.string().trim().min(1).default("./prompts/prompt.md"),
@@ -31,12 +36,20 @@ const envSchema = z.object({
     .enum(["default", "acceptEdits", "bypassPermissions", "plan"])
     .optional(),
   CLAUDE_WORKER_SESSION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv,
+  CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv(true),
   CLAUDE_WORKER_CWD: z.string().trim().min(1).default("./workspace"),
 });
 
+export function resolveEnvPath(envFile?: string): string {
+  return envFile ? resolve(envFile) : resolve(process.cwd(), ".env");
+}
+
+export function resolveFromCwd(value: string): string {
+  return isAbsolute(value) ? value : resolve(process.cwd(), expandHome(value));
+}
+
 export function loadEnvFile(envFile?: string): void {
-  const path = envFile ? resolve(envFile) : resolve(process.cwd(), ".env");
+  const path = resolveEnvPath(envFile);
   if (existsSync(path)) {
     process.loadEnvFile(path);
   }
@@ -62,10 +75,8 @@ export async function loadWorkerConfig(envFile?: string): Promise<WorkerConfig> 
   }
   const env = parsed.data;
 
-  const resolvePath = (p: string) =>
-    isAbsolute(p) ? p : resolve(process.cwd(), expandHome(p));
-  const promptPath = resolvePath(env.CLAUDE_WORKER_PROMPT_FILE);
-  const systemPromptPath = resolvePath(env.CLAUDE_WORKER_SYSTEM_PROMPT_FILE);
+  const promptPath = resolveFromCwd(env.CLAUDE_WORKER_PROMPT_FILE);
+  const systemPromptPath = resolveFromCwd(env.CLAUDE_WORKER_SYSTEM_PROMPT_FILE);
 
   await assertReadable(promptPath, "plik promptu (CLAUDE_WORKER_PROMPT_FILE)");
   await assertReadable(
@@ -73,7 +84,7 @@ export async function loadWorkerConfig(envFile?: string): Promise<WorkerConfig> 
     "plik system promptu (CLAUDE_WORKER_SYSTEM_PROMPT_FILE)",
   );
 
-  const cwd = resolvePath(env.CLAUDE_WORKER_CWD);
+  const cwd = resolveFromCwd(env.CLAUDE_WORKER_CWD);
   await mkdir(cwd, { recursive: true });
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };

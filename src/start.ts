@@ -1,5 +1,6 @@
 import { defineCommand, type ArgsDef } from "citty";
 import { loadWorkerConfig } from "./config.js";
+import { ensureReady } from "./preflight.js";
 import { runScheduler } from "./scheduler.js";
 import { abortOnSignals } from "./shutdown.js";
 import { logger } from "./logger.js";
@@ -14,6 +15,7 @@ const envFileArg = {
 async function startWorker(envFile?: string): Promise<void> {
   let config;
   try {
+    await ensureReady(envFile);
     config = await loadWorkerConfig(envFile);
   } catch (err) {
     logger.error(err instanceof Error ? err.message : err);
