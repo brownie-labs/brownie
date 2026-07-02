@@ -4,8 +4,11 @@ import type {
   ExecutorTaskOutcome,
   MonitorCycleOutcome,
   MonitorPhase,
+  WorkerStats,
 } from "../status.js";
 import { formatDuration } from "../timing.js";
+
+const STALL_THRESHOLD_MS = 120_000;
 
 function pad2(value: number): string {
   return value.toString().padStart(2, "0");
@@ -55,6 +58,36 @@ export function formatExecutorPhase(phase: ExecutorPhase, now: number): string {
     case "backoff":
       return `↻ retrying ${phase.task.id} in ${formatCountdown(phase.resumeAt - now)}`;
   }
+}
+
+export function detectStall(
+  startedAt: number,
+  lastEventAt: number | undefined,
+  now: number,
+): string | undefined {
+  const idleMs = now - (lastEventAt ?? startedAt);
+  if (idleMs < STALL_THRESHOLD_MS) return undefined;
+  return `⚠ no output for ${formatInterval(idleMs)}`;
+}
+
+export function formatStats(stats: WorkerStats, uptimeMs: number): string {
+  return (
+    `uptime ${formatInterval(uptimeMs)} · cycles ${stats.cycles}` +
+    ` · tasks ✔${stats.tasksSucceeded} ✖${stats.tasksFailed}` +
+    ` · cost $${stats.totalCostUsd.toFixed(2)}`
+  );
+}
+
+export function formatAge(isoDate: string, now: number): string {
+  const timestamp = Date.parse(isoDate);
+  if (Number.isNaN(timestamp)) return "";
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function formatCost(costUsd: number | undefined): string {

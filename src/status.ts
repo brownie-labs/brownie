@@ -57,6 +57,14 @@ export interface AgentPanelStatus<Phase, Outcome> {
   tail: readonly string[];
   sessionId?: string | undefined;
   lastOutcome?: Outcome | undefined;
+  lastEventAt?: number | undefined;
+}
+
+export interface WorkerStats {
+  cycles: number;
+  tasksSucceeded: number;
+  tasksFailed: number;
+  totalCostUsd: number;
 }
 
 export interface WorkerStatus {
@@ -65,6 +73,7 @@ export interface WorkerStatus {
   monitor: AgentPanelStatus<MonitorPhase, MonitorCycleOutcome>;
   executor: AgentPanelStatus<ExecutorPhase, ExecutorTaskOutcome>;
   tasks: readonly Task[];
+  stats: WorkerStats;
 }
 
 export interface MonitorReporter {
@@ -104,6 +113,7 @@ interface AgentState<Phase, Outcome> {
   partialSeen: boolean;
   sessionId: string | undefined;
   lastOutcome: Outcome | undefined;
+  lastEventAt: number | undefined;
 }
 
 export interface WorkerStatusStoreOptions {
@@ -121,6 +131,13 @@ export class WorkerStatusStore {
   private tasks: readonly Task[] = [];
   private snapshot: WorkerStatus;
 
+  private readonly stats: WorkerStats = {
+    cycles: 0,
+    tasksSucceeded: 0,
+    tasksFailed: 0,
+    totalCostUsd: 0,
+  };
+
   private readonly monitorState: AgentState<MonitorPhase, MonitorCycleOutcome> = {
     phase: { kind: "starting" },
     tail: [],
@@ -128,6 +145,7 @@ export class WorkerStatusStore {
     partialSeen: false,
     sessionId: undefined,
     lastOutcome: undefined,
+    lastEventAt: undefined,
   };
 
   private readonly executorState: AgentState<ExecutorPhase, ExecutorTaskOutcome> = {
@@ -137,6 +155,7 @@ export class WorkerStatusStore {
     partialSeen: false,
     sessionId: undefined,
     lastOutcome: undefined,
+    lastEventAt: undefined,
   };
 
   readonly monitor: MonitorReporter = {
@@ -153,6 +172,8 @@ export class WorkerStatusStore {
     },
     cycleFinished: (outcome) => {
       this.monitorState.lastOutcome = { ...outcome, finishedAt: Date.now() };
+      this.stats.cycles += 1;
+      this.stats.totalCostUsd += outcome.costUsd ?? 0;
       this.markDirty();
     },
     sleepUntil: (nextCycleAt) => {
@@ -175,6 +196,9 @@ export class WorkerStatusStore {
     },
     taskFinished: (outcome) => {
       this.executorState.lastOutcome = { ...outcome, finishedAt: Date.now() };
+      this.stats.totalCostUsd += outcome.costUsd ?? 0;
+      if (outcome.ok) this.stats.tasksSucceeded += 1;
+      else if (outcome.willRetry !== true) this.stats.tasksFailed += 1;
       this.markDirty();
     },
     retryScheduled: (task, resumeAt) => {
@@ -198,6 +222,7 @@ export class WorkerStatusStore {
       this.markDirty();
     },
     summaryFinished: (outcome) => {
+      this.stats.totalCostUsd += outcome.costUsd ?? 0;
       this.pushTail(
         this.executorState,
         formatSummaryOutcome({ ...outcome, finishedAt: Date.now() }),
@@ -257,6 +282,7 @@ export class WorkerStatusStore {
     state.openPartial = "";
     state.partialSeen = false;
     state.sessionId = undefined;
+    state.lastEventAt = undefined;
     this.markDirty();
   }
 
@@ -264,6 +290,7 @@ export class WorkerStatusStore {
     state: AgentState<Phase, Outcome>,
     event: SessionEvent,
   ): void {
+    state.lastEventAt = Date.now();
     if (event.type === "partial") {
       state.partialSeen = true;
       const combined = state.openPartial + event.text;
@@ -319,6 +346,7 @@ export class WorkerStatusStore {
       monitor: this.buildPanel(this.monitorState),
       executor: this.buildPanel(this.executorState),
       tasks: this.tasks,
+      stats: { ...this.stats },
     };
   }
 
@@ -333,6 +361,7 @@ export class WorkerStatusStore {
       tail,
       sessionId: state.sessionId,
       lastOutcome: state.lastOutcome,
+      lastEventAt: state.lastEventAt,
     };
   }
 }

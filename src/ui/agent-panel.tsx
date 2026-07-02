@@ -10,6 +10,8 @@ export interface AgentPanelProps {
   outcomeLabel?: string | undefined;
   outcomeColor: string;
   height: number;
+  focused: boolean;
+  scrollOffset: number;
 }
 
 export function AgentPanel({
@@ -21,13 +23,19 @@ export function AgentPanel({
   outcomeLabel,
   outcomeColor,
   height,
+  focused,
+  scrollOffset,
 }: AgentPanelProps): JSX.Element {
   const chromeLines = 4 + (outcomeLabel === undefined ? 0 : 1);
-  const tailCapacity = Math.max(0, height - chromeLines);
-  const visible = tail.slice(-tailCapacity);
+  const fullCapacity = Math.max(0, height - chromeLines);
+  const scrolled = scrollOffset > 0 && tail.length > fullCapacity;
+  const tailCapacity = scrolled ? Math.max(1, fullCapacity - 1) : fullCapacity;
+  const offset = scrolled ? Math.min(scrollOffset, tail.length - tailCapacity) : 0;
+  const end = tail.length - offset;
+  const visible = tail.slice(Math.max(0, end - tailCapacity), end);
   return (
     <Box
-      borderStyle="round"
+      borderStyle={focused ? "bold" : "round"}
       borderColor={color}
       flexDirection="column"
       flexBasis={0}
@@ -49,6 +57,11 @@ export function AgentPanel({
           </Text>
         ))}
       </Box>
+      {scrolled ? (
+        <Text dimColor wrap="truncate-end">
+          {`↓ ${offset} newer lines · esc: follow`}
+        </Text>
+      ) : null}
       {outcomeLabel === undefined ? null : (
         <Text color={outcomeColor} wrap="truncate-end">
           {outcomeLabel}

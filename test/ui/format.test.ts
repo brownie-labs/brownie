@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  detectStall,
+  formatAge,
   formatCountdown,
   formatExecutorOutcome,
   formatExecutorPhase,
   formatInterval,
   formatMonitorOutcome,
   formatMonitorPhase,
+  formatStats,
 } from "../../src/ui/format.js";
 import type { Task } from "../../src/types.js";
 
@@ -116,6 +119,70 @@ describe("formatExecutorPhase", () => {
     );
     expect(label).toContain("summarizing t-1");
     expect(label).toContain("2.0s");
+  });
+});
+
+describe("detectStall", () => {
+  const now = 1_000_000;
+
+  it("returns undefined below the threshold", () => {
+    expect(detectStall(now - 119_000, undefined, now)).toBeUndefined();
+  });
+
+  it("measures from the session start when there are no events yet", () => {
+    expect(detectStall(now - 180_000, undefined, now)).toBe("⚠ no output for 3 min");
+  });
+
+  it("measures from the last event when one arrived", () => {
+    expect(detectStall(now - 600_000, now - 125_000, now)).toBe(
+      "⚠ no output for 2 min 5 s",
+    );
+  });
+
+  it("returns undefined right after an event", () => {
+    expect(detectStall(now - 600_000, now - 1_000, now)).toBeUndefined();
+  });
+});
+
+describe("formatStats", () => {
+  it("formats uptime, counters and the total cost", () => {
+    const label = formatStats(
+      { cycles: 3, tasksSucceeded: 2, tasksFailed: 1, totalCostUsd: 1.234 },
+      3_660_000,
+    );
+    expect(label).toBe("uptime 1 h 1 min · cycles 3 · tasks ✔2 ✖1 · cost $1.23");
+  });
+
+  it("formats the zero state", () => {
+    const label = formatStats(
+      { cycles: 0, tasksSucceeded: 0, tasksFailed: 0, totalCostUsd: 0 },
+      0,
+    );
+    expect(label).toBe("uptime 0 s · cycles 0 · tasks ✔0 ✖0 · cost $0.00");
+  });
+});
+
+describe("formatAge", () => {
+  const now = Date.parse("2026-07-02T12:00:00Z");
+
+  it("shows just now under a minute", () => {
+    expect(formatAge(new Date(now - 30_000).toISOString(), now)).toBe("just now");
+  });
+
+  it("shows minutes", () => {
+    expect(formatAge(new Date(now - 5 * 60_000).toISOString(), now)).toBe("5m ago");
+  });
+
+  it("shows hours", () => {
+    expect(formatAge(new Date(now - 3 * 3_600_000).toISOString(), now)).toBe("3h ago");
+  });
+
+  it("shows days", () => {
+    expect(formatAge(new Date(now - 49 * 3_600_000).toISOString(), now)).toBe("2d ago");
+  });
+
+  it("returns an empty string for an invalid date", () => {
+    expect(formatAge("not-a-date", now)).toBe("");
   });
 });
 

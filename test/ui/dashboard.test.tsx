@@ -11,6 +11,10 @@ function createStore(): WorkerStatusStore {
 
 async function flushed(store: WorkerStatusStore): Promise<void> {
   store.flush();
+  await tick();
+}
+
+async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
@@ -193,6 +197,159 @@ describe("Dashboard", () => {
 
     unmount();
     store.dispose();
+  });
+
+  it("shows cumulative stats in the header", async () => {
+    const store = createStore();
+    const { lastFrame, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    store.monitor.cycleFinished({
+      cycle: 1,
+      ok: true,
+      durationMs: 100,
+      costUsd: 0.5,
+      addedTasks: 0,
+      skippedDuplicates: 0,
+    });
+    store.executor.taskFinished({
+      taskId: "t-1",
+      title: "Title",
+      ok: true,
+      durationMs: 100,
+      costUsd: 0.25,
+    });
+    await flushed(store);
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("stats");
+    expect(frame).toContain("uptime");
+    expect(frame).toContain("cycles 1");
+    expect(frame).toContain("tasks ✔1 ✖0");
+    expect(frame).toContain("cost $0.75");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("warns when a session produces no output for a long time", async () => {
+    vi.useFakeTimers();
+    const store = createStore();
+    const { lastFrame, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    store.monitor.cycleStarted(1);
+    store.flush();
+    await vi.advanceTimersByTimeAsync(180_000);
+
+    expect(lastFrame()).toContain("⚠ no output");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("shows the task age and attempt count", async () => {
+    const store = createStore();
+    const { lastFrame, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    store.setTasks([
+      buildTask({
+        status: "in_progress",
+        attempts: 2,
+        updatedAt: new Date(Date.now() - 5 * 60_000 - 30_000).toISOString(),
+      }),
+    ]);
+    await flushed(store);
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("5m ago");
+    expect(frame).toContain("attempts 2");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("scrolls the focused panel tail and returns to follow mode on escape", async () => {
+    const store = createStore();
+    const { lastFrame, stdin, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    for (let i = 1; i <= 30; i += 1) {
+      store.monitor.session({ type: "text", text: `line ${i}` });
+    }
+    await flushed(store);
+    expect(lastFrame()).toContain("line 30");
+
+    stdin.write("\u001B[A");
+    await tick();
+    let frame = lastFrame() ?? "";
+    expect(frame).toContain("↓ 1 newer lines");
+    expect(frame).not.toContain("line 30");
+
+    stdin.write("\u001B");
+    await tick();
+    frame = lastFrame() ?? "";
+    expect(frame).not.toContain("newer lines");
+    expect(frame).toContain("line 30");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("tab moves the scroll focus to the executor panel", async () => {
+    const store = createStore();
+    const { lastFrame, stdin, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    for (let i = 1; i <= 30; i += 1) {
+      store.executor.session({ type: "text", text: `exec ${i}` });
+    }
+    await flushed(store);
+    expect(lastFrame()).toContain("exec 30");
+
+    stdin.write("\t");
+    await tick();
+    stdin.write("\u001B[A");
+    await tick();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("↓ 1 newer lines");
+    expect(frame).not.toContain("exec 30");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("shows the keyboard hint line", () => {
+    const store = createStore();
+    const { lastFrame, unmount } = render(
+      <Dashboard store={store} config={buildConfig()} />,
+    );
+
+    expect(lastFrame()).toContain("tab: switch panel");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("ctrl+c triggers the SIGINT shutdown path", async () => {
+    const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
+    const store = createStore();
+    const { stdin, unmount } = render(<Dashboard store={store} config={buildConfig()} />);
+
+    stdin.write("\u0003");
+    await tick();
+    expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGINT");
+
+    unmount();
+    store.dispose();
+    killSpy.mockRestore();
   });
 
   it("shows backoff with a scheduled retry after a transient error", async () => {

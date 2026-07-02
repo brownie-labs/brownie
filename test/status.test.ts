@@ -324,6 +324,96 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
+  it("accumulates stats: cycles, task counters and the total cost", () => {
+    const store = createStore();
+    store.monitor.cycleFinished({
+      cycle: 1,
+      ok: true,
+      durationMs: 100,
+      costUsd: 0.5,
+      addedTasks: 1,
+      skippedDuplicates: 0,
+    });
+    store.executor.taskFinished({
+      taskId: "t-1",
+      title: "Title",
+      ok: true,
+      durationMs: 100,
+      costUsd: 0.25,
+    });
+    store.executor.taskFinished({
+      taskId: "t-2",
+      title: "Title",
+      ok: false,
+      durationMs: 100,
+      costUsd: 0.125,
+      willRetry: true,
+    });
+    store.executor.taskFinished({
+      taskId: "t-2",
+      title: "Title",
+      ok: false,
+      durationMs: 100,
+      costUsd: 0.0625,
+    });
+    store.executor.summaryFinished({
+      taskId: "t-1",
+      ok: true,
+      durationMs: 50,
+      costUsd: 0.0625,
+      error: undefined,
+    });
+    store.flush();
+    expect(store.getSnapshot().stats).toEqual({
+      cycles: 1,
+      tasksSucceeded: 1,
+      tasksFailed: 1,
+      totalCostUsd: 1,
+    });
+    store.dispose();
+  });
+
+  it("treats a missing cost as zero in the stats", () => {
+    const store = createStore();
+    store.monitor.cycleFinished({
+      cycle: 1,
+      ok: false,
+      durationMs: 100,
+      addedTasks: 0,
+      skippedDuplicates: 0,
+      error: "boom",
+    });
+    store.flush();
+    expect(store.getSnapshot().stats).toEqual({
+      cycles: 1,
+      tasksSucceeded: 0,
+      tasksFailed: 0,
+      totalCostUsd: 0,
+    });
+    store.dispose();
+  });
+
+  it("records the time of the last session event and clears it on a new session", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const store = createStore();
+    expect(store.getSnapshot().monitor.lastEventAt).toBeUndefined();
+
+    store.monitor.session({ type: "text", text: "hello" });
+    store.flush();
+    expect(store.getSnapshot().monitor.lastEventAt).toBe(1_000);
+
+    vi.setSystemTime(5_000);
+    store.monitor.session({ type: "toolUse", name: "Bash", input: "ls" });
+    store.flush();
+    expect(store.getSnapshot().monitor.lastEventAt).toBe(5_000);
+
+    store.monitor.cycleStarted(2);
+    store.flush();
+    expect(store.getSnapshot().monitor.lastEventAt).toBeUndefined();
+    store.dispose();
+  });
+
   it("shutdownRequested records the signal name", () => {
     const store = createStore();
     store.shutdownRequested("SIGINT");
