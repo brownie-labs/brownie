@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
+import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
 import type { WorkerConfig } from "./types.js";
 
@@ -10,6 +11,20 @@ export function expandHome(value: string): string {
   if (value.startsWith("~/")) return resolve(homedir(), value.slice(2));
   return value;
 }
+
+const optionalRawEnv = (validate: (value: string) => unknown) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (value === undefined || value === "") return;
+      try {
+        validate(value);
+      } catch (err) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: (err as Error).message });
+      }
+    });
 
 const boolFromEnv = (defaultValue = false) =>
   z
@@ -30,6 +45,8 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(15 * 60 * 1000),
+  CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: optionalRawEnv(parseTimeWindow),
+  CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: optionalRawEnv(parseActiveDays),
   CLAUDE_WORKER_MONITOR_PROMPT_FILE: z
     .string()
     .trim()
@@ -167,6 +184,10 @@ export async function loadWorkerConfig(
     monitor: {
       model: env.CLAUDE_WORKER_MONITOR_MODEL,
       intervalMs: env.CLAUDE_WORKER_MONITOR_INTERVAL_MS,
+      schedule: buildSchedule(
+        env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS,
+        env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS,
+      ),
       promptPath: paths.monitor.promptPath,
       systemPromptPath: paths.monitor.systemPromptPath,
       sessionTimeoutMs: env.CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS,

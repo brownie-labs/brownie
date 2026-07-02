@@ -131,6 +131,7 @@ export function buildMonitorConfig(
   return {
     ...buildAgentConfig(),
     intervalMs: 300_000,
+    schedule: null,
     ...overrides,
   };
 }

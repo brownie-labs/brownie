@@ -121,6 +121,39 @@ describe("envSchema", () => {
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "1.5" }).success,
     ).toBe(false);
   });
+
+  it("domyślnie pozostawia godziny i dni pracy nieustawione", () => {
+    const env = envSchema.parse({});
+    expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS).toBeUndefined();
+    expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS).toBeUndefined();
+  });
+
+  it("przyjmuje poprawne godziny i dni pracy", () => {
+    const env = envSchema.parse({
+      CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "08:00-18:00",
+      CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: "mon-fri",
+    });
+    expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS).toBe("08:00-18:00");
+    expect(env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS).toBe("mon-fri");
+  });
+
+  it("odrzuca błędny format godzin pracy", () => {
+    expect(
+      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "8-18" }).success,
+    ).toBe(false);
+  });
+
+  it("odrzuca identyczny początek i koniec godzin pracy", () => {
+    expect(
+      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: "08:00-08:00" }).success,
+    ).toBe(false);
+  });
+
+  it("odrzuca nieznany dzień pracy", () => {
+    expect(
+      envSchema.safeParse({ CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: "pon" }).success,
+    ).toBe(false);
+  });
 });
 
 describe("resolvePromptPaths", () => {
@@ -217,6 +250,26 @@ describe("loadWorkerConfig", () => {
     expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));
     expect(config.cwd).toBe(join(dir, "ws"));
     expect(config.streamPartial).toBe(true);
+    expect(config.monitor.schedule).toBeNull();
+  });
+
+  it("buduje harmonogram monitora z godzin i dni pracy", async () => {
+    await writePrompts();
+    await writeEnv(
+      [
+        "CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=08:00-18:00",
+        "CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon-fri",
+        ...PROMPT_FILE_ENV,
+      ].join("\n"),
+    );
+
+    const config = await loadWorkerConfig();
+
+    expect(config.monitor.schedule).toEqual({
+      startMinute: 480,
+      endMinute: 1080,
+      days: [1, 2, 3, 4, 5],
+    });
   });
 
   it("rzuca, gdy brak któregokolwiek pliku promptu", async () => {

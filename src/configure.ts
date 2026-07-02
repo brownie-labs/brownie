@@ -3,12 +3,23 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { consola, type PromptOptions } from "consola";
+import { parseTimeWindow } from "./active-hours.js";
 import { resolveEnvPath } from "./config.js";
 import { logger } from "./logger.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
 const CANCEL_MESSAGE = "Przerwano — nic nie zmieniono.";
 const MODELS = ["haiku", "sonnet", "opus"];
+
+const DAY_OPTIONS: { value: string; label: string }[] = [
+  { value: "mon", label: "Poniedziałek" },
+  { value: "tue", label: "Wtorek" },
+  { value: "wed", label: "Środa" },
+  { value: "thu", label: "Czwartek" },
+  { value: "fri", label: "Piątek" },
+  { value: "sat", label: "Sobota" },
+  { value: "sun", label: "Niedziela" },
+];
 
 function ask<T extends PromptOptions>(message: string, options: T) {
   return consola.prompt(message, { ...options, cancel: "reject" as const });
@@ -38,17 +49,64 @@ async function askIntervalMinutes(): Promise<number> {
   return minutes;
 }
 
-function buildEnv(
-  monitorModel: string,
-  executorModel: string,
-  intervalMs: number,
-  configDir?: string,
-): string {
+async function askOptional(
+  message: string,
+  placeholder: string,
+  validate: (value: string) => unknown,
+): Promise<string> {
+  for (;;) {
+    const raw = (await ask(message, { type: "text", placeholder })).trim();
+    if (raw === "") return "";
+    try {
+      validate(raw);
+      return raw;
+    } catch (err) {
+      logger.warn((err as Error).message);
+    }
+  }
+}
+
+async function askActiveDays(): Promise<string> {
+  const selected = (await ask(
+    "Dni pracy monitora (spacja = zaznacz, Enter = wszystkie dni)",
+    { type: "multiselect", options: DAY_OPTIONS, required: false },
+  )) as unknown as string[];
+  if (selected.length === 0 || selected.length === DAY_OPTIONS.length) return "";
+  const order = DAY_OPTIONS.map((option) => option.value);
+  return [...selected].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(",");
+}
+
+interface ScheduleAnswers {
+  activeHours: string;
+  activeDays: string;
+}
+
+interface BuildEnvOptions {
+  monitorModel: string;
+  executorModel: string;
+  intervalMs: number;
+  schedule: ScheduleAnswers;
+  configDir?: string | undefined;
+}
+
+function buildEnv({
+  monitorModel,
+  executorModel,
+  intervalMs,
+  schedule,
+  configDir,
+}: BuildEnvOptions): string {
   const lines = [
     `CLAUDE_WORKER_MONITOR_MODEL=${monitorModel}`,
     `CLAUDE_WORKER_MONITOR_INTERVAL_MS=${intervalMs}`,
-    `CLAUDE_WORKER_EXECUTOR_MODEL=${executorModel}`,
   ];
+  if (schedule.activeHours) {
+    lines.push(`CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=${schedule.activeHours}`);
+  }
+  if (schedule.activeDays) {
+    lines.push(`CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=${schedule.activeDays}`);
+  }
+  lines.push(`CLAUDE_WORKER_EXECUTOR_MODEL=${executorModel}`);
   if (configDir) lines.push("", `CLAUDE_CONFIG_DIR=${configDir}`);
   return `${lines.join("\n")}\n`;
 }
@@ -84,6 +142,13 @@ export const configureCommand = defineCommand({
 
       const intervalMinutes = await askIntervalMinutes();
       const intervalMs = Math.round(intervalMinutes * 60_000);
+
+      const activeHours = await askOptional(
+        "Godziny pracy monitora (HH:MM-HH:MM, Enter = cała doba)",
+        "np. 08:00-18:00",
+        parseTimeWindow,
+      );
+      const activeDays = await askActiveDays();
 
       const monitorPrompt = (
         await ask(
@@ -122,7 +187,13 @@ export const configureCommand = defineCommand({
       await mkdir(dirname(monitorPromptPath), { recursive: true });
       await writeFile(
         envPath,
-        buildEnv(monitorModel, executorModel, intervalMs, configDir),
+        buildEnv({
+          monitorModel,
+          executorModel,
+          intervalMs,
+          schedule: { activeHours, activeDays },
+          configDir,
+        }),
         "utf8",
       );
       await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");

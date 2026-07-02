@@ -251,6 +251,34 @@ describe("runMonitorLoop", () => {
     );
   });
 
+  it("poza godzinami pracy monitor czeka i budzi się w oknie", async () => {
+    vi.setSystemTime(new Date("2026-07-01T06:00:00"));
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const controller = new AbortController();
+    const base = buildConfig();
+    const config = buildConfig({
+      monitor: {
+        ...base.monitor,
+        schedule: { startMinute: 480, endMinute: 1080, days: [1, 2, 3, 4, 5] },
+      },
+    });
+
+    const promise = runMonitorLoop(config, store, new Waker(), controller.signal);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("Poza godzinami pracy"),
+    );
+
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
   it("wyjątek z cyklu jest łapany, pętla trwa dalej", async () => {
     mocks.runSession
       .mockRejectedValueOnce(new Error("crash"))

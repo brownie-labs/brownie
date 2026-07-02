@@ -40,7 +40,16 @@ describe("configureCommand", () => {
   });
 
   it("zapisuje .env i prompty obu agentów bez CLAUDE_CONFIG_DIR", async () => {
-    queueAnswers("haiku", "15", "obserwuj Redmine", "opus", "wykonuj rzetelnie", false);
+    queueAnswers(
+      "haiku",
+      "15",
+      "",
+      [],
+      "obserwuj Redmine",
+      "opus",
+      "wykonuj rzetelnie",
+      false,
+    );
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
@@ -48,12 +57,95 @@ describe("configureCommand", () => {
     expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=900000");
     expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=opus");
     expect(env).not.toContain("CLAUDE_CONFIG_DIR");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
     expect(await readFile(monitorPromptPath, "utf8")).toBe("obserwuj Redmine\n");
     expect(await readFile(executorPromptPath, "utf8")).toBe("wykonuj rzetelnie\n");
   });
 
+  it("zapisuje godziny i wybrane dni pracy monitora", async () => {
+    queueAnswers(
+      "haiku",
+      "15",
+      "08:00-18:00",
+      ["mon", "tue", "wed", "thu", "fri"],
+      "obserwuj",
+      "opus",
+      "wykonuj",
+      false,
+    );
+    await runConfigure();
+
+    const env = await readFile(envPath, "utf8");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=08:00-18:00");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,tue,wed,thu,fri");
+  });
+
+  it("normalizuje kolejność zaznaczonych dni", async () => {
+    queueAnswers(
+      "haiku",
+      "15",
+      "",
+      ["fri", "mon", "wed"],
+      "obserwuj",
+      "opus",
+      "wykonuj",
+      false,
+    );
+    await runConfigure();
+
+    const env = await readFile(envPath, "utf8");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,wed,fri");
+  });
+
+  it("pomija dni gdy zaznaczono wszystkie", async () => {
+    queueAnswers(
+      "haiku",
+      "15",
+      "",
+      ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "obserwuj",
+      "opus",
+      "wykonuj",
+      false,
+    );
+    await runConfigure();
+
+    const env = await readFile(envPath, "utf8");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+  });
+
+  it("ponawia pytanie o godziny pracy przy błędnym formacie", async () => {
+    queueAnswers(
+      "haiku",
+      "15",
+      "zła wartość",
+      "08:00-18:00",
+      [],
+      "obserwuj",
+      "opus",
+      "wykonuj",
+      false,
+    );
+    await runConfigure();
+
+    const env = await readFile(envPath, "utf8");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=08:00-18:00");
+    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+  });
+
   it("dopisuje CLAUDE_CONFIG_DIR gdy wybrany", async () => {
-    queueAnswers("haiku", "2", "obserwuj", "sonnet", "wykonuj", true, "~/profil-claude");
+    queueAnswers(
+      "haiku",
+      "2",
+      "",
+      [],
+      "obserwuj",
+      "sonnet",
+      "wykonuj",
+      true,
+      "~/profil-claude",
+    );
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
@@ -62,7 +154,7 @@ describe("configureCommand", () => {
   });
 
   it("ponawia pytanie o interwał przy błędnej wartości", async () => {
-    queueAnswers("haiku", "0", "abc", "3", "obserwuj", "opus", "wykonuj", false);
+    queueAnswers("haiku", "0", "abc", "3", "", [], "obserwuj", "opus", "wykonuj", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
@@ -70,7 +162,7 @@ describe("configureCommand", () => {
   });
 
   it("obsługuje przecinek dziesiętny w interwale", async () => {
-    queueAnswers("haiku", "1,5", "obserwuj", "opus", "wykonuj", false);
+    queueAnswers("haiku", "1,5", "", [], "obserwuj", "opus", "wykonuj", false);
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");

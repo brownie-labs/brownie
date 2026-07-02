@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { describeSchedule, formatResume, msUntilActive } from "./active-hours.js";
 import { monitorLogger } from "./logger.js";
 import { parseTaskReport, TASK_REPORT_CONTRACT } from "./report.js";
 import { runSession } from "./runner.js";
@@ -15,13 +16,24 @@ export async function runMonitorLoop(
 ): Promise<void> {
   const { monitor } = config;
   monitorLogger.success(
-    `Monitor uruchomiony · model=${monitor.model} · interwał=${formatDuration(monitor.intervalMs)}`,
+    `Monitor uruchomiony · model=${monitor.model} · interwał=${formatDuration(monitor.intervalMs)}` +
+      ` · godziny pracy=${describeSchedule(monitor.schedule)}`,
   );
 
   const aborted = (): boolean => signal.aborted;
 
   let cycle = 0;
   while (!aborted()) {
+    const now = new Date();
+    const waitForWindow = msUntilActive(monitor.schedule, now);
+    if (waitForWindow > 0) {
+      monitorLogger.info(
+        `⏸ Poza godzinami pracy monitora — wznowienie ${formatResume(new Date(now.getTime() + waitForWindow))}`,
+      );
+      await sleep(waitForWindow, signal);
+      continue;
+    }
+
     cycle += 1;
     const start = Date.now();
     monitorLogger.start(`▶ Cykl #${cycle} — sprawdzam, czy jest coś do zrobienia`);

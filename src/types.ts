@@ -5,8 +5,15 @@ export interface AgentConfig {
   sessionTimeoutMs?: number | undefined;
 }
 
+export interface MonitorSchedule {
+  startMinute: number;
+  endMinute: number;
+  days: readonly number[];
+}
+
 export interface MonitorConfig extends AgentConfig {
   intervalMs: number;
+  schedule: MonitorSchedule | null;
 }
 
 export interface WorkerConfig {
