@@ -66,6 +66,40 @@ describe("parseTaskReport", () => {
     expect(parseTaskReport('```json\n{"tasks": [}\n```')).toBeNull();
   });
 
+  it("toleruje surowe znaki nowej linii wewnątrz stringów", () => {
+    const text =
+      '{"tasks": [{"id": "a", "title": "T", "description": "linia 1\nlinia 2\n\nlinia 4"}]}';
+
+    expect(parseTaskReport(text)).toEqual([
+      { id: "a", title: "T", description: "linia 1\nlinia 2\n\nlinia 4" },
+    ]);
+  });
+
+  it("toleruje surowe znaki sterujące (tab, CR) wewnątrz stringów", () => {
+    const text = '{"tasks": [{"id": "a", "title": "T\tX", "description": "y\r\nz"}]}';
+
+    expect(parseTaskReport(text)).toEqual([
+      { id: "a", title: "T\tX", description: "y\r\nz" },
+    ]);
+  });
+
+  it("nie myli znaków sterujących w stringu z whitespace strukturalnym", () => {
+    const text = [
+      "```json",
+      "{",
+      '  "tasks": [',
+      '    {"id": "a", "title": "wielolinijkowy",',
+      '     "description": "wiersz A\nwiersz B"}',
+      "  ]",
+      "}",
+      "```",
+    ].join("\n");
+
+    expect(parseTaskReport(text)).toEqual([
+      { id: "a", title: "wielolinijkowy", description: "wiersz A\nwiersz B" },
+    ]);
+  });
+
   it("deduplikuje id w obrębie raportu (pierwsze wystąpienie wygrywa)", () => {
     const text = JSON.stringify({
       tasks: [
