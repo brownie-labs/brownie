@@ -74,6 +74,12 @@ export const envSchema = z.object({
     .int()
     .positive()
     .optional(),
+  CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(30_000),
   CLAUDE_WORKER_TASKS_FILE: z.string().trim().min(1).default("./data/tasks.json"),
   CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv(true),
   CLAUDE_WORKER_CWD: z.string().trim().min(1).default("./workspace"),
@@ -197,6 +203,8 @@ export async function loadWorkerConfig(
       promptPath: paths.executor.promptPath,
       systemPromptPath: paths.executor.systemPromptPath,
       sessionTimeoutMs: env.CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS,
+      maxTaskAttempts: env.CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS,
+      retryDelayMs: env.CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS,
     },
     streamPartial: env.CLAUDE_WORKER_STREAM_PARTIAL,
     cwd,

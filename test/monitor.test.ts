@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
 import { Waker } from "../src/waker.js";
-import { buildConfig } from "./helpers.js";
+import {
+  buildConfig,
+  createMonitorReporterSpy,
+  type MonitorReporterSpy,
+} from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   runSession: vi.fn(),
@@ -10,16 +14,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/runner.js", () => ({ runSession: mocks.runSession }));
-vi.mock("../src/logger.js", async () =>
-  (await import("./helpers.js")).loggerModuleMock(),
-);
 vi.mock("node:fs/promises", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs/promises")>()),
   readFile: mocks.readFile,
 }));
 
 const { runMonitorLoop } = await import("../src/monitor.js");
-const { logger } = await import("../src/logger.js");
 const { TASK_REPORT_CONTRACT } = await import("../src/report.js");
 
 const INTERVAL = 300_000;
@@ -44,9 +44,12 @@ function fakeStore(addTasks = vi.fn()): { store: TaskStore; addTasks: typeof add
 }
 
 describe("runMonitorLoop", () => {
+  let spy: MonitorReporterSpy;
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    spy = createMonitorReporterSpy();
     mocks.readFile.mockImplementation((path: string) =>
       Promise.resolve(path.includes("system") ? "system\n" : "prompt\n"),
     );
@@ -56,7 +59,7 @@ describe("runMonitorLoop", () => {
     vi.useRealTimers();
   });
 
-  it("dokleja kontrakt raportu do system promptu i przekazuje prompt", async () => {
+  it("dokleja kontrakt raportu do system promptu i przekazuje prompt oraz sink sesji", async () => {
     mocks.runSession.mockResolvedValue(ok(report()));
     const { store } = fakeStore();
     const controller = new AbortController();
@@ -68,7 +71,13 @@ describe("runMonitorLoop", () => {
       },
     });
 
-    const promise = runMonitorLoop(config, store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
     controller.abort();
     await vi.advanceTimersByTimeAsync(INTERVAL);
@@ -78,25 +87,37 @@ describe("runMonitorLoop", () => {
       systemPrompt: string;
       prompt: string;
       model: string;
+      events: unknown;
     };
     expect(spec.systemPrompt).toBe(`system\n\n\n${TASK_REPORT_CONTRACT}`);
     expect(spec.prompt).toBe("prompt\n");
     expect(spec.model).toBe("haiku");
+    expect(spec.events).toBe(spy.reporter.session);
   });
 
-  it("dodaje zadania z raportu i budzi egzekutora", async () => {
+  it("dodaje zadania z raportu, raportuje wynik cyklu i budzi egzekutora", async () => {
     mocks.runSession.mockResolvedValue(ok(report("redmine-1")));
     const { store, addTasks } = fakeStore();
     const waker = new Waker();
     const notify = vi.spyOn(waker, "notify");
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, waker, controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      waker,
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
 
+    expect(spy.cycleStarted).toHaveBeenCalledWith(1);
     expect(addTasks).toHaveBeenCalledWith([
       { id: "redmine-1", title: "Zadanie redmine-1", description: "" },
     ]);
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ cycle: 1, ok: true, addedTasks: 1 }),
+    );
     expect(notify).toHaveBeenCalledTimes(1);
 
     controller.abort();
@@ -112,13 +133,19 @@ describe("runMonitorLoop", () => {
     const notify = vi.spyOn(waker, "notify");
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, waker, controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      waker,
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
 
     expect(addTasks).toHaveBeenCalledTimes(1);
     expect(notify).not.toHaveBeenCalled();
-    expect(logger.success).toHaveBeenCalledWith(
-      expect.stringContaining("pominięte duplikaty: 1"),
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: true, addedTasks: 0, skippedDuplicates: 1 }),
     );
 
     controller.abort();
@@ -126,18 +153,27 @@ describe("runMonitorLoop", () => {
     await promise;
   });
 
-  it("niepoprawny raport loguje błąd, pomija cykl i kontynuuje pętlę", async () => {
+  it("niepoprawny raport kończy cykl błędem i kontynuuje pętlę", async () => {
     mocks.runSession
       .mockResolvedValueOnce(ok("bełkot bez json"))
       .mockResolvedValue(ok(report()));
     const { store, addTasks } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("niepoprawny raport"),
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: false,
+        error: expect.stringContaining("niepoprawny raport") as string,
+      }),
     );
     expect(addTasks).not.toHaveBeenCalled();
 
@@ -154,11 +190,20 @@ describe("runMonitorLoop", () => {
     const { store, addTasks } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("niepoprawny raport"),
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: false,
+        error: expect.stringContaining("niepoprawny raport") as string,
+      }),
     );
     expect(addTasks).not.toHaveBeenCalled();
 
@@ -179,10 +224,18 @@ describe("runMonitorLoop", () => {
     const { store, addTasks } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("niepowodzenie"));
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, error: "Przekroczono limit czasu sesji" }),
+    );
     expect(addTasks).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(INTERVAL);
@@ -193,24 +246,32 @@ describe("runMonitorLoop", () => {
     await promise;
   });
 
-  it("uruchamia kolejny cykl po upływie interwału", async () => {
+  it("uruchamia kolejny cykl po upływie interwału i raportuje sen", async () => {
     mocks.runSession.mockResolvedValue(ok(report()));
     const { store } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
+    expect(spy.sleepUntil).toHaveBeenCalledWith(expect.any(Date));
 
     await vi.advanceTimersByTimeAsync(INTERVAL);
     expect(mocks.runSession).toHaveBeenCalledTimes(2);
+    expect(spy.cycleStarted).toHaveBeenLastCalledWith(2);
 
     controller.abort();
     await vi.advanceTimersByTimeAsync(INTERVAL);
     await promise;
   });
 
-  it("przy przekroczonym interwale kolejny cykl startuje natychmiast", async () => {
+  it("przy przekroczonym interwale kolejny cykl startuje natychmiast bez snu", async () => {
     mocks.runSession.mockImplementation(
       () =>
         new Promise<SessionResult>((res) =>
@@ -220,10 +281,16 @@ describe("runMonitorLoop", () => {
     const { store } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
 
     await vi.advanceTimersByTimeAsync(INTERVAL + 1000);
-    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("natychmiast"));
+    expect(spy.sleepUntil).not.toHaveBeenCalled();
     expect(mocks.runSession).toHaveBeenCalledTimes(2);
 
     controller.abort();
@@ -231,7 +298,7 @@ describe("runMonitorLoop", () => {
     await promise;
   });
 
-  it("abort w trakcie sesji przerywa pętlę bez parsowania", async () => {
+  it("abort w trakcie sesji przerywa pętlę bez parsowania i bez wyniku cyklu", async () => {
     const controller = new AbortController();
     const { store, addTasks } = fakeStore();
     mocks.runSession.mockImplementation(() => {
@@ -239,19 +306,22 @@ describe("runMonitorLoop", () => {
       return Promise.resolve(ok(report("po-abort")));
     });
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
     await promise;
 
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
     expect(addTasks).not.toHaveBeenCalled();
-    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("przerwany"));
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("Monitor zatrzymany"),
-    );
+    expect(spy.cycleFinished).not.toHaveBeenCalled();
   });
 
-  it("poza godzinami pracy monitor czeka i budzi się w oknie", async () => {
+  it("poza godzinami pracy raportuje wznowienie i budzi się w oknie", async () => {
     vi.setSystemTime(new Date("2026-07-01T06:00:00"));
     mocks.runSession.mockResolvedValue(ok(report()));
     const { store } = fakeStore();
@@ -264,12 +334,16 @@ describe("runMonitorLoop", () => {
       },
     });
 
-    const promise = runMonitorLoop(config, store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.runSession).not.toHaveBeenCalled();
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("Poza godzinami pracy"),
-    );
+    expect(spy.offHours).toHaveBeenCalledWith(new Date("2026-07-01T08:00:00"));
 
     await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
     expect(mocks.runSession).toHaveBeenCalledTimes(1);
@@ -279,18 +353,23 @@ describe("runMonitorLoop", () => {
     await promise;
   });
 
-  it("wyjątek z cyklu jest łapany, pętla trwa dalej", async () => {
+  it("wyjątek z cyklu kończy go błędem, pętla trwa dalej", async () => {
     mocks.runSession
       .mockRejectedValueOnce(new Error("crash"))
       .mockResolvedValue(ok(report()));
     const { store } = fakeStore();
     const controller = new AbortController();
 
-    const promise = runMonitorLoop(buildConfig(), store, new Waker(), controller.signal);
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      controller.signal,
+    );
     await vi.advanceTimersByTimeAsync(1);
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("wyjątek"),
-      expect.anything(),
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, error: "crash" }),
     );
 
     await vi.advanceTimersByTimeAsync(INTERVAL);

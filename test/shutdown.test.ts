@@ -1,36 +1,38 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../src/logger.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { abortOnSignals } from "../src/shutdown.js";
 
 const SIGNAL: NodeJS.Signals = "SIGUSR2";
 
 describe("abortOnSignals", () => {
-  beforeEach(() => {
-    vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-  });
-
   afterEach(() => {
     process.removeAllListeners(SIGNAL);
-    vi.restoreAllMocks();
   });
 
   it("nie jest przerwany zanim nadejdzie sygnał", () => {
-    const signal = abortOnSignals([SIGNAL]);
+    const signal = abortOnSignals(undefined, [SIGNAL]);
     expect(signal.aborted).toBe(false);
   });
 
-  it("po sygnale ustawia abort i loguje ostrzeżenie", () => {
-    const signal = abortOnSignals([SIGNAL]);
+  it("po sygnale ustawia abort i woła callback z nazwą sygnału", () => {
+    const onSignal = vi.fn();
+    const signal = abortOnSignals(onSignal, [SIGNAL]);
     process.emit(SIGNAL);
     expect(signal.aborted).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(SIGNAL));
+    expect(onSignal).toHaveBeenCalledWith(SIGNAL);
+  });
+
+  it("działa bez callbacka", () => {
+    const signal = abortOnSignals(undefined, [SIGNAL]);
+    process.emit(SIGNAL);
+    expect(signal.aborted).toBe(true);
   });
 
   it("drugi sygnał nie wywołuje ponownie logiki zamykania", () => {
-    const signal = abortOnSignals([SIGNAL]);
+    const onSignal = vi.fn();
+    const signal = abortOnSignals(onSignal, [SIGNAL]);
     process.emit(SIGNAL);
     process.emit(SIGNAL);
     expect(signal.aborted).toBe(true);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(onSignal).toHaveBeenCalledTimes(1);
   });
 });

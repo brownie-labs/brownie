@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 import prettier from "eslint-config-prettier";
 
 export default defineConfig(
@@ -35,6 +36,10 @@ export default defineConfig(
     rules: {
       "@typescript-eslint/no-dynamic-delete": "off",
     },
+  },
+  {
+    files: ["src/ui/**", "test/ui/**"],
+    extends: [reactHooks.configs.flat.recommended],
   },
   prettier,
 );

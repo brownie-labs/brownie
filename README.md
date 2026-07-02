@@ -13,8 +13,24 @@ Claude Code (`claude -p`):
 
 Obie pętle działają równolegle w jednym procesie: monitor tyka nawet wtedy, gdy
 egzekutor pracuje. W danym momencie działa maksymalnie jedna sesja każdego typu.
-Live logi renderowane są przez [consola](https://github.com/unjs/consola) z tagami
-`[monitor]` i `[executor]`.
+
+## Dashboard
+
+`pnpm start` renderuje pełnoekranowy dashboard TUI ([Ink](https://github.com/vadimdemedes/ink)),
+odświeżany na żywo:
+
+- **nagłówek** — parametry obu agentów (modele, interwał, okno godzin pracy, timeouty)
+  oraz wspólne ustawienia (katalog roboczy, plik magazynu zadań, streaming),
+- **panel monitora** — bieżąca faza (cykl w toku / sen z odliczaniem do kolejnego cyklu /
+  poza godzinami pracy), podgląd na żywo wyjścia sesji oraz wynik ostatniego cyklu
+  (czas, koszt, nowe zadania),
+- **panel egzekutora** — bieżące zadanie albo oczekiwanie, podgląd wyjścia sesji
+  i wynik ostatniego zadania (czas, koszt, tury),
+- **tabela zadań** — liczniki i lista zadań ze statusami
+  (`oczekuje` / `w toku` / `wykonane` / `nieudane`, wraz z błędem).
+
+Dashboard zastępuje logi całkowicie; konsola służy wyłącznie do błędów startu
+(preflight, konfiguracja, uszkodzony magazyn) oraz kreatorowi `pnpm configure`.
 
 ## Lista zadań i deduplikacja
 
@@ -30,6 +46,17 @@ Cykl życia zadania: `pending → in_progress → done | failed`. Po restarcie w
 osierocone `in_progress` wracają do `pending` (zadanie wykona się ponownie — stąd
 zalecenie idempotencji w system promptcie egzekutora). Magazyn nie ma locka
 międzyprocesowego — na jednym magazynie powinien działać jeden worker.
+
+## Ponawianie błędów przejściowych
+
+Gdy sesja egzekutora padnie z przyczyny przejściowej — timeout sesji albo błąd
+API/sieci (np. `API Error: Connection closed mid-response`, `ECONNRESET`,
+`overloaded`, rate limit) — zadanie wraca do kolejki i jest ponawiane po krótkiej
+przerwie (panel egzekutora pokazuje odliczanie `↻ ponowienie …`). Limit prób obejmuje
+wszystkie wykonania zadania (`CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`, domyślnie 3);
+po jego wyczerpaniu — oraz przy błędach trwałych (np. model sam zgłosił porażkę,
+niezerowy kod wyjścia) — zadanie ląduje w `failed` z opisem błędu. Liczba prób jest
+trwała (pole `attempts` w magazynie), więc restart workera nie zeruje licznika.
 
 ## Wymagania
 
@@ -62,6 +89,8 @@ zahardkodowane w repo):
 | `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`        | Prompt egzekutora (tożsamość, zasady pracy)           | `./prompts/executor.prompt.md` |
 | `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE` | System prompt egzekutora (definicja roli)             | `./prompts/executor.system.md` |
 | `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS` | Twardy limit sesji egzekutora                         | brak                           |
+| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`      | Maks. liczba prób zadania (błędy przejściowe)         | `3`                            |
+| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`     | Przerwa przed ponowieniem po błędzie przejściowym     | `30000` (30 s)                 |
 | `CLAUDE_WORKER_TASKS_FILE`                  | Trwały magazyn zadań (dedup + historia)               | `./data/tasks.json`            |
 | `CLAUDE_WORKER_STREAM_PARTIAL`              | Streaming tekstu token-po-tokenie (`true`/`false`)    | `true`                         |
 | `CLAUDE_WORKER_CWD`                         | Katalog roboczy sesji (izolacja od kodu agenta)       | `./workspace`                  |
@@ -79,12 +108,12 @@ pnpm start                       # używa ./.env
 pnpm start --env-file ./inny.env
 ```
 
-Zatrzymanie: `Ctrl+C` (SIGINT) — obie pętle kończą się, a ewentualne trwające sesje są
-ubijane. Zadanie przerwane w trakcie wykonywania wróci do `pending` przy kolejnym starcie.
+Zatrzymanie: `Ctrl+C` (SIGINT) — dashboard pokazuje komunikat zamykania, obie pętle
+kończą się, a ewentualne trwające sesje są ubijane. Zadanie przerwane w trakcie
+wykonywania wróci do `pending` przy kolejnym starcie.
 
-Uwaga: przy `CLAUDE_WORKER_STREAM_PARTIAL=true` strumienie tekstu obu agentów mogą się
-przeplatać na stdout, gdy sesje działają równocześnie; pełne linie logów pozostają
-czytelne dzięki tagom.
+Przy `CLAUDE_WORKER_STREAM_PARTIAL=true` tekst sesji spływa do paneli na żywo
+(token po tokenie); każdy agent ma własny panel, więc strumienie się nie przeplatają.
 
 ## Jakość kodu
 

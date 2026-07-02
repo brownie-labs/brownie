@@ -1,41 +1,37 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { SessionEvent } from "../src/session-events.js";
 import { StreamRenderer } from "../src/stream.js";
-import { createFakeLogger, type FakeLogger } from "./helpers.js";
+
+function createRenderer(streamPartial = false): {
+  events: SessionEvent[];
+  renderer: StreamRenderer;
+} {
+  const events: SessionEvent[] = [];
+  const renderer = new StreamRenderer((event) => events.push(event), streamPartial);
+  return { events, renderer };
+}
+
+function line(event: unknown): string {
+  return JSON.stringify(event);
+}
 
 describe("StreamRenderer", () => {
-  let logger: FakeLogger;
-  let stdoutWrite: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    logger = createFakeLogger();
-    stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  function line(event: unknown): string {
-    return JSON.stringify(event);
-  }
-
   it("ignoruje puste linie", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine("");
-    r.handleLine("   ");
-    expect(logger.debug).not.toHaveBeenCalled();
-    expect(logger.info).not.toHaveBeenCalled();
+    const { events, renderer } = createRenderer();
+    renderer.handleLine("");
+    renderer.handleLine("   ");
+    expect(events).toEqual([]);
   });
 
-  it("linię nie-JSON loguje jako debug z prefiksem", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine("to nie json");
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("(nie-JSON)"));
+  it("linię nie-JSON emituje jako zdarzenie raw", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine("to nie json");
+    expect(events).toEqual([{ type: "raw", line: "to nie json" }]);
   });
 
-  it("system/init loguje model, sesję i liczbę narzędzi", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+  it("system/init emituje model, sesję i liczbę narzędzi", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
       line({
         type: "system",
         subtype: "init",
@@ -44,15 +40,14 @@ describe("StreamRenderer", () => {
         tools: ["Read", "Bash", "Edit"],
       }),
     );
-    const msg = logger.info.mock.calls[0]?.[0] as string;
-    expect(msg).toContain("haiku");
-    expect(msg).toContain("sess-9");
-    expect(msg).toContain("3");
+    expect(events).toEqual([
+      { type: "init", model: "haiku", sessionId: "sess-9", toolCount: 3 },
+    ]);
   });
 
-  it("assistant: tekst loguje przez log, tool_use przez info", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+  it("assistant: tekst emituje jako text, tool_use jako toolUse", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
       line({
         type: "assistant",
         message: {
@@ -63,23 +58,23 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    expect(logger.log).toHaveBeenCalledWith("Cześć");
-    const toolMsg = logger.info.mock.calls[0]?.[0] as string;
-    expect(toolMsg).toContain("🔧");
-    expect(toolMsg).toContain("Bash");
+    expect(events).toEqual([
+      { type: "text", text: "Cześć" },
+      { type: "toolUse", name: "Bash", input: '{"command":"ls"}' },
+    ]);
   });
 
   it("assistant: pusty tekst jest pomijany", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
       line({ type: "assistant", message: { content: [{ type: "text", text: "   " }] } }),
     );
-    expect(logger.log).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
-  it("user: tool_result loguje debug, błąd z prefiksem ostrzeżenia", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+  it("user: tool_result emituje toolResult z flagą błędu", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
       line({
         type: "user",
         message: {
@@ -87,7 +82,7 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    r.handleLine(
+    renderer.handleLine(
       line({
         type: "user",
         message: {
@@ -95,13 +90,15 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("↳ wynik"));
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("⚠ wynik(błąd)"));
+    expect(events).toEqual([
+      { type: "toolResult", isError: false, content: "ok" },
+      { type: "toolResult", isError: true, content: "boom" },
+    ]);
   });
 
-  it("stream_event z partialem włączonym pisze delta na stdout", () => {
-    const r = new StreamRenderer(logger.instance, true);
-    r.handleLine(
+  it("stream_event z partialem włączonym emituje partial z deltą", () => {
+    const { events, renderer } = createRenderer(true);
+    renderer.handleLine(
       line({
         type: "stream_event",
         event: {
@@ -110,12 +107,12 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    expect(stdoutWrite).toHaveBeenCalledWith("abc");
+    expect(events).toEqual([{ type: "partial", text: "abc" }]);
   });
 
-  it("stream_event z partialem wyłączonym nie pisze na stdout", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+  it("stream_event z partialem wyłączonym nic nie emituje", () => {
+    const { events, renderer } = createRenderer(false);
+    renderer.handleLine(
       line({
         type: "stream_event",
         event: {
@@ -124,41 +121,12 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    expect(stdoutWrite).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
-  it("domyka otwarty partial przed kolejnym zdarzeniem", () => {
-    const r = new StreamRenderer(logger.instance, true);
-    r.handleLine(
-      line({
-        type: "stream_event",
-        event: {
-          type: "content_block_delta",
-          delta: { type: "text_delta", text: "abc" },
-        },
-      }),
-    );
-    r.handleLine(
-      line({
-        type: "assistant",
-        message: { content: [{ type: "text", text: "koniec" }] },
-      }),
-    );
-    expect(stdoutWrite).toHaveBeenCalledWith("\n");
-  });
-
-  it("getSummary domyka partial i zwraca podsumowanie z result", () => {
-    const r = new StreamRenderer(logger.instance, true);
-    r.handleLine(
-      line({
-        type: "stream_event",
-        event: {
-          type: "content_block_delta",
-          delta: { type: "text_delta", text: "x" },
-        },
-      }),
-    );
-    r.handleLine(
+  it("result nie emituje zdarzenia, tylko zasila podsumowanie", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
       line({
         type: "result",
         is_error: false,
@@ -167,8 +135,8 @@ describe("StreamRenderer", () => {
         session_id: "sess-3",
       }),
     );
-    const summary = r.getSummary();
-    expect(summary).toEqual({
+    expect(events).toEqual([]);
+    expect(renderer.getSummary()).toEqual({
       isError: false,
       costUsd: 0.5,
       numTurns: 4,
@@ -178,8 +146,8 @@ describe("StreamRenderer", () => {
   });
 
   it("getSummary przekazuje tekst z pola result", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(
+    const { renderer } = createRenderer();
+    renderer.handleLine(
       line({
         type: "result",
         is_error: false,
@@ -187,21 +155,21 @@ describe("StreamRenderer", () => {
         result: '{"tasks": []}',
       }),
     );
-    expect(r.getSummary().resultText).toBe('{"tasks": []}');
+    expect(renderer.getSummary().resultText).toBe('{"tasks": []}');
   });
 
   it("getSummary zwraca isError=true dla result z is_error", () => {
-    const r = new StreamRenderer(logger.instance, false);
-    r.handleLine(line({ type: "result", is_error: true, session_id: "sess-err" }));
-    const summary = r.getSummary();
+    const { renderer } = createRenderer();
+    renderer.handleLine(line({ type: "result", is_error: true, session_id: "sess-err" }));
+    const summary = renderer.getSummary();
     expect(summary.isError).toBe(true);
     expect(summary.sessionId).toBe("sess-err");
   });
 
-  it("truncate obcina długie wejście narzędzia z wielokropkiem", () => {
-    const r = new StreamRenderer(logger.instance, false);
+  it("obcina długie wejście narzędzia z wielokropkiem", () => {
+    const { events, renderer } = createRenderer();
     const long = "a".repeat(1000);
-    r.handleLine(
+    renderer.handleLine(
       line({
         type: "assistant",
         message: {
@@ -209,8 +177,9 @@ describe("StreamRenderer", () => {
         },
       }),
     );
-    const msg = logger.info.mock.calls[0]?.[0] as string;
-    expect(msg).toContain("…");
-    expect(msg.length).toBeLessThan(long.length);
+    const [event] = events;
+    if (event?.type !== "toolUse") throw new Error("oczekiwano zdarzenia toolUse");
+    expect(event.input).toContain("…");
+    expect(event.input.length).toBeLessThan(long.length);
   });
 });

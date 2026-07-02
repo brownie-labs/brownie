@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { executorLogger } from "./logger.js";
 import { runSession } from "./runner.js";
-import { formatDuration } from "./timing.js";
+import type { ExecutorReporter } from "./status.js";
+import { sleep } from "./timing.js";
 import type { TaskStore } from "./tasks.js";
-import type { Task, WorkerConfig } from "./types.js";
+import type { SessionResult, Task, WorkerConfig } from "./types.js";
 import type { Waker } from "./waker.js";
 
 export const TASK_EXECUTION_CONTRACT = `## Kontrakt wykonania (techniczny, nadrzędny)
@@ -12,6 +12,15 @@ Pracujesz nad dokładnie jednym zadaniem — opisanym w sekcji „Zadanie do wyk
 Nie podejmuj innych zadań, nawet jeśli je zauważysz — zajmą się nimi osobne sesje.
 Wykonuj pracę tak, aby jej powtórzenie było bezpieczne (idempotentnie) — sesja może
 zostać przerwana i uruchomiona ponownie.`;
+
+const TRANSIENT_RESULT_PATTERN =
+  /API Error|Connection (closed|error|reset)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EPIPE|socket hang up|overloaded|rate.?limit|Request timed out/i;
+
+export function isTransientFailure(result: SessionResult): boolean {
+  if (result.failureReason === "timeout") return true;
+  if (result.failureReason !== "isError") return false;
+  return TRANSIENT_RESULT_PATTERN.test(result.resultText ?? "");
+}
 
 export function composeTaskPrompt(prompt: string, task: Task): string {
   return `${prompt.trimEnd()}
@@ -29,23 +38,22 @@ export async function runExecutorLoop(
   config: WorkerConfig,
   store: TaskStore,
   waker: Waker,
+  reporter: ExecutorReporter,
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
-  executorLogger.success(
-    `Egzekutor uruchomiony · model=${executor.model} · oczekujące zadania: ${store.pendingCount()}`,
-  );
-
   const aborted = (): boolean => signal.aborted;
 
   while (!aborted()) {
     const task = await store.takeNext();
     if (!task) {
+      reporter.waiting();
       await waker.wait(signal);
       continue;
     }
 
-    executorLogger.start(`▶ Zadanie ${task.id}: ${task.title}`);
+    reporter.taskStarted(task);
+    const start = Date.now();
 
     try {
       const [prompt, systemPrompt] = await Promise.all([
@@ -63,35 +71,59 @@ export async function runExecutorLoop(
           streamPartial: config.streamPartial,
           cwd: config.cwd,
           childEnv: config.childEnv,
-          log: executorLogger,
+          events: reporter.session,
         },
         signal,
       );
 
-      if (aborted()) {
-        executorLogger.info(`⏹ Zadanie ${task.id} przerwane (zamykanie).`);
-        break;
-      }
+      if (aborted()) break;
 
       if (result.ok) {
         await store.complete(task.id);
-        executorLogger.success(
-          `✔ Zadanie ${task.id} wykonane · czas=${formatDuration(result.durationMs)}` +
-            (result.costUsd != null ? ` · koszt=$${result.costUsd.toFixed(4)}` : "") +
-            (result.numTurns != null ? ` · tury=${result.numTurns}` : ""),
-        );
+        reporter.taskFinished({
+          taskId: task.id,
+          title: task.title,
+          ok: true,
+          durationMs: result.durationMs,
+          costUsd: result.costUsd,
+          numTurns: result.numTurns,
+        });
       } else {
-        await store.fail(task.id, result.error ?? "nieznany błąd");
-        executorLogger.error(
-          `✖ Zadanie ${task.id} niepowodzenie · czas=${formatDuration(result.durationMs)} · ${result.error ?? "nieznany błąd"}`,
-        );
+        const error = result.error ?? "nieznany błąd";
+        const willRetry =
+          isTransientFailure(result) && task.attempts < executor.maxTaskAttempts;
+        if (willRetry) {
+          await store.requeue(task.id, error);
+        } else {
+          await store.fail(task.id, error);
+        }
+        reporter.taskFinished({
+          taskId: task.id,
+          title: task.title,
+          ok: false,
+          durationMs: result.durationMs,
+          costUsd: result.costUsd,
+          numTurns: result.numTurns,
+          error,
+          willRetry,
+          attempt: task.attempts,
+          maxAttempts: executor.maxTaskAttempts,
+        });
+        if (willRetry && executor.retryDelayMs > 0) {
+          reporter.retryScheduled(task, new Date(Date.now() + executor.retryDelayMs));
+          await sleep(executor.retryDelayMs, signal);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await store.fail(task.id, message);
-      executorLogger.error(`✖ Zadanie ${task.id} wyjątek:`, err);
+      reporter.taskFinished({
+        taskId: task.id,
+        title: task.title,
+        ok: false,
+        durationMs: Date.now() - start,
+        error: message,
+      });
     }
   }
-
-  executorLogger.info("Egzekutor zatrzymany.");
 }

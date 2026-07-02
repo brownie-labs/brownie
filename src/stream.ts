@@ -1,4 +1,4 @@
-import type { ConsolaInstance } from "consola";
+import { truncate, type SessionEventSink } from "./session-events.js";
 import type { SessionSummary } from "./types.js";
 
 interface ContentBlock {
@@ -28,19 +28,11 @@ interface StreamEvent {
   result?: string;
 }
 
-function truncate(value: unknown, max = 500): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  if (!text) return "";
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
-}
-
 export class StreamRenderer {
-  private partialOpen = false;
   private summary: SessionSummary = {};
 
   constructor(
-    private readonly log: ConsolaInstance,
+    private readonly emit: SessionEventSink,
     private readonly streamPartial: boolean,
   ) {}
 
@@ -51,47 +43,47 @@ export class StreamRenderer {
     try {
       event = JSON.parse(trimmed) as StreamEvent;
     } catch {
-      this.log.debug(`(nie-JSON) ${truncate(trimmed)}`);
+      this.emit({ type: "raw", line: truncate(trimmed) });
       return;
     }
     this.handleEvent(event);
-  }
-
-  private endPartial(): void {
-    if (this.partialOpen) {
-      process.stdout.write("\n");
-      this.partialOpen = false;
-    }
   }
 
   private handleEvent(event: StreamEvent): void {
     switch (event.type) {
       case "system":
         if (event.subtype === "init") {
-          this.endPartial();
-          this.log.info(
-            `init · model=${event.model ?? "?"} · session=${event.session_id ?? "?"} · narzędzia: ${event.tools?.length ?? 0}`,
-          );
+          this.emit({
+            type: "init",
+            model: event.model ?? "?",
+            sessionId: event.session_id ?? "?",
+            toolCount: event.tools?.length ?? 0,
+          });
         }
         break;
 
       case "assistant":
-        this.endPartial();
         for (const block of event.message?.content ?? []) {
           if (block.type === "text" && block.text?.trim()) {
-            this.log.log(block.text.trim());
+            this.emit({ type: "text", text: block.text.trim() });
           } else if (block.type === "tool_use") {
-            this.log.info(`🔧 ${block.name ?? "?"} ${truncate(block.input, 300)}`);
+            this.emit({
+              type: "toolUse",
+              name: block.name ?? "?",
+              input: truncate(block.input, 300),
+            });
           }
         }
         break;
 
       case "user":
-        this.endPartial();
         for (const block of event.message?.content ?? []) {
           if (block.type === "tool_result") {
-            const prefix = block.is_error ? "⚠ wynik(błąd)" : "↳ wynik";
-            this.log.debug(`${prefix} ${truncate(block.content, 300)}`);
+            this.emit({
+              type: "toolResult",
+              isError: block.is_error ?? false,
+              content: truncate(block.content, 300),
+            });
           }
         }
         break;
@@ -103,13 +95,11 @@ export class StreamRenderer {
           event.event.delta?.type === "text_delta" &&
           event.event.delta.text
         ) {
-          process.stdout.write(event.event.delta.text);
-          this.partialOpen = true;
+          this.emit({ type: "partial", text: event.event.delta.text });
         }
         break;
 
       case "result":
-        this.endPartial();
         this.summary = {
           isError: event.is_error,
           costUsd: event.total_cost_usd,
@@ -122,7 +112,6 @@ export class StreamRenderer {
   }
 
   getSummary(): SessionSummary {
-    this.endPartial();
     return this.summary;
   }
 }

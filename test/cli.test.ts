@@ -23,7 +23,11 @@ interface Run {
   output: string;
 }
 
-function runCli(cwd: string, env: NodeJS.ProcessEnv, interruptOn?: RegExp): Promise<Run> {
+function runCli(
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  interruptWhen?: () => Promise<boolean>,
+): Promise<Run> {
   const outPath = join(cwd, "stdout.log");
   const errPath = join(cwd, "stderr.log");
   const outFd = openSync(outPath, "w");
@@ -41,7 +45,7 @@ function runCli(cwd: string, env: NodeJS.ProcessEnv, interruptOn?: RegExp): Prom
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(tsxBin, [entry, "start"], {
       cwd,
-      env,
+      env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
       stdio: ["ignore", outFd, errFd],
     });
 
@@ -61,11 +65,11 @@ function runCli(cwd: string, env: NodeJS.ProcessEnv, interruptOn?: RegExp): Prom
       void readLogs().then((output) => resolvePromise({ code, output }));
     });
 
-    if (interruptOn) {
+    if (interruptWhen) {
       const deadline = Date.now() + INTERRUPT_DEADLINE_MS;
       watcher = setInterval(() => {
-        void readLogs().then((output) => {
-          if (interruptOn.test(output) || Date.now() > deadline) {
+        void interruptWhen().then((ready) => {
+          if (ready || Date.now() > deadline) {
             stopWatching();
             child.kill("SIGINT");
           }
@@ -73,6 +77,21 @@ function runCli(cwd: string, env: NodeJS.ProcessEnv, interruptOn?: RegExp): Prom
       }, POLL_INTERVAL_MS);
     }
   });
+}
+
+async function taskHasStatus(
+  tasksPath: string,
+  id: string,
+  status: string,
+): Promise<boolean> {
+  try {
+    const store = JSON.parse(await readFile(tasksPath, "utf8")) as {
+      tasks: { id: string; status: string }[];
+    };
+    return store.tasks.some((task) => task.id === id && task.status === status);
+  } catch {
+    return false;
+  }
 }
 
 describe("CLI start (smoke E2E)", () => {
@@ -94,23 +113,19 @@ describe("CLI start (smoke E2E)", () => {
       ].join("\n"),
     });
     const env = fakeClaudeCliEnv("ok", {
-      CONSOLA_LEVEL: "5",
+      CI: "true",
       FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({
         tasks: [{ id: "e2e-1", title: "Zadanie testowe", description: "Opis e2e" }],
       }),
       FAKE_CLAUDE_PROMPT_OUT_OPUS: join(dir, "prompt-egzekutora.txt"),
     });
+    const tasksPath = join(dir, "data", "tasks.json");
 
-    const result = await runCli(dir, env, /Zadanie e2e-1 wykonane/);
+    const result = await runCli(dir, env, () =>
+      taskHasStatus(tasksPath, "e2e-1", "done"),
+    );
 
-    expect(result.output).toMatch(/Monitor uruchomiony/);
-    expect(result.output).toMatch(/Egzekutor uruchomiony/);
-    expect(result.output).toMatch(/nowe zadania: 1/);
-    expect(result.output).toMatch(/Zadanie e2e-1 wykonane/);
-    expect(result.output).toMatch(/Monitor zatrzymany/);
-    expect(result.output).toMatch(/Egzekutor zatrzymany/);
-
-    const store = JSON.parse(await readFile(join(dir, "data", "tasks.json"), "utf8")) as {
+    const store = JSON.parse(await readFile(tasksPath, "utf8")) as {
       tasks: { id: string; status: string }[];
     };
     expect(store.tasks).toEqual([
@@ -121,6 +136,10 @@ describe("CLI start (smoke E2E)", () => {
     expect(executorPrompt).toContain("## Zadanie do wykonania");
     expect(executorPrompt).toContain("ID: e2e-1");
     expect(executorPrompt).toContain("wykonuj");
+
+    expect(result.output).toContain("model=haiku");
+    expect(result.output).toContain("e2e-1");
+    expect(result.output).toContain("wykonane: 1");
   }, 30_000);
 
   it("kończy z kodem 1, gdy preflight nie przechodzi (brak .env)", async () => {

@@ -4,26 +4,26 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runSession } from "../src/runner.js";
 import {
   buildSessionSpec,
-  createFakeLogger,
+  createSessionEventCollector,
   createTempDir,
   fakeClaudeEnv,
   removeTempDir,
-  type FakeLogger,
+  type SessionEventCollector,
 } from "./helpers.js";
 
 describe("runSession (integracja z atrapą claude)", () => {
   let dir: string;
-  let log: FakeLogger;
+  let collector: SessionEventCollector;
 
   beforeEach(async () => {
     dir = await createTempDir();
-    log = createFakeLogger();
+    collector = createSessionEventCollector();
   });
 
   afterEach(() => removeTempDir(dir));
 
   it("zwraca sukces i podsumowanie z result", async () => {
-    const spec = buildSessionSpec(log.instance, { childEnv: fakeClaudeEnv("ok") });
+    const spec = buildSessionSpec(collector.sink, { childEnv: fakeClaudeEnv("ok") });
     const result = await runSession(spec, new AbortController().signal);
 
     expect(result.ok).toBe(true);
@@ -34,7 +34,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   }, 15_000);
 
   it("przekazuje resultText z eventu result", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("ok", {
         FAKE_CLAUDE_RESULT_TEXT: '{"tasks": []}',
       }),
@@ -46,17 +46,18 @@ describe("runSession (integracja z atrapą claude)", () => {
   }, 15_000);
 
   it("zwraca błąd, gdy result ma is_error", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("error_result"),
     });
     const result = await runSession(spec, new AbortController().signal);
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Sesja zakończona błędem (is_error)");
+    expect(result.failureReason).toBe("isError");
   }, 15_000);
 
   it("zwraca błąd z kodem wyjścia przy niezerowym kodzie", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("exit_nonzero"),
     });
     const result = await runSession(spec, new AbortController().signal);
@@ -66,7 +67,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   }, 15_000);
 
   it("zwraca błąd spawn, gdy komendy nie ma", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       command: "claude-nie-istnieje-xyz",
     });
     const result = await runSession(spec, new AbortController().signal);
@@ -76,7 +77,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   }, 15_000);
 
   it("ubija sesję po przekroczeniu timeoutu", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("hang"),
       sessionTimeoutMs: 200,
     });
@@ -84,10 +85,11 @@ describe("runSession (integracja z atrapą claude)", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Przekroczono limit czasu sesji");
+    expect(result.failureReason).toBe("timeout");
   }, 15_000);
 
   it("przerywa sesję na sygnał abort", async () => {
-    const spec = buildSessionSpec(log.instance, { childEnv: fakeClaudeEnv("hang") });
+    const spec = buildSessionSpec(collector.sink, { childEnv: fakeClaudeEnv("hang") });
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 150);
     const result = await runSession(spec, controller.signal);
@@ -96,20 +98,21 @@ describe("runSession (integracja z atrapą claude)", () => {
     expect(result.error).toBe("Sesja przerwana");
   }, 15_000);
 
-  it("loguje stderr procesu potomnego jako debug przez przekazany logger", async () => {
-    const spec = buildSessionSpec(log.instance, {
+  it("emituje stderr procesu potomnego jako zdarzenie sesji", async () => {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("exit_nonzero"),
     });
     await runSession(spec, new AbortController().signal);
 
-    expect(log.debug).toHaveBeenCalledWith(
-      expect.stringContaining("stderr: coś poszło nie tak"),
-    );
+    expect(collector.events).toContainEqual({
+      type: "stderr",
+      line: expect.stringContaining("coś poszło nie tak") as string,
+    });
   }, 15_000);
 
   it("zawsze uruchamia sesję w trybie bypassPermissions", async () => {
     const out = join(dir, "otrzymane-argi.json");
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
     });
     await runSession(spec, new AbortController().signal);
@@ -122,7 +125,7 @@ describe("runSession (integracja z atrapą claude)", () => {
 
   it("przekazuje prompt ze speca na stdin procesu potomnego", async () => {
     const out = join(dir, "otrzymany-prompt.txt");
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       prompt: "moje zadanie\n",
       childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_PROMPT_OUT: out }),
     });
@@ -132,7 +135,7 @@ describe("runSession (integracja z atrapą claude)", () => {
   }, 15_000);
 
   it("wybiera zachowanie atrapy po modelu (sufiks _MODEL)", async () => {
-    const spec = buildSessionSpec(log.instance, {
+    const spec = buildSessionSpec(collector.sink, {
       model: "haiku",
       childEnv: fakeClaudeEnv("exit_nonzero", {
         FAKE_CLAUDE_MODE_HAIKU: "ok",

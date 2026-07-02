@@ -4,11 +4,11 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
       include: ["src/**"],
-      exclude: ["src/index.ts", "src/logger.ts", "src/types.ts"],
+      exclude: ["src/index.ts", "src/logger.ts", "src/types.ts", "src/ui/mount.tsx"],
       reporter: ["text", "html"],
       thresholds: {
         statements: 92,

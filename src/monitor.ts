@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { describeSchedule, formatResume, msUntilActive } from "./active-hours.js";
-import { monitorLogger } from "./logger.js";
+import { msUntilActive } from "./active-hours.js";
 import { parseTaskReport, TASK_REPORT_CONTRACT } from "./report.js";
 import { runSession } from "./runner.js";
-import { formatDuration, sleep } from "./timing.js";
+import type { MonitorReporter } from "./status.js";
+import { sleep } from "./timing.js";
 import type { TaskStore } from "./tasks.js";
 import type { WorkerConfig } from "./types.js";
 import type { Waker } from "./waker.js";
@@ -12,14 +12,10 @@ export async function runMonitorLoop(
   config: WorkerConfig,
   store: TaskStore,
   waker: Waker,
+  reporter: MonitorReporter,
   signal: AbortSignal,
 ): Promise<void> {
   const { monitor } = config;
-  monitorLogger.success(
-    `Monitor uruchomiony · model=${monitor.model} · interwał=${formatDuration(monitor.intervalMs)}` +
-      ` · godziny pracy=${describeSchedule(monitor.schedule)}`,
-  );
-
   const aborted = (): boolean => signal.aborted;
 
   let cycle = 0;
@@ -27,16 +23,14 @@ export async function runMonitorLoop(
     const now = new Date();
     const waitForWindow = msUntilActive(monitor.schedule, now);
     if (waitForWindow > 0) {
-      monitorLogger.info(
-        `⏸ Poza godzinami pracy monitora — wznowienie ${formatResume(new Date(now.getTime() + waitForWindow))}`,
-      );
+      reporter.offHours(new Date(now.getTime() + waitForWindow));
       await sleep(waitForWindow, signal);
       continue;
     }
 
     cycle += 1;
     const start = Date.now();
-    monitorLogger.start(`▶ Cykl #${cycle} — sprawdzam, czy jest coś do zrobienia`);
+    reporter.cycleStarted(cycle);
 
     try {
       const [prompt, systemPrompt] = await Promise.all([
@@ -54,59 +48,66 @@ export async function runMonitorLoop(
           streamPartial: config.streamPartial,
           cwd: config.cwd,
           childEnv: config.childEnv,
-          log: monitorLogger,
+          events: reporter.session,
         },
         signal,
       );
 
-      if (aborted()) {
-        monitorLogger.info(`⏹ Cykl #${cycle} przerwany (zamykanie).`);
-        break;
-      }
+      if (aborted()) break;
 
       if (!result.ok) {
-        monitorLogger.error(
-          `✖ Cykl #${cycle} niepowodzenie · czas=${formatDuration(result.durationMs)} · ${result.error ?? "nieznany błąd"}`,
-        );
+        reporter.cycleFinished({
+          cycle,
+          ok: false,
+          durationMs: result.durationMs,
+          costUsd: result.costUsd,
+          addedTasks: 0,
+          skippedDuplicates: 0,
+          error: result.error ?? "nieznany błąd",
+        });
       } else {
         const report =
           result.resultText === undefined ? null : parseTaskReport(result.resultText);
         if (report === null) {
-          monitorLogger.error(
-            `✖ Cykl #${cycle}: monitor zwrócił niepoprawny raport zadań — pomijam ten cykl`,
-          );
-          monitorLogger.debug(`raport: ${result.resultText?.slice(0, 500) ?? "(brak)"}`);
+          reporter.cycleFinished({
+            cycle,
+            ok: false,
+            durationMs: result.durationMs,
+            costUsd: result.costUsd,
+            addedTasks: 0,
+            skippedDuplicates: 0,
+            error: "niepoprawny raport zadań — cykl pominięty",
+          });
         } else {
           const added = await store.addTasks(report);
-          const skipped = report.length - added.length;
-          monitorLogger.success(
-            `✔ Cykl #${cycle} · czas=${formatDuration(result.durationMs)}` +
-              (result.costUsd != null ? ` · koszt=$${result.costUsd.toFixed(4)}` : "") +
-              ` · nowe zadania: ${added.length}` +
-              (skipped > 0 ? ` · pominięte duplikaty: ${skipped}` : ""),
-          );
-          if (added.length > 0) {
-            for (const task of added) {
-              monitorLogger.info(`＋ ${task.id}: ${task.title}`);
-            }
-            waker.notify();
-          }
+          reporter.cycleFinished({
+            cycle,
+            ok: true,
+            durationMs: result.durationMs,
+            costUsd: result.costUsd,
+            addedTasks: added.length,
+            skippedDuplicates: report.length - added.length,
+          });
+          if (added.length > 0) waker.notify();
         }
       }
     } catch (err) {
-      monitorLogger.error(`✖ Cykl #${cycle} wyjątek:`, err);
+      reporter.cycleFinished({
+        cycle,
+        ok: false,
+        durationMs: Date.now() - start,
+        addedTasks: 0,
+        skippedDuplicates: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     if (aborted()) break;
 
     const wait = monitor.intervalMs - (Date.now() - start);
     if (wait > 0) {
-      monitorLogger.info(`⏳ Następny cykl za ${formatDuration(wait)}`);
+      reporter.sleepUntil(new Date(Date.now() + wait));
       await sleep(wait, signal);
-    } else if (wait < 0) {
-      monitorLogger.info("⏭ Interwał przekroczony — kolejny cykl startuje natychmiast");
     }
   }
-
-  monitorLogger.info("Monitor zatrzymany.");
 }

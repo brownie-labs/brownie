@@ -1,6 +1,5 @@
-import { logger } from "./logger.js";
-
 export function abortOnSignals(
+  onSignal?: (signal: NodeJS.Signals) => void,
   signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"],
 ): AbortSignal {
   const controller = new AbortController();
@@ -10,7 +9,7 @@ export function abortOnSignals(
     process.once(signal, () => {
       if (shuttingDown) return;
       shuttingDown = true;
-      logger.warn(`Otrzymano ${signal} — zamykanie…`);
+      onSignal?.(signal);
       controller.abort();
     });
   }

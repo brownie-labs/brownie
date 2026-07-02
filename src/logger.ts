@@ -7,6 +7,3 @@ export const logger = createConsola({
     compact: false,
   },
 });
-
-export const monitorLogger = logger.withTag("monitor");
-export const executorLogger = logger.withTag("executor");

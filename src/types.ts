@@ -16,15 +16,22 @@ export interface MonitorConfig extends AgentConfig {
   schedule: MonitorSchedule | null;
 }
 
+export interface ExecutorConfig extends AgentConfig {
+  maxTaskAttempts: number;
+  retryDelayMs: number;
+}
+
 export interface WorkerConfig {
   command: string;
   monitor: MonitorConfig;
-  executor: AgentConfig;
+  executor: ExecutorConfig;
   streamPartial: boolean;
   cwd: string;
   tasksFilePath: string;
   childEnv: NodeJS.ProcessEnv;
 }
+
+export type SessionFailureReason = "timeout" | "abort" | "isError" | "exit" | "spawn";
 
 export interface SessionResult {
   ok: boolean;
@@ -34,6 +41,7 @@ export interface SessionResult {
   sessionId?: string | undefined;
   resultText?: string | undefined;
   error?: string | undefined;
+  failureReason?: SessionFailureReason | undefined;
 }
 
 export interface SessionSummary {
@@ -51,6 +59,7 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  attempts: number;
   createdAt: string;
   updatedAt: string;
   error?: string | undefined;

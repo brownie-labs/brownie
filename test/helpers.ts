@@ -3,9 +3,15 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
-import type { ConsolaInstance } from "consola";
 import type { SessionSpec } from "../src/runner.js";
-import type { AgentConfig, MonitorConfig, WorkerConfig } from "../src/types.js";
+import type { SessionEvent, SessionEventSink } from "../src/session-events.js";
+import type { ExecutorReporter, MonitorReporter } from "../src/status.js";
+import type {
+  AgentConfig,
+  ExecutorConfig,
+  MonitorConfig,
+  WorkerConfig,
+} from "../src/types.js";
 
 export function createTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "claude-worker-test-"));
@@ -85,34 +91,62 @@ export function loggerModuleMock(): Record<string, unknown> {
     success: vi.fn(),
     start: vi.fn(),
   };
-  return { logger: shared, monitorLogger: shared, executorLogger: shared };
+  return { logger: shared };
 }
 
-export interface FakeLogger {
-  instance: ConsolaInstance;
-  info: ReturnType<typeof vi.fn>;
-  log: ReturnType<typeof vi.fn>;
-  debug: ReturnType<typeof vi.fn>;
-  warn: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
-  success: ReturnType<typeof vi.fn>;
-  start: ReturnType<typeof vi.fn>;
+export interface SessionEventCollector {
+  events: SessionEvent[];
+  sink: SessionEventSink;
 }
 
-export function createFakeLogger(): FakeLogger {
-  const spies = {
-    info: vi.fn(),
-    log: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    success: vi.fn(),
-    start: vi.fn(),
-  };
+export function createSessionEventCollector(): SessionEventCollector {
+  const events: SessionEvent[] = [];
   return {
-    ...spies,
-    instance: spies as unknown as ConsolaInstance,
+    events,
+    sink: (event) => {
+      events.push(event);
+    },
   };
+}
+
+export interface MonitorReporterSpy {
+  reporter: MonitorReporter;
+  offHours: ReturnType<typeof vi.fn>;
+  cycleStarted: ReturnType<typeof vi.fn>;
+  cycleFinished: ReturnType<typeof vi.fn>;
+  sleepUntil: ReturnType<typeof vi.fn>;
+  session: ReturnType<typeof vi.fn>;
+}
+
+export function createMonitorReporterSpy(): MonitorReporterSpy {
+  const spies = {
+    offHours: vi.fn(),
+    cycleStarted: vi.fn(),
+    cycleFinished: vi.fn(),
+    sleepUntil: vi.fn(),
+    session: vi.fn(),
+  };
+  return { ...spies, reporter: spies };
+}
+
+export interface ExecutorReporterSpy {
+  reporter: ExecutorReporter;
+  taskStarted: ReturnType<typeof vi.fn>;
+  taskFinished: ReturnType<typeof vi.fn>;
+  retryScheduled: ReturnType<typeof vi.fn>;
+  waiting: ReturnType<typeof vi.fn>;
+  session: ReturnType<typeof vi.fn>;
+}
+
+export function createExecutorReporterSpy(): ExecutorReporterSpy {
+  const spies = {
+    taskStarted: vi.fn(),
+    taskFinished: vi.fn(),
+    retryScheduled: vi.fn(),
+    waiting: vi.fn(),
+    session: vi.fn(),
+  };
+  return { ...spies, reporter: spies };
 }
 
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -136,11 +170,22 @@ export function buildMonitorConfig(
   };
 }
 
+export function buildExecutorConfig(
+  overrides: Partial<ExecutorConfig> = {},
+): ExecutorConfig {
+  return {
+    ...buildAgentConfig({ model: "opus" }),
+    maxTaskAttempts: 3,
+    retryDelayMs: 0,
+    ...overrides,
+  };
+}
+
 export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig {
   return {
     command: fakeClaudePath,
     monitor: buildMonitorConfig(),
-    executor: buildAgentConfig({ model: "opus" }),
+    executor: buildExecutorConfig(),
     streamPartial: false,
     cwd: process.cwd(),
     tasksFilePath: join(process.cwd(), "data", "tasks.json"),
@@ -150,7 +195,7 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
 }
 
 export function buildSessionSpec(
-  log: ConsolaInstance,
+  events: SessionEventSink,
   overrides: Partial<SessionSpec> = {},
 ): SessionSpec {
   return {
@@ -162,7 +207,7 @@ export function buildSessionSpec(
     streamPartial: false,
     cwd: process.cwd(),
     childEnv: { ...process.env },
-    log,
+    events,
     ...overrides,
   };
 }

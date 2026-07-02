@@ -8,6 +8,7 @@ const taskSchema = z.object({
   title: z.string(),
   description: z.string(),
   status: z.enum(["pending", "in_progress", "done", "failed"]),
+  attempts: z.number().int().nonnegative().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
   error: z.string().optional(),
@@ -26,6 +27,7 @@ function corruptStoreError(path: string, reason: string): Error {
 
 export class TaskStore {
   private chain: Promise<unknown> = Promise.resolve();
+  private readonly listeners = new Set<(tasks: Task[]) => void>();
 
   private constructor(
     private readonly path: string,
@@ -76,6 +78,13 @@ export class TaskStore {
     const payload = JSON.stringify({ version: 1, tasks: this.tasks }, null, 2);
     await writeFile(tmpPath, `${payload}\n`, "utf8");
     await rename(tmpPath, this.path);
+    this.notifyChanged();
+  }
+
+  private notifyChanged(): void {
+    if (this.listeners.size === 0) return;
+    const snapshot = this.list();
+    for (const listener of this.listeners) listener(snapshot);
   }
 
   private resetStaleInProgress(): Promise<void> {
@@ -102,6 +111,7 @@ export class TaskStore {
           title: candidate.title,
           description: candidate.description,
           status: "pending",
+          attempts: 0,
           createdAt: now,
           updatedAt: now,
         };
@@ -118,6 +128,7 @@ export class TaskStore {
       const task = this.tasks.find((candidate) => candidate.status === "pending");
       if (!task) return undefined;
       task.status = "in_progress";
+      task.attempts += 1;
       task.updatedAt = new Date().toISOString();
       await this.persist();
       return { ...task };
@@ -130,6 +141,17 @@ export class TaskStore {
 
   fail(id: string, error: string): Promise<void> {
     return this.setStatus(id, "failed", error);
+  }
+
+  requeue(id: string, error: string): Promise<void> {
+    return this.run(async () => {
+      const task = this.tasks.find((candidate) => candidate.id === id);
+      if (!task) return;
+      task.status = "pending";
+      task.error = error;
+      task.updatedAt = new Date().toISOString();
+      await this.persist();
+    });
   }
 
   private setStatus(
@@ -149,5 +171,16 @@ export class TaskStore {
 
   pendingCount(): number {
     return this.tasks.filter((task) => task.status === "pending").length;
+  }
+
+  list(): Task[] {
+    return this.tasks.map((task) => ({ ...task }));
+  }
+
+  onChange(listener: (tasks: Task[]) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 }

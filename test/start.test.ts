@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   runExecutorLoop: vi.fn(),
   abortOnSignals: vi.fn(),
   taskStoreOpen: vi.fn(),
+  mountDashboard: vi.fn(),
+  dashboardUnmount: vi.fn(),
+  dashboardWaitUntilExit: vi.fn(),
 }));
 
 vi.mock("../src/preflight.js", () => ({ ensureReady: mocks.ensureReady }));
@@ -18,12 +21,14 @@ vi.mock("../src/monitor.js", () => ({ runMonitorLoop: mocks.runMonitorLoop }));
 vi.mock("../src/executor.js", () => ({ runExecutorLoop: mocks.runExecutorLoop }));
 vi.mock("../src/shutdown.js", () => ({ abortOnSignals: mocks.abortOnSignals }));
 vi.mock("../src/tasks.js", () => ({ TaskStore: { open: mocks.taskStoreOpen } }));
+vi.mock("../src/ui/mount.js", () => ({ mountDashboard: mocks.mountDashboard }));
 vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
 const { startCommand } = await import("../src/start.js");
 const { Waker } = await import("../src/waker.js");
+const { WorkerStatusStore } = await import("../src/status.js");
 const { logger } = await import("../src/logger.js");
 
 function runStart(envFile?: string): Promise<void> {
@@ -51,6 +56,11 @@ describe("startCommand", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocks.dashboardWaitUntilExit.mockResolvedValue(undefined);
+    mocks.mountDashboard.mockReturnValue({
+      unmount: mocks.dashboardUnmount,
+      waitUntilExit: mocks.dashboardWaitUntilExit,
+    });
     dir = await createTempDir();
     savedExitCode = process.exitCode;
   });
@@ -65,7 +75,7 @@ describe("startCommand", () => {
     const cwd = join(dir, "ws");
     const config = buildConfig({ cwd, tasksFilePath: join(dir, "data", "tasks.json") });
     const signal = new AbortController().signal;
-    const store = { pendingCount: () => 0 };
+    const store = { pendingCount: () => 0, list: () => [], onChange: vi.fn() };
     mocks.ensureReady.mockResolvedValue(paths);
     mocks.loadWorkerConfig.mockResolvedValue(config);
     mocks.abortOnSignals.mockReturnValue(signal);
@@ -83,18 +93,51 @@ describe("startCommand", () => {
       config,
       store,
       expect.any(Waker),
+      expect.objectContaining({ cycleStarted: expect.any(Function) as unknown }),
       signal,
     );
     expect(mocks.runExecutorLoop).toHaveBeenCalledWith(
       config,
       store,
       expect.any(Waker),
+      expect.objectContaining({ taskStarted: expect.any(Function) as unknown }),
       signal,
     );
     const monitorWaker = mocks.runMonitorLoop.mock.calls[0]?.[2] as unknown;
     const executorWaker = mocks.runExecutorLoop.mock.calls[0]?.[2] as unknown;
     expect(monitorWaker).toBe(executorWaker);
+    expect(store.onChange).toHaveBeenCalledWith(expect.any(Function));
+    expect(mocks.mountDashboard).toHaveBeenCalledWith(
+      expect.any(WorkerStatusStore),
+      config,
+    );
+    const statusStore = mocks.mountDashboard.mock.calls[0]?.[0] as InstanceType<
+      typeof WorkerStatusStore
+    >;
+    expect(mocks.runMonitorLoop.mock.calls[0]?.[3]).toBe(statusStore.monitor);
+    expect(mocks.runExecutorLoop.mock.calls[0]?.[3]).toBe(statusStore.executor);
+    expect(mocks.dashboardUnmount).toHaveBeenCalledTimes(1);
+    expect(mocks.dashboardWaitUntilExit).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(savedExitCode);
+  });
+
+  it("błąd pętli: odmontowuje dashboard, loguje i ustawia exitCode=1", async () => {
+    mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
+    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: join(dir, "ws") }));
+    mocks.abortOnSignals.mockReturnValue(new AbortController().signal);
+    mocks.taskStoreOpen.mockResolvedValue({
+      pendingCount: () => 0,
+      list: () => [],
+      onChange: vi.fn(),
+    });
+    mocks.runMonitorLoop.mockRejectedValue(new Error("awaria pętli"));
+    mocks.runExecutorLoop.mockResolvedValue(undefined);
+
+    await runStart();
+
+    expect(mocks.dashboardUnmount).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith("awaria pętli");
+    expect(process.exitCode).toBe(1);
   });
 
   it("błąd preflight: loguje, ustawia exitCode=1 i nie startuje pętli", async () => {

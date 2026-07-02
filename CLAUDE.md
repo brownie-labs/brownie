@@ -17,6 +17,11 @@ Obie pętle działają równolegle w jednym procesie (maks. jedna sesja każdego
 wspólny `AbortSignal` zamyka obie. Rytm monitora liczony jest od startu cyklu, bez nakładania
 (przekroczony interwał → kolejny cykl natychmiast). Egzekutor nie ma interwału — jest zdarzeniowy.
 
+Interfejsem `pnpm start` jest pełnoekranowy **dashboard TUI** (Ink + React): nagłówek
+z parametrami agentów, dwa panele na żywo (faza + tail wyjścia sesji + ostatni wynik)
+i tabela zadań ze statusami. Dashboard zastępuje logi całkowicie — consola służy tylko
+błędom startu i kreatorowi `configure`.
+
 ## Komendy
 
 ```bash
@@ -47,6 +52,13 @@ w `test/fixtures/claude` emitująca stream-json — sterowana env `FAKE_CLAUDE_M
 także w wariantach per model
 (sufiks `_<MODEL>` np. `FAKE_CLAUDE_RESULT_TEXT_HAIKU` — atrapa czyta `--model` z argv),
 dzięki czemu jedna binarka rozróżnia sesje monitora i egzekutora w E2E.
+Testy pętli asertują wywołania **reporterów** (spies z `createMonitorReporterSpy`/
+`createExecutorReporterSpy` w `test/helpers.ts`), testy `StreamRenderer`/`runSession`
+zbierają `SessionEvent[]` (`createSessionEventCollector`), a komponenty Ink testuje
+`ink-testing-library` (`test/ui/`; po `store.flush()` re-render Reacta wymaga ticka —
+helper `flushed`). E2E (`test/cli.test.ts`) steruje przebiegiem przez poll
+`data/tasks.json` (nie przez stdout — Ink przy `CI=true` renderuje tylko końcową klatkę)
+i ustawia `TSX_TSCONFIG_PATH`, bo tsx szuka tsconfiga od cwd procesu.
 Manager pakietów to **pnpm** (jest `pnpm-lock.yaml`).
 
 ## Architektura
@@ -68,28 +80,57 @@ Przepływ `start` (`src/start.ts`):
    tmp+rename, mutacje serializowane wewnętrznym łańcuchem promise'ów). Dedup po `id`
    względem całej historii (pending/in_progress/done/failed). Przy otwarciu resetuje
    osierocone `in_progress` → `pending`; uszkodzony plik = czytelny błąd i exitCode 1.
-4. `shutdown.ts` (`abortOnSignals`) — wspólny `AbortSignal` (SIGINT/SIGTERM) dla obu pętli;
-   `waker.ts` (`Waker`) — zdarzeniowe budzenie egzekutora (`notify`/`wait`, abort-aware);
-   `timing.ts` — `sleep` (abort-aware) i `formatDuration`.
-5. `monitor.ts` (`runMonitorLoop`) — pętla cykliczna: czyta prompty monitora, dokleja
-   `TASK_REPORT_CONTRACT` (z `report.ts`) do system promptu, uruchamia sesję, parsuje
-   `resultText` przez `parseTaskReport` (`null` = zepsuty raport → log błędu, cykl pominięty),
-   dodaje zadania do `TaskStore` i przy nowych woła `waker.notify()`.
-6. `executor.ts` (`runExecutorLoop`) — pętla zdarzeniowa: `takeNext()` → komponuje prompt
-   (`composeTaskPrompt`: prompt egzekutora + blok „Zadanie do wykonania”) i system prompt
-   (+ `TASK_EXECUTION_CONTRACT`), uruchamia sesję, `complete`/`fail`; pusta kolejka →
-   `waker.wait(signal)`. Abort w trakcie sesji zostawia zadanie `in_progress`
-   (reset przy kolejnym starcie).
-7. `runner.ts` (`runSession(spec: SessionSpec, signal)`) — `spawn` procesu `claude`
+4. `shutdown.ts` (`abortOnSignals(onSignal?, signals?)`) — wspólny `AbortSignal`
+   (SIGINT/SIGTERM) dla obu pętli; callback `onSignal` zasila dashboard komunikatem
+   zamykania. `waker.ts` (`Waker`) — zdarzeniowe budzenie egzekutora (`notify`/`wait`,
+   abort-aware); `timing.ts` — `sleep` (abort-aware) i `formatDuration`.
+5. `status.ts` (`WorkerStatusStore`) — centralny, framework-agnostyczny stan workera.
+   Wystawia reportery domenowe wstrzykiwane do pętli (`MonitorReporter`:
+   `offHours`/`cycleStarted`/`cycleFinished`/`sleepUntil`/`session`; `ExecutorReporter`:
+   `taskStarted`/`taskFinished`/`waiting`/`session`) oraz `setTasks`/`shutdownRequested`.
+   API dla UI zgodne z `useSyncExternalStore`: `subscribe`/`getSnapshot` (niemutowalny
+   snapshot, stabilna referencja między zmianami), powiadomienia koalescowane throttlem
+   (~50 ms, `flush()` do testów, `dispose()` czyści timer). Per agent trzyma tail sesji
+   (ring buffer 100 linii, linie ≤300 znaków, `formatSessionEvent`), skleja delty
+   `partial` do otwartej linii (widocznej jako ostatni element taila) i **pomija
+   zdarzenie `text` zdublowane przez wcześniejsze partiale** (flaga `partialSeen`,
+   resetowana przez zdarzenia inne niż text i nową sesję); fazy z czasem trzyma jako
+   absolutne znaczniki (`nextCycleAt`/`resumeAt`/backoff) — odliczanie robi komponent.
+6. `monitor.ts` (`runMonitorLoop(config, store, waker, reporter, signal)`) — pętla
+   cykliczna: czyta prompty monitora, dokleja `TASK_REPORT_CONTRACT` (z `report.ts`)
+   do system promptu, uruchamia sesję, parsuje `resultText` przez `parseTaskReport`
+   (`null` = zepsuty raport → `cycleFinished` z błędem, cykl pominięty), dodaje zadania
+   do `TaskStore` i przy nowych woła `waker.notify()`.
+7. `executor.ts` (`runExecutorLoop(config, store, waker, reporter, signal)`) — pętla
+   zdarzeniowa: `takeNext()` → komponuje prompt (`composeTaskPrompt`: prompt egzekutora
+   - blok „Zadanie do wykonania”) i system prompt (+ `TASK_EXECUTION_CONTRACT`),
+     uruchamia sesję, `complete`/`fail` + `taskFinished`; pusta kolejka → `waiting()`
+     i `waker.wait(signal)`. Abort w trakcie sesji zostawia zadanie `in_progress`
+     (reset przy kolejnym starcie). Błąd **przejściowy** (`isTransientFailure`:
+     `failureReason === "timeout"` albo `"isError"` z sygnaturą błędu API/sieci
+     w `resultText`) → `store.requeue` + `taskFinished({willRetry: true})` +
+     `retryScheduled` i abort-aware sen `retryDelayMs`; limit łącznych prób to
+     `executor.maxTaskAttempts` (`attempts` inkrementuje `takeNext`, trwałe w magazynie).
+8. `runner.ts` (`runSession(spec: SessionSpec, signal)`) — `spawn` procesu `claude`
    (`-p --model --system-prompt --output-format stream-json --verbose
 --permission-mode bypassPermissions` + opcjonalnie `--include-partial-messages`).
    Tryb uprawnień jest stały (nie konfigurowalny) — worker jest autonomiczny, żadne
    narzędzie nie czeka na zatwierdzenie. Przyjmuje **treści** promptów
-   (nie ścieżki — pliki czytają pętle przy każdej sesji) i per-agentowy logger. Prompt idzie
+   (nie ścieżki — pliki czytają pętle przy każdej sesji) i sink zdarzeń sesji
+   (`events: SessionEventSink` — w praktyce `reporter.session`). Prompt idzie
    przez stdin. Obsługuje timeout sesji (SIGTERM → po `KILL_GRACE_MS` SIGKILL) i abort.
-8. `stream.ts` (`StreamRenderer`) — parsuje linie stream-json (system/assistant/user/
-   stream_event/result), renderuje przez consola, agreguje podsumowanie (koszt, tury,
-   sessionId, isError, `resultText` — konwersja z wire-formatu `is_error` na granicy).
+9. `stream.ts` (`StreamRenderer`) — parsuje linie stream-json (system/assistant/user/
+   stream_event/result) i emituje typowane `SessionEvent` (definicje + `truncate`
+   w `session-events.ts`); agreguje podsumowanie (koszt, tury, sessionId, isError,
+   `resultText` — konwersja z wire-formatu `is_error` na granicy).
+10. `src/ui/` — warstwa Ink: `mount.tsx` (jedyne miejsce z `render()`;
+    `mountDashboard(store, config)` → `{unmount, waitUntilExit}`, opcje
+    `exitOnCtrlC: false`, `patchConsole: true`), `dashboard.tsx` (root:
+    `useSyncExternalStore`, wymiary z `useStdout` + `resize`, layout liczony
+    z wysokości terminala), `header.tsx`, `agent-panel.tsx`, `task-table.tsx`,
+    `format.ts` (czyste formatery faz/wyników/odliczań), `use-now.ts` (tykanie 1 s).
+    `start.ts` montuje dashboard po otwarciu magazynu, a odmontowuje w `finally`
+    przed zalogowaniem ewentualnego błędu pętli.
 
 `report.ts` — kontrakt raportu zadań (`TASK_REPORT_CONTRACT`, `taskReportSchema`,
 `parseTaskReport`: ostatni blok ` ```json ` albo surowy JSON → walidacja zod →
@@ -102,8 +143,10 @@ wykrywany przez `isCancellation` i traktowany jako czyste przerwanie bez zmian.
 Zapisuje `.env`, `prompts/monitor.prompt.md` i `prompts/executor.prompt.md`.
 
 `types.ts` — `WorkerConfig`, `AgentConfig`, `MonitorConfig`, `SessionResult`, `Task`,
-`NewTask`, `TaskStatus` (współdzielone kontrakty). `logger.ts` — `monitorLogger`
-i `executorLogger` (tagi `[monitor]`/`[executor]`).
+`NewTask`, `TaskStatus` (współdzielone kontrakty). `logger.ts` — pojedynczy `logger`
+(consola) wyłącznie dla błędów startu (`start.ts`, `preflight.ts`) i `configure.ts`.
+`TaskStore` poza mutacjami ma `list()` (kopie) i `onChange(listener)` — powiadomienia
+po każdym utrwaleniu zmiany zasilają tabelę zadań dashboardu.
 
 ## Kluczowe zasady i pułapki
 
@@ -133,8 +176,17 @@ i `executorLogger` (tagi `[monitor]`/`[executor]`).
   nie duplikuj wzorca `fs.access(...) + try/catch`.
 - **`signal.aborted` w pętlach** — TS zawęża po warunku `while`; używaj wzorca
   `const aborted = (): boolean => signal.aborted` (inaczej `no-unnecessary-condition`).
-- **ESM + verbatimModuleSyntax** — importy muszą mieć rozszerzenie `.js` (mimo plików `.ts`),
-  a importy typów muszą używać `import type`.
+- **ESM + verbatimModuleSyntax** — importy muszą mieć rozszerzenie `.js` (mimo plików
+  `.ts`/`.tsx`), a importy typów muszą używać `import type` (w komponentach
+  `import type { JSX } from "react"` — runtime JSX jest automatyczny, `jsx: "react-jsx"`).
+- **Zero consola po montażu dashboardu** — Inkowy `patchConsole` nie przechwytuje
+  `process.stdout.write`, więc każdy log rozjedzie klatki. Logger wolno wołać tylko
+  przed montażem (błędy preflight/config/magazynu) i po odmontowaniu (błąd pętli).
+- **Zakaz `useInput` w UI** — Ink włącza wtedy raw mode na stdin, terminal przestaje
+  dostarczać SIGINT i `abortOnSignals` ślepnie; dlatego też `exitOnCtrlC: false`.
+- **Pętle nie znają Reacta** — komunikują się wyłącznie przez wstrzykiwane reportery
+  z `status.ts`; nowe informacje dla UI dodawaj jako zdarzenia domenowe reportera,
+  nie jako logi.
 
 ## Konwencje projektu (z globalnego CLAUDE.md użytkownika)
 

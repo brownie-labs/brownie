@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { ConsolaInstance } from "consola";
+import type { SessionEventSink } from "./session-events.js";
 import { StreamRenderer } from "./stream.js";
-import type { SessionResult } from "./types.js";
+import type { SessionFailureReason, SessionResult } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
 
@@ -17,7 +17,7 @@ export interface SessionSpec {
   streamPartial: boolean;
   cwd: string;
   childEnv: NodeJS.ProcessEnv;
-  log: ConsolaInstance;
+  events: SessionEventSink;
 }
 
 export async function runSession(
@@ -46,12 +46,12 @@ export async function runSession(
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const renderer = new StreamRenderer(spec.log, spec.streamPartial);
+  const renderer = new StreamRenderer(spec.events, spec.streamPartial);
 
   const killState: { reason: KillReason | null } = { reason: null };
   const kill = (reason: KillReason): void => {
     killState.reason ??= reason;
-    killChild(child, reason, spec.log);
+    killChild(child, reason, spec.events);
   };
 
   const timeout = spec.sessionTimeoutMs
@@ -65,7 +65,7 @@ export async function runSession(
 
   const stderrRl = createInterface({ input: child.stderr });
   stderrRl.on("line", (line) => {
-    if (line.trim()) spec.log.debug(`stderr: ${line}`);
+    if (line.trim()) spec.events({ type: "stderr", line });
   });
 
   try {
@@ -79,11 +79,16 @@ export async function runSession(
         ok: false,
         durationMs: Date.now() - startedAt,
         error: `Nie udało się uruchomić "${spec.command}": ${spawnError.message}`,
+        failureReason: "spawn",
       };
     }
 
-    child.on("error", (err) => spec.log.error(`Błąd procesu: ${err.message}`));
-    child.stdin.on("error", (err) => spec.log.debug(`stdin: ${err.message}`));
+    child.on("error", (err) =>
+      spec.events({ type: "procError", message: `Błąd procesu: ${err.message}` }),
+    );
+    child.stdin.on("error", (err) =>
+      spec.events({ type: "procError", message: `stdin: ${err.message}` }),
+    );
     child.stdin.write(spec.prompt);
     child.stdin.end();
 
@@ -98,6 +103,9 @@ export async function runSession(
 
     const summary = renderer.getSummary();
     const ok = code === 0 && !summary.isError && killState.reason === null;
+    const failureReason = ok
+      ? undefined
+      : classifyFailure(killState.reason, summary.isError);
 
     return {
       ok,
@@ -106,9 +114,8 @@ export async function runSession(
       numTurns: summary.numTurns,
       sessionId: summary.sessionId,
       resultText: summary.resultText,
-      error: ok
-        ? undefined
-        : describeFailure(killState.reason, summary.isError, code, exitSignal),
+      error: ok ? undefined : describeFailure(failureReason, code, exitSignal),
+      failureReason,
     };
   } finally {
     if (timeout) clearTimeout(timeout);
@@ -118,22 +125,41 @@ export async function runSession(
   }
 }
 
-function describeFailure(
+function classifyFailure(
   killReason: KillReason | null,
   isError: boolean | undefined,
+): SessionFailureReason {
+  if (killReason !== null) return killReason;
+  if (isError) return "isError";
+  return "exit";
+}
+
+function describeFailure(
+  reason: SessionFailureReason | undefined,
   code: number | null,
   exitSignal: NodeJS.Signals | null,
 ): string {
-  if (killReason === "timeout") return "Przekroczono limit czasu sesji";
-  if (killReason === "abort") return "Sesja przerwana";
-  if (isError) return "Sesja zakończona błędem (is_error)";
-  if (code !== null) return `Proces zakończył się kodem ${code}`;
-  return `Proces zakończony sygnałem ${exitSignal ?? "?"}`;
+  switch (reason) {
+    case "timeout":
+      return "Przekroczono limit czasu sesji";
+    case "abort":
+      return "Sesja przerwana";
+    case "isError":
+      return "Sesja zakończona błędem (is_error)";
+    default:
+      return code !== null
+        ? `Proces zakończył się kodem ${code}`
+        : `Proces zakończony sygnałem ${exitSignal ?? "?"}`;
+  }
 }
 
-function killChild(child: ChildProcess, reason: KillReason, log: ConsolaInstance): void {
+function killChild(
+  child: ChildProcess,
+  reason: KillReason,
+  events: SessionEventSink,
+): void {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  log.warn(`Zatrzymuję sesję (${reason})…`);
+  events({ type: "killing", reason });
   child.kill("SIGTERM");
   setTimeout(() => {
     if (child.exitCode === null && child.signalCode === null) {
