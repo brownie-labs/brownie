@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { SessionEventSink } from "./session-events.js";
 import { StreamRenderer } from "./stream.js";
-import type { SessionFailureReason, SessionResult } from "./types.js";
+import type { EffortLevel, SessionFailureReason, SessionResult } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
 
@@ -11,6 +11,7 @@ type KillReason = "timeout" | "abort";
 export interface SessionSpec {
   command: string;
   model: string;
+  effort: EffortLevel;
   systemPrompt: string;
   prompt: string;
   sessionTimeoutMs?: number | undefined;
@@ -30,6 +31,8 @@ export async function runSession(
     "-p",
     "--model",
     spec.model,
+    "--effort",
+    spec.effort,
     "--system-prompt",
     spec.systemPrompt,
     "--output-format",

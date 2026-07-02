@@ -87,11 +87,13 @@ describe("runMonitorLoop", () => {
       systemPrompt: string;
       prompt: string;
       model: string;
+      effort: string;
       events: unknown;
     };
     expect(spec.systemPrompt).toBe(`system\n\n\n${TASK_REPORT_CONTRACT}`);
     expect(spec.prompt).toBe("prompt\n");
     expect(spec.model).toBe("haiku");
+    expect(spec.effort).toBe("medium");
     expect(spec.events).toBe(spy.reporter.session);
   });
 

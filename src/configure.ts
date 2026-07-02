@@ -6,10 +6,12 @@ import { consola, type PromptOptions } from "consola";
 import { parseTimeWindow } from "./active-hours.js";
 import { resolveEnvPath } from "./config.js";
 import { logger } from "./logger.js";
+import { EFFORT_LEVELS } from "./types.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
 const CANCEL_MESSAGE = "Przerwano — nic nie zmieniono.";
 const MODELS = ["haiku", "sonnet", "opus"];
+const EFFORTS = [...EFFORT_LEVELS];
 
 const DAY_OPTIONS: { value: string; label: string }[] = [
   { value: "mon", label: "Poniedziałek" },
@@ -83,7 +85,9 @@ interface ScheduleAnswers {
 
 interface BuildEnvOptions {
   monitorModel: string;
+  monitorEffort: string;
   executorModel: string;
+  executorEffort: string;
   intervalMs: number;
   schedule: ScheduleAnswers;
   configDir?: string | undefined;
@@ -91,13 +95,16 @@ interface BuildEnvOptions {
 
 function buildEnv({
   monitorModel,
+  monitorEffort,
   executorModel,
+  executorEffort,
   intervalMs,
   schedule,
   configDir,
 }: BuildEnvOptions): string {
   const lines = [
     `CLAUDE_WORKER_MONITOR_MODEL=${monitorModel}`,
+    `CLAUDE_WORKER_MONITOR_EFFORT=${monitorEffort}`,
     `CLAUDE_WORKER_MONITOR_INTERVAL_MS=${intervalMs}`,
   ];
   if (schedule.activeHours) {
@@ -107,6 +114,7 @@ function buildEnv({
     lines.push(`CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=${schedule.activeDays}`);
   }
   lines.push(`CLAUDE_WORKER_EXECUTOR_MODEL=${executorModel}`);
+  lines.push(`CLAUDE_WORKER_EXECUTOR_EFFORT=${executorEffort}`);
   if (configDir) lines.push("", `CLAUDE_CONFIG_DIR=${configDir}`);
   return `${lines.join("\n")}\n`;
 }
@@ -140,6 +148,12 @@ export const configureCommand = defineCommand({
         initial: "haiku",
       });
 
+      const monitorEffort = await ask("Effort monitora (poziom wysiłku rozumowania)", {
+        type: "select",
+        options: EFFORTS,
+        initial: "medium",
+      });
+
       const intervalMinutes = await askIntervalMinutes();
       const intervalMs = Math.round(intervalMinutes * 60_000);
 
@@ -161,6 +175,12 @@ export const configureCommand = defineCommand({
         type: "select",
         options: MODELS,
         initial: "opus",
+      });
+
+      const executorEffort = await ask("Effort egzekutora (poziom wysiłku rozumowania)", {
+        type: "select",
+        options: EFFORTS,
+        initial: "high",
       });
 
       const executorPrompt = (
@@ -189,7 +209,9 @@ export const configureCommand = defineCommand({
         envPath,
         buildEnv({
           monitorModel,
+          monitorEffort,
           executorModel,
+          executorEffort,
           intervalMs,
           schedule: { activeHours, activeDays },
           configDir,

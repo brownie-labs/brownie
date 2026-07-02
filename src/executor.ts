@@ -65,6 +65,7 @@ export async function runExecutorLoop(
         {
           command: config.command,
           model: executor.model,
+          effort: executor.effort,
           systemPrompt: `${systemPrompt}\n\n${TASK_EXECUTION_CONTRACT}`,
           prompt: composeTaskPrompt(prompt, task),
           sessionTimeoutMs: executor.sessionTimeoutMs,

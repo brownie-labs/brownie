@@ -4,7 +4,7 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
-import type { WorkerConfig } from "./types.js";
+import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
 
 export function expandHome(value: string): string {
   if (value === "~") return homedir();
@@ -40,6 +40,7 @@ export const COMMAND = "claude";
 
 export const envSchema = z.object({
   CLAUDE_WORKER_MONITOR_MODEL: z.string().trim().min(1).default("haiku"),
+  CLAUDE_WORKER_MONITOR_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
   CLAUDE_WORKER_MONITOR_INTERVAL_MS: z.coerce
     .number()
     .int()
@@ -59,6 +60,7 @@ export const envSchema = z.object({
     .default("./prompts/monitor.system.md"),
   CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   CLAUDE_WORKER_EXECUTOR_MODEL: z.string().trim().min(1).default("opus"),
+  CLAUDE_WORKER_EXECUTOR_EFFORT: z.enum(EFFORT_LEVELS).default("high"),
   CLAUDE_WORKER_EXECUTOR_PROMPT_FILE: z
     .string()
     .trim()
@@ -191,6 +193,7 @@ export async function loadWorkerConfig(
     command: COMMAND,
     monitor: {
       model: env.CLAUDE_WORKER_MONITOR_MODEL,
+      effort: env.CLAUDE_WORKER_MONITOR_EFFORT,
       intervalMs: env.CLAUDE_WORKER_MONITOR_INTERVAL_MS,
       schedule: buildSchedule(
         env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS,
@@ -202,6 +205,7 @@ export async function loadWorkerConfig(
     },
     executor: {
       model: env.CLAUDE_WORKER_EXECUTOR_MODEL,
+      effort: env.CLAUDE_WORKER_EXECUTOR_EFFORT,
       promptPath: paths.executor.promptPath,
       systemPromptPath: paths.executor.systemPromptPath,
       sessionTimeoutMs: env.CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS,

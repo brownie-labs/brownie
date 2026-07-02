@@ -119,7 +119,7 @@ Przepływ `start` (`src/start.ts`):
      `retryScheduled` i abort-aware sen `retryDelayMs`; limit łącznych prób to
      `executor.maxTaskAttempts` (`attempts` inkrementuje `takeNext`, trwałe w magazynie).
 8. `runner.ts` (`runSession(spec: SessionSpec, signal)`) — `spawn` procesu `claude`
-   (`-p --model --system-prompt --output-format stream-json --verbose
+   (`-p --model --effort --system-prompt --output-format stream-json --verbose
 --permission-mode bypassPermissions` + opcjonalnie `--include-partial-messages`).
    Tryb uprawnień jest stały (nie konfigurowalny) — worker jest autonomiczny, żadne
    narzędzie nie czeka na zatwierdzenie. Przyjmuje **treści** promptów
@@ -172,6 +172,9 @@ po każdym utrwaleniu zmiany zasilają tabelę zadań dashboardu.
 - **Model danych konfiguracji jest środowiskowy** — jedynym źródłem prawdy jest `.env`
   (walidowany zod w `config.ts`), zmienne w przestrzeniach `CLAUDE_WORKER_MONITOR_*`
   i `CLAUDE_WORKER_EXECUTOR_*` + wspólne (`TASKS_FILE`, `LOGS_DIR`, `STREAM_PARTIAL`, `CWD`).
+  Obok `MODEL` każdy agent ma `EFFORT` — poziom wysiłku rozumowania CLI `claude`
+  (`z.enum(["low","medium","high","xhigh","max"])`, domyślnie `medium` dla monitora
+  i `high` dla egzekutora); zawsze przekazywany jako flaga `--effort`.
   `.env` i `prompts/*.prompt.md` są w `.gitignore`; `prompts/*.system.md` (definicje ról)
   są wersjonowane. `CLAUDE_WORKER_LOGS_DIR` (domyślnie `./logs`) wskazuje katalog logów
   sesji; sam katalog `logs/` jest w `.gitignore`.

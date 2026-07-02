@@ -42,6 +42,7 @@ export async function runMonitorLoop(
         {
           command: config.command,
           model: monitor.model,
+          effort: monitor.effort,
           systemPrompt: `${systemPrompt}\n\n${TASK_REPORT_CONTRACT}`,
           prompt,
           sessionTimeoutMs: monitor.sessionTimeoutMs,

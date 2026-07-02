@@ -65,12 +65,14 @@ describe("envSchema", () => {
   it("stosuje wartości domyślne", () => {
     const env = envSchema.parse({});
     expect(env.CLAUDE_WORKER_MONITOR_MODEL).toBe("haiku");
+    expect(env.CLAUDE_WORKER_MONITOR_EFFORT).toBe("medium");
     expect(env.CLAUDE_WORKER_MONITOR_INTERVAL_MS).toBe(900_000);
     expect(env.CLAUDE_WORKER_MONITOR_PROMPT_FILE).toBe("./prompts/monitor.prompt.md");
     expect(env.CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/monitor.system.md",
     );
     expect(env.CLAUDE_WORKER_EXECUTOR_MODEL).toBe("opus");
+    expect(env.CLAUDE_WORKER_EXECUTOR_EFFORT).toBe("high");
     expect(env.CLAUDE_WORKER_EXECUTOR_PROMPT_FILE).toBe("./prompts/executor.prompt.md");
     expect(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE).toBe(
       "./prompts/executor.system.md",
@@ -121,6 +123,15 @@ describe("envSchema", () => {
     expect(
       envSchema.safeParse({ CLAUDE_WORKER_MONITOR_INTERVAL_MS: "1.5" }).success,
     ).toBe(false);
+  });
+
+  it("odrzuca nieznany poziom effortu", () => {
+    expect(envSchema.safeParse({ CLAUDE_WORKER_MONITOR_EFFORT: "turbo" }).success).toBe(
+      false,
+    );
+    expect(envSchema.safeParse({ CLAUDE_WORKER_EXECUTOR_EFFORT: "turbo" }).success).toBe(
+      false,
+    );
   });
 
   it("domyślnie pozostawia godziny i dni pracy nieustawione", () => {
@@ -228,9 +239,11 @@ describe("loadWorkerConfig", () => {
     await writeEnv(
       [
         "CLAUDE_WORKER_MONITOR_MODEL=sonnet",
+        "CLAUDE_WORKER_MONITOR_EFFORT=low",
         "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
         "CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS=120000",
         "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
+        "CLAUDE_WORKER_EXECUTOR_EFFORT=max",
         ...PROMPT_FILE_ENV,
         "CLAUDE_WORKER_TASKS_FILE=./stan/tasks.json",
         "CLAUDE_WORKER_LOGS_DIR=./dzienniki",
@@ -242,11 +255,13 @@ describe("loadWorkerConfig", () => {
 
     expect(config.command).toBe(COMMAND);
     expect(config.monitor.model).toBe("sonnet");
+    expect(config.monitor.effort).toBe("low");
     expect(config.monitor.intervalMs).toBe(60000);
     expect(config.monitor.sessionTimeoutMs).toBe(120000);
     expect(config.monitor.promptPath).toBe(join(dir, "m.md"));
     expect(config.monitor.systemPromptPath).toBe(join(dir, "ms.md"));
     expect(config.executor.model).toBe("opus");
+    expect(config.executor.effort).toBe("max");
     expect(config.executor.promptPath).toBe(join(dir, "e.md"));
     expect(config.executor.systemPromptPath).toBe(join(dir, "es.md"));
     expect(config.tasksFilePath).toBe(join(dir, "stan", "tasks.json"));

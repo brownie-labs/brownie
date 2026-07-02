@@ -123,6 +123,20 @@ describe("runSession (integracja z atrapą claude)", () => {
     expect(args[flagIndex + 1]).toBe("bypassPermissions");
   }, 15_000);
 
+  it("przekazuje effort ze speca jako flagę --effort", async () => {
+    const out = join(dir, "argi-effort.json");
+    const spec = buildSessionSpec(collector.sink, {
+      effort: "max",
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--effort");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(args[flagIndex + 1]).toBe("max");
+  }, 15_000);
+
   it("przekazuje prompt ze speca na stdin procesu potomnego", async () => {
     const out = join(dir, "otrzymany-prompt.txt");
     const spec = buildSessionSpec(collector.sink, {

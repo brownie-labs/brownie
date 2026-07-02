@@ -152,6 +152,7 @@ export function createExecutorReporterSpy(): ExecutorReporterSpy {
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     model: "haiku",
+    effort: "medium",
     promptPath: "/dev/null",
     systemPromptPath: "/dev/null",
     sessionTimeoutMs: undefined,
@@ -174,7 +175,7 @@ export function buildExecutorConfig(
   overrides: Partial<ExecutorConfig> = {},
 ): ExecutorConfig {
   return {
-    ...buildAgentConfig({ model: "opus" }),
+    ...buildAgentConfig({ model: "opus", effort: "high" }),
     maxTaskAttempts: 3,
     retryDelayMs: 0,
     ...overrides,
@@ -202,6 +203,7 @@ export function buildSessionSpec(
   return {
     command: fakeClaudePath,
     model: "haiku",
+    effort: "medium",
     systemPrompt: "system\n",
     prompt: "zadanie\n",
     sessionTimeoutMs: undefined,

@@ -42,11 +42,13 @@ describe("configureCommand", () => {
   it("zapisuje .env i prompty obu agentów bez CLAUDE_CONFIG_DIR", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "15",
       "",
       [],
       "obserwuj Redmine",
       "opus",
+      "high",
       "wykonuj rzetelnie",
       false,
     );
@@ -54,8 +56,10 @@ describe("configureCommand", () => {
 
     const env = await readFile(envPath, "utf8");
     expect(env).toContain("CLAUDE_WORKER_MONITOR_MODEL=haiku");
+    expect(env).toContain("CLAUDE_WORKER_MONITOR_EFFORT=medium");
     expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=900000");
     expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=opus");
+    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_EFFORT=high");
     expect(env).not.toContain("CLAUDE_CONFIG_DIR");
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
     expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
@@ -66,11 +70,13 @@ describe("configureCommand", () => {
   it("zapisuje godziny i wybrane dni pracy monitora", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "15",
       "08:00-18:00",
       ["mon", "tue", "wed", "thu", "fri"],
       "obserwuj",
       "opus",
+      "high",
       "wykonuj",
       false,
     );
@@ -84,11 +90,13 @@ describe("configureCommand", () => {
   it("normalizuje kolejność zaznaczonych dni", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "15",
       "",
       ["fri", "mon", "wed"],
       "obserwuj",
       "opus",
+      "high",
       "wykonuj",
       false,
     );
@@ -101,11 +109,13 @@ describe("configureCommand", () => {
   it("pomija dni gdy zaznaczono wszystkie", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "15",
       "",
       ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
       "obserwuj",
       "opus",
+      "high",
       "wykonuj",
       false,
     );
@@ -118,12 +128,14 @@ describe("configureCommand", () => {
   it("ponawia pytanie o godziny pracy przy błędnym formacie", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "15",
       "zła wartość",
       "08:00-18:00",
       [],
       "obserwuj",
       "opus",
+      "high",
       "wykonuj",
       false,
     );
@@ -137,11 +149,13 @@ describe("configureCommand", () => {
   it("dopisuje CLAUDE_CONFIG_DIR gdy wybrany", async () => {
     queueAnswers(
       "haiku",
+      "medium",
       "2",
       "",
       [],
       "obserwuj",
       "sonnet",
+      "high",
       "wykonuj",
       true,
       "~/profil-claude",
@@ -154,7 +168,20 @@ describe("configureCommand", () => {
   });
 
   it("ponawia pytanie o interwał przy błędnej wartości", async () => {
-    queueAnswers("haiku", "0", "abc", "3", "", [], "obserwuj", "opus", "wykonuj", false);
+    queueAnswers(
+      "haiku",
+      "medium",
+      "0",
+      "abc",
+      "3",
+      "",
+      [],
+      "obserwuj",
+      "opus",
+      "high",
+      "wykonuj",
+      false,
+    );
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");
@@ -162,7 +189,18 @@ describe("configureCommand", () => {
   });
 
   it("obsługuje przecinek dziesiętny w interwale", async () => {
-    queueAnswers("haiku", "1,5", "", [], "obserwuj", "opus", "wykonuj", false);
+    queueAnswers(
+      "haiku",
+      "medium",
+      "1,5",
+      "",
+      [],
+      "obserwuj",
+      "opus",
+      "high",
+      "wykonuj",
+      false,
+    );
     await runConfigure();
 
     const env = await readFile(envPath, "utf8");

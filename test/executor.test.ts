@@ -173,11 +173,13 @@ describe("runExecutorLoop", () => {
 
     const spec = mocks.runSession.mock.calls[0]?.[0] as {
       model: string;
+      effort: string;
       systemPrompt: string;
       prompt: string;
       events: unknown;
     };
     expect(spec.model).toBe("opus");
+    expect(spec.effort).toBe("high");
     expect(spec.systemPrompt).toBe(`system\n\n\n${TASK_EXECUTION_CONTRACT}`);
     expect(spec.prompt).toContain("tożsamość");
     expect(spec.prompt).toContain("ID: x");
