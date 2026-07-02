@@ -23,25 +23,25 @@ Brownie to CLI, które cyklicznie uruchamia sesje [Claude Code](https://claude.c
 ## Jak to działa
 
 ```
-                ⏰ co N minut (tylko w godzinach pracy)
+        co N minut (tylko w godzinach pracy)
                           │
                           ▼
-                  ┌───────────────┐   raport JSON    ┌───────────────┐
-                  │  👀 MONITOR   │ ───────────────▶ │  📋 TaskStore │
-                  │   (haiku)     │     (zadania)    │  tasks.json   │
-                  └───────────────┘                  └───────┬───────┘
-                                                             │ budzi (Waker)
-                                                             ▼
-┌───────────────┐   log sesji   ┌───────────────┐   pending   │
-│ 🧾 SUMMARIZER │ ◀──────────── │ 🛠️ EGZEKUTOR  │ ◀───────────┘
+                  ┌───────────────┐   raport JSON   ┌───────────────┐
+                  │    MONITOR    │ ───────────────▶│   TaskStore   │
+                  │    (haiku)    │    (zadania)    │  tasks.json   │
+                  └───────────────┘                 └───────┬───────┘
+                                                            │ budzi (Waker)
+                                                            │
+┌───────────────┐   log sesji   ┌───────────────┐  pending  │
+│  SUMMARIZER   │ ◀──────────── │   EGZEKUTOR   │ ◀─────────┘
 │    (haiku)    │               │    (opus)     │
 └───────┬───────┘               └───────┬───────┘
         │ wnioski                       │ memory_search / memory_get
         ▼                               ▼
-  ┌─────────────────────────────────────────┐
-  │        🧠 Pamięć (SQLite + FTS5)        │
-  │            serwer MCP (stdio)           │
-  └─────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│            Pamięć (SQLite + FTS5)             │
+│              serwer MCP (stdio)               │
+└───────────────────────────────────────────────┘
 ```
 
 Dwie pętle działają równolegle i komunikują się wyłącznie przez współdzielony magazyn zadań:
