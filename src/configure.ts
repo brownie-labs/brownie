@@ -194,7 +194,7 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
     const monitorModel = await ask("Monitor model (cheap — only detects tasks)", {
       type: "select",
       options: MODELS,
-      initial: "sonnet",
+      initial: "haiku",
     });
 
     const monitorEffort = await askEffort(

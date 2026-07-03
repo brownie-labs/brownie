@@ -27,7 +27,7 @@ Brownie is a CLI that cyclically runs [Claude Code](https://claude.com/claude-co
                           ▼
                   ┌───────────────┐   JSON report   ┌───────────────┐
                   │    MONITOR    │ ───────────────▶│   TaskStore   │
-                  │   (sonnet)    │     (tasks)     │  tasks.json   │
+                  │    (haiku)    │     (tasks)     │  tasks.json   │
                   └───────────────┘                 └───────┬───────┘
                                                             │ wakes (Waker)
                                                             │

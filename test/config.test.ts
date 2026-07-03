@@ -41,7 +41,7 @@ describe("expandHome", () => {
 describe("settingsSchema", () => {
   it("applies default values to an empty object", () => {
     const settings = settingsSchema.parse({});
-    expect(settings.monitor.model).toBe("sonnet");
+    expect(settings.monitor.model).toBe("haiku");
     expect(settings.monitor.effort).toBe("medium");
     expect(settings.monitor.intervalMinutes).toBe(15);
     expect(settings.monitor.activeHours).toBeUndefined();

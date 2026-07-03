@@ -7,7 +7,7 @@ Every section is optional — `{}` is a valid file. A typical setup:
 ```json
 {
   "monitor": {
-    "model": "sonnet",
+    "model": "haiku",
     "intervalMinutes": 15,
     "activeHours": "08:00-18:00",
     "activeDays": "mon-fri"
@@ -24,7 +24,7 @@ Every section is optional — `{}` is a valid file. A typical setup:
 
 | Key                           | Default          | Description                                             |
 | ----------------------------- | ---------------- | ------------------------------------------------------- |
-| `monitor.model`               | `sonnet`         | monitor model                                           |
+| `monitor.model`               | `haiku`          | monitor model                                           |
 | `monitor.effort`              | `medium`         | monitor effort: `low`, `medium`, `high`, `xhigh`, `max` |
 | `monitor.intervalMinutes`     | `15`             | patrol interval (fractions allowed)                     |
 | `monitor.activeHours`         | _(24/7)_         | working window, e.g. `08:00-18:00`                      |

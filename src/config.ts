@@ -36,7 +36,7 @@ export const settingsSchema = z
   .object({
     monitor: z
       .object({
-        model: z.string().trim().min(1).default("sonnet"),
+        model: z.string().trim().min(1).default("haiku"),
         effort: z.enum(EFFORT_LEVELS).default("medium"),
         intervalMinutes: z.number().positive().default(15),
         activeHours: validatedString(parseTimeWindow).optional(),
