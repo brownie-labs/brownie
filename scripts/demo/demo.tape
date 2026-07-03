@@ -11,7 +11,7 @@ Set Padding 12
 Set TypingSpeed 70ms
 
 Hide
-Type `REPO="$PWD"; export PATH="$REPO/scripts/demo:$PATH"; brownie() { node "$REPO/dist/index.js"; }; node scripts/demo/setup.mjs; cd scripts/demo/acme-shop; clear`
+Type `REPO="$PWD"; export PATH="$REPO/scripts/demo:$PATH"; brownie() { HOME="$REPO/scripts/demo" node "$REPO/dist/index.js"; }; node scripts/demo/setup.mjs; cd scripts/demo/acme-shop; clear`
 Enter
 Sleep 1s
 Show
