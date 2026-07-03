@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildConfig, createTempDir, removeTempDir } from "./helpers.js";
@@ -37,8 +36,8 @@ const { WorkerStatusStore } = await import("../src/status.js");
 const { SessionSummarizer } = await import("../src/memory/summarizer.js");
 const { logger } = await import("../src/logger.js");
 
-function runStart(envFile?: string): Promise<void> {
-  return startWorker(envFile);
+function runStart(): Promise<void> {
+  return startWorker();
 }
 
 function verifiedPaths(dir: string) {
@@ -75,10 +74,12 @@ describe("startWorker", () => {
     await removeTempDir(dir);
   });
 
-  it("passes preflight, builds config, creates cwd, opens the store and starts both loops", async () => {
+  it("passes preflight, builds config, opens the store and starts both loops", async () => {
     const paths = verifiedPaths(dir);
-    const cwd = join(dir, "ws");
-    const config = buildConfig({ cwd, tasksFilePath: join(dir, "data", "tasks.json") });
+    const config = buildConfig({
+      cwd: dir,
+      tasksFilePath: join(dir, ".brownie", "data", "tasks.json"),
+    });
     const signal = new AbortController().signal;
     const store = { pendingCount: () => 0, list: () => [], onChange: vi.fn() };
     mocks.ensureReady.mockResolvedValue(paths);
@@ -88,11 +89,10 @@ describe("startWorker", () => {
     mocks.runMonitorLoop.mockResolvedValue(undefined);
     mocks.runExecutorLoop.mockResolvedValue(undefined);
 
-    await runStart("./other.env");
+    await runStart();
 
-    expect(mocks.ensureReady).toHaveBeenCalledWith("./other.env");
-    expect(mocks.loadWorkerConfig).toHaveBeenCalledWith("./other.env", paths);
-    expect(existsSync(cwd)).toBe(true);
+    expect(mocks.ensureReady).toHaveBeenCalledWith();
+    expect(mocks.loadWorkerConfig).toHaveBeenCalledWith({}, paths);
     expect(mocks.taskStoreOpen).toHaveBeenCalledWith(config.tasksFilePath);
     expect(mocks.runMonitorLoop).toHaveBeenCalledWith(
       config,
@@ -139,7 +139,7 @@ describe("startWorker", () => {
 
   it("loop error: unmounts the dashboard, logs and sets exitCode=1", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
-    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: join(dir, "ws") }));
+    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: dir }));
     mocks.abortOnSignals.mockReturnValue(new AbortController().signal);
     mocks.taskStoreOpen.mockResolvedValue({
       pendingCount: () => 0,
@@ -170,18 +170,22 @@ describe("startWorker", () => {
 
   it("config loading error: logs, sets exitCode=1 and does not start the loops", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
-    mocks.loadWorkerConfig.mockRejectedValue(new Error("Invalid configuration (.env)"));
+    mocks.loadWorkerConfig.mockRejectedValue(
+      new Error("Invalid configuration (.brownie/settings.json)"),
+    );
 
     await runStart();
 
-    expect(logger.error).toHaveBeenCalledWith("Invalid configuration (.env)");
+    expect(logger.error).toHaveBeenCalledWith(
+      "Invalid configuration (.brownie/settings.json)",
+    );
     expect(process.exitCode).toBe(1);
     expect(mocks.runMonitorLoop).not.toHaveBeenCalled();
   });
 
   it("corrupted task store: logs, sets exitCode=1 and does not start the loops", async () => {
     mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
-    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: join(dir, "ws") }));
+    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: dir }));
     mocks.taskStoreOpen.mockRejectedValue(new Error("Corrupted task store file (x)"));
 
     await runStart();

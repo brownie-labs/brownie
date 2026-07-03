@@ -1,7 +1,13 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTempDir, removeTempDir, seedWorkerFiles, snapshotEnv } from "./helpers.js";
+import {
+  createTempDir,
+  removeTempDir,
+  seedProject,
+  seedSystemPrompts,
+  snapshotEnv,
+} from "./helpers.js";
 
 vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
@@ -12,6 +18,7 @@ const { ensureReady } = await import("../src/preflight.js");
 describe("ensureReady", () => {
   let dir: string;
   let binDir: string;
+  let systemPromptsDir: string;
   let restoreEnv: () => void;
 
   beforeEach(async () => {
@@ -24,9 +31,9 @@ describe("ensureReady", () => {
     await writeFile(claude, "#!/bin/sh\nexit 0\n", "utf8");
     await chmod(claude, 0o755);
 
-    await seedWorkerFiles(dir);
+    await seedProject(dir);
+    systemPromptsDir = await seedSystemPrompts(dir);
 
-    vi.spyOn(process, "cwd").mockReturnValue(dir);
     process.env.PATH = binDir;
   });
 
@@ -36,34 +43,40 @@ describe("ensureReady", () => {
     await removeTempDir(dir);
   });
 
+  function dirs() {
+    return { projectDir: dir, systemPromptsDir };
+  }
+
   it("passes and returns verified prompt paths for all agents", async () => {
-    await expect(ensureReady()).resolves.toEqual({
+    await expect(ensureReady(dirs())).resolves.toEqual({
       monitor: {
-        promptPath: join(dir, "prompts", "monitor.prompt.md"),
-        systemPromptPath: join(dir, "prompts", "monitor.system.md"),
+        promptPath: join(dir, ".brownie", "prompts", "monitor.prompt.md"),
+        systemPromptPath: join(systemPromptsDir, "monitor.system.md"),
       },
       executor: {
-        promptPath: join(dir, "prompts", "executor.prompt.md"),
-        systemPromptPath: join(dir, "prompts", "executor.system.md"),
+        promptPath: join(dir, ".brownie", "prompts", "executor.prompt.md"),
+        systemPromptPath: join(systemPromptsDir, "executor.system.md"),
       },
       summarizer: {
-        systemPromptPath: join(dir, "prompts", "summarizer.system.md"),
+        systemPromptPath: join(systemPromptsDir, "summarizer.system.md"),
       },
     });
   });
 
   it("throws with an install hint when claude is missing from PATH", async () => {
     process.env.PATH = join(dir, "empty");
-    await expect(ensureReady()).rejects.toThrow(/Preflight failed[\s\S]*PATH/);
+    await expect(ensureReady(dirs())).rejects.toThrow(/Preflight failed[\s\S]*PATH/);
   });
 
   it("throws with a configure hint when a prompt file is missing", async () => {
-    await removeTempDir(join(dir, "prompts"));
-    await expect(ensureReady()).rejects.toThrow(/brownie --configure/);
+    await removeTempDir(join(dir, ".brownie", "prompts"));
+    await expect(ensureReady(dirs())).rejects.toThrow(/brownie --configure/);
   });
 
-  it("throws when the .env file is missing", async () => {
-    await removeTempDir(join(dir, ".env"));
-    await expect(ensureReady()).rejects.toThrow(/Preflight failed/);
+  it("throws when the settings file is missing", async () => {
+    await removeTempDir(join(dir, ".brownie", "settings.json"));
+    await expect(ensureReady(dirs())).rejects.toThrow(
+      /Preflight failed[\s\S]*brownie --configure/,
+    );
   });
 });

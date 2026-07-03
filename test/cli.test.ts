@@ -9,7 +9,7 @@ import {
   createTempDir,
   fakeClaudeCliEnv,
   removeTempDir,
-  seedWorkerFiles,
+  seedProject,
 } from "./helpers.js";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -105,14 +105,12 @@ describe("CLI start (smoke E2E)", () => {
   afterEach(() => removeTempDir(dir));
 
   it("monitor reports a task, executor runs it, the summary lands in memory, and everything shuts down cleanly on SIGINT", async () => {
-    await seedWorkerFiles(dir, {
-      env: [
-        "CLAUDE_WORKER_MONITOR_MODEL=haiku",
-        "CLAUDE_WORKER_EXECUTOR_MODEL=opus",
-        "CLAUDE_WORKER_SUMMARIZER_MODEL=sonnet",
-        "CLAUDE_WORKER_MONITOR_INTERVAL_MS=60000",
-        "",
-      ].join("\n"),
+    await seedProject(dir, {
+      settings: {
+        monitor: { model: "haiku", intervalMinutes: 1 },
+        executor: { model: "opus" },
+        summarizer: { model: "sonnet" },
+      },
     });
     const env = fakeClaudeCliEnv("ok", {
       CI: "true",
@@ -127,8 +125,8 @@ describe("CLI start (smoke E2E)", () => {
       FAKE_CLAUDE_PROMPT_OUT_SONNET: join(dir, "summary-prompt.txt"),
       FAKE_CLAUDE_ARGS_OUT_OPUS: join(dir, "executor-args.json"),
     });
-    const tasksPath = join(dir, "data", "tasks.json");
-    const memoryDbPath = join(dir, "data", "memory.db");
+    const tasksPath = join(dir, ".brownie", "data", "tasks.json");
+    const memoryDbPath = join(dir, ".brownie", "data", "memory.db");
 
     const result = await runCli(dir, env, () =>
       Promise.resolve(readSummaries(memoryDbPath, "e2e-1").length > 0),
@@ -156,7 +154,7 @@ describe("CLI start (smoke E2E)", () => {
 
     const summarizerPrompt = await readFile(join(dir, "summary-prompt.txt"), "utf8");
     expect(summarizerPrompt).toContain("ID: e2e-1");
-    expect(summarizerPrompt).toContain(join(dir, "logs", "executor"));
+    expect(summarizerPrompt).toContain(join(dir, ".brownie", "logs", "executor"));
 
     expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([{ headline: "e2e summary" }]);
 
@@ -165,7 +163,7 @@ describe("CLI start (smoke E2E)", () => {
     expect(result.output).toContain("done: 1");
   }, 30_000);
 
-  it("exits with code 1 when preflight fails (no .env)", async () => {
+  it("exits with code 1 when preflight fails (no .brownie/settings.json)", async () => {
     const result = await runCli(dir, fakeClaudeCliEnv("ok"));
 
     expect(result.code).toBe(1);

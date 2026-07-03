@@ -1,10 +1,11 @@
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
 import { buildMcpConfig } from "./memory/mcp.js";
+import { projectPaths, systemPromptFiles } from "./paths.js";
 import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
 
 export function expandHome(value: string): string {
@@ -13,13 +14,16 @@ export function expandHome(value: string): string {
   return value;
 }
 
-const optionalRawEnv = (validate: (value: string) => unknown) =>
+export const COMMAND = "claude";
+
+export const SETTINGS_PATH_LABEL = ".brownie/settings.json";
+
+const validatedString = (validate: (value: string) => unknown) =>
   z
     .string()
     .trim()
-    .optional()
+    .min(1)
     .superRefine((value, ctx) => {
-      if (value === undefined || value === "") return;
       try {
         validate(value);
       } catch (err) {
@@ -27,97 +31,80 @@ const optionalRawEnv = (validate: (value: string) => unknown) =>
       }
     });
 
-const boolFromEnv = (defaultValue = false) =>
-  z
-    .string()
-    .optional()
-    .transform((v) => {
-      const s = (v ?? "").trim();
-      if (s === "") return defaultValue;
-      return /^(1|true|yes|on)$/i.test(s);
-    });
+export const settingsSchema = z
+  .object({
+    monitor: z
+      .object({
+        model: z.string().trim().min(1).default("sonnet"),
+        effort: z.enum(EFFORT_LEVELS).default("medium"),
+        intervalMinutes: z.number().positive().default(15),
+        activeHours: validatedString(parseTimeWindow).optional(),
+        activeDays: validatedString(parseActiveDays).optional(),
+        sessionTimeoutMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .default({}),
+    executor: z
+      .object({
+        model: z.string().trim().min(1).default("opus"),
+        effort: z.enum(EFFORT_LEVELS).default("high"),
+        sessionTimeoutMs: z.number().int().positive().optional(),
+        maxTaskAttempts: z.number().int().positive().default(3),
+        retryDelayMs: z.number().int().nonnegative().default(30_000),
+      })
+      .strict()
+      .default({}),
+    summarizer: z
+      .object({
+        model: z.string().trim().min(1).default("sonnet"),
+        effort: z.enum(EFFORT_LEVELS).default("medium"),
+        sessionTimeoutMs: z.number().int().positive().default(300_000),
+      })
+      .strict()
+      .default({}),
+    streamPartial: z.boolean().default(true),
+    claudeConfigDir: z.string().trim().min(1).optional(),
+  })
+  .strict();
 
-export const COMMAND = "claude";
+export type Settings = z.infer<typeof settingsSchema>;
 
-export const envSchema = z.object({
-  CLAUDE_WORKER_MONITOR_MODEL: z.string().trim().min(1).default("sonnet"),
-  CLAUDE_WORKER_MONITOR_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
-  CLAUDE_WORKER_MONITOR_INTERVAL_MS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(15 * 60 * 1000),
-  CLAUDE_WORKER_MONITOR_ACTIVE_HOURS: optionalRawEnv(parseTimeWindow),
-  CLAUDE_WORKER_MONITOR_ACTIVE_DAYS: optionalRawEnv(parseActiveDays),
-  CLAUDE_WORKER_MONITOR_PROMPT_FILE: z
-    .string()
-    .trim()
-    .min(1)
-    .default("./prompts/monitor.prompt.md"),
-  CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE: z
-    .string()
-    .trim()
-    .min(1)
-    .default("./prompts/monitor.system.md"),
-  CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  CLAUDE_WORKER_EXECUTOR_MODEL: z.string().trim().min(1).default("opus"),
-  CLAUDE_WORKER_EXECUTOR_EFFORT: z.enum(EFFORT_LEVELS).default("high"),
-  CLAUDE_WORKER_EXECUTOR_PROMPT_FILE: z
-    .string()
-    .trim()
-    .min(1)
-    .default("./prompts/executor.prompt.md"),
-  CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE: z
-    .string()
-    .trim()
-    .min(1)
-    .default("./prompts/executor.system.md"),
-  CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .optional(),
-  CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS: z.coerce.number().int().positive().default(3),
-  CLAUDE_WORKER_SUMMARIZER_MODEL: z.string().trim().min(1).default("sonnet"),
-  CLAUDE_WORKER_SUMMARIZER_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
-  CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE: z
-    .string()
-    .trim()
-    .min(1)
-    .default("./prompts/summarizer.system.md"),
-  CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(300_000),
-  CLAUDE_WORKER_MEMORY_DB: z.string().trim().min(1).default("./data/memory.db"),
-  CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS: z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .default(30_000),
-  CLAUDE_WORKER_TASKS_FILE: z.string().trim().min(1).default("./data/tasks.json"),
-  CLAUDE_WORKER_LOGS_DIR: z.string().trim().min(1).default("./logs"),
-  CLAUDE_WORKER_STREAM_PARTIAL: boolFromEnv(true),
-  CLAUDE_WORKER_CWD: z.string().trim().min(1).default("./workspace"),
-});
-
-export function resolveEnvPath(envFile?: string): string {
-  return envFile ? resolve(envFile) : resolve(process.cwd(), ".env");
-}
-
-export function resolveFromCwd(value: string): string {
-  return isAbsolute(value) ? value : resolve(process.cwd(), expandHome(value));
-}
-
-export function loadEnvFile(envFile?: string): void {
-  const path = resolveEnvPath(envFile);
-  if (existsSync(path)) {
-    process.loadEnvFile(path);
+export function parseSettings(source: unknown): Settings {
+  const parsed = settingsSchema.safeParse(source);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid configuration (${SETTINGS_PATH_LABEL}):\n${issues}`);
   }
+  return parsed.data;
 }
 
-export type Env = z.infer<typeof envSchema>;
+export async function loadSettings(settingsFile: string): Promise<Settings> {
+  let raw: string;
+  try {
+    raw = await readFile(settingsFile, "utf8");
+  } catch (err) {
+    throw new Error(
+      `settings file missing: ${settingsFile} — run "brownie --configure"`,
+      { cause: err },
+    );
+  }
+  let source: unknown;
+  try {
+    source = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Invalid JSON in ${settingsFile}: ${(err as Error).message}`, {
+      cause: err,
+    });
+  }
+  return parseSettings(source);
+}
+
+export interface ConfigDirs {
+  projectDir?: string | undefined;
+  systemPromptsDir?: string | undefined;
+}
 
 export interface PromptPaths {
   promptPath: string;
@@ -130,56 +117,35 @@ export interface WorkerPromptPaths {
   summarizer: Pick<PromptPaths, "systemPromptPath">;
 }
 
-export function parseEnv(source: NodeJS.ProcessEnv): Env {
-  const parsed = envSchema.safeParse(source);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-      .join("\n");
-    throw new Error(`Invalid configuration (.env):\n${issues}`);
-  }
-  return parsed.data;
-}
-
-export function resolvePromptPaths(
-  env: Pick<
-    Env,
-    | "CLAUDE_WORKER_MONITOR_PROMPT_FILE"
-    | "CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE"
-    | "CLAUDE_WORKER_EXECUTOR_PROMPT_FILE"
-    | "CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE"
-    | "CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE"
-  >,
-): WorkerPromptPaths {
+export function resolvePromptPaths(dirs: ConfigDirs = {}): WorkerPromptPaths {
+  const project = projectPaths(dirs.projectDir);
+  const system = systemPromptFiles(dirs.systemPromptsDir);
   return {
     monitor: {
-      promptPath: resolveFromCwd(env.CLAUDE_WORKER_MONITOR_PROMPT_FILE),
-      systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE),
+      promptPath: project.monitorPromptFile,
+      systemPromptPath: system.monitor,
     },
     executor: {
-      promptPath: resolveFromCwd(env.CLAUDE_WORKER_EXECUTOR_PROMPT_FILE),
-      systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE),
+      promptPath: project.executorPromptFile,
+      systemPromptPath: system.executor,
     },
     summarizer: {
-      systemPromptPath: resolveFromCwd(env.CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE),
+      systemPromptPath: system.summarizer,
     },
   };
 }
 
 export const PROMPT_FILE_LABELS = {
   monitor: {
-    promptPath: "monitor prompt file (CLAUDE_WORKER_MONITOR_PROMPT_FILE)",
-    systemPromptPath:
-      "monitor system prompt file (CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE)",
+    promptPath: "monitor prompt file (.brownie/prompts/monitor.prompt.md)",
+    systemPromptPath: "monitor system prompt file (bundled with brownie)",
   },
   executor: {
-    promptPath: "executor prompt file (CLAUDE_WORKER_EXECUTOR_PROMPT_FILE)",
-    systemPromptPath:
-      "executor system prompt file (CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE)",
+    promptPath: "executor prompt file (.brownie/prompts/executor.prompt.md)",
+    systemPromptPath: "executor system prompt file (bundled with brownie)",
   },
   summarizer: {
-    systemPromptPath:
-      "summarizer system prompt file (CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE)",
+    systemPromptPath: "summarizer system prompt file (bundled with brownie)",
   },
 } as const;
 
@@ -196,62 +162,55 @@ async function assertPromptPathsReadable(paths: WorkerPromptPaths): Promise<void
 }
 
 export async function loadWorkerConfig(
-  envFile?: string,
+  dirs: ConfigDirs = {},
   verified?: WorkerPromptPaths,
 ): Promise<WorkerConfig> {
-  if (!verified) loadEnvFile(envFile);
-  const env = parseEnv(process.env);
+  const project = projectPaths(dirs.projectDir);
+  const settings = await loadSettings(project.settingsFile);
 
-  const paths = verified ?? resolvePromptPaths(env);
+  const paths = verified ?? resolvePromptPaths(dirs);
   if (!verified) {
     await assertPromptPathsReadable(paths);
   }
 
-  const cwd = resolveFromCwd(env.CLAUDE_WORKER_CWD);
-  const tasksFilePath = resolveFromCwd(env.CLAUDE_WORKER_TASKS_FILE);
-  const memoryDbPath = resolveFromCwd(env.CLAUDE_WORKER_MEMORY_DB);
-  const logsDir = resolveFromCwd(env.CLAUDE_WORKER_LOGS_DIR);
-
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
-  if (childEnv.CLAUDE_CONFIG_DIR) {
-    childEnv.CLAUDE_CONFIG_DIR = expandHome(childEnv.CLAUDE_CONFIG_DIR);
+  const configDir = settings.claudeConfigDir ?? childEnv.CLAUDE_CONFIG_DIR;
+  if (configDir) {
+    childEnv.CLAUDE_CONFIG_DIR = expandHome(configDir);
   }
 
   return {
     command: COMMAND,
     monitor: {
-      model: env.CLAUDE_WORKER_MONITOR_MODEL,
-      effort: env.CLAUDE_WORKER_MONITOR_EFFORT,
-      intervalMs: env.CLAUDE_WORKER_MONITOR_INTERVAL_MS,
-      schedule: buildSchedule(
-        env.CLAUDE_WORKER_MONITOR_ACTIVE_HOURS,
-        env.CLAUDE_WORKER_MONITOR_ACTIVE_DAYS,
-      ),
+      model: settings.monitor.model,
+      effort: settings.monitor.effort,
+      intervalMs: Math.round(settings.monitor.intervalMinutes * 60_000),
+      schedule: buildSchedule(settings.monitor.activeHours, settings.monitor.activeDays),
       promptPath: paths.monitor.promptPath,
       systemPromptPath: paths.monitor.systemPromptPath,
-      sessionTimeoutMs: env.CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS,
+      sessionTimeoutMs: settings.monitor.sessionTimeoutMs,
     },
     executor: {
-      model: env.CLAUDE_WORKER_EXECUTOR_MODEL,
-      effort: env.CLAUDE_WORKER_EXECUTOR_EFFORT,
+      model: settings.executor.model,
+      effort: settings.executor.effort,
       promptPath: paths.executor.promptPath,
       systemPromptPath: paths.executor.systemPromptPath,
-      sessionTimeoutMs: env.CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS,
-      maxTaskAttempts: env.CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS,
-      retryDelayMs: env.CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS,
-      mcpConfig: buildMcpConfig(memoryDbPath),
+      sessionTimeoutMs: settings.executor.sessionTimeoutMs,
+      maxTaskAttempts: settings.executor.maxTaskAttempts,
+      retryDelayMs: settings.executor.retryDelayMs,
+      mcpConfig: buildMcpConfig(project.memoryDbFile),
     },
     summarizer: {
-      model: env.CLAUDE_WORKER_SUMMARIZER_MODEL,
-      effort: env.CLAUDE_WORKER_SUMMARIZER_EFFORT,
+      model: settings.summarizer.model,
+      effort: settings.summarizer.effort,
       systemPromptPath: paths.summarizer.systemPromptPath,
-      sessionTimeoutMs: env.CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS,
+      sessionTimeoutMs: settings.summarizer.sessionTimeoutMs,
     },
-    streamPartial: env.CLAUDE_WORKER_STREAM_PARTIAL,
-    cwd,
-    tasksFilePath,
-    memoryDbPath,
-    logsDir,
+    streamPartial: settings.streamPartial,
+    cwd: project.projectDir,
+    tasksFilePath: project.tasksFile,
+    memoryDbPath: project.memoryDbFile,
+    logsDir: project.logsDir,
     childEnv,
   };
 }

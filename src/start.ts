@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { loadWorkerConfig } from "./config.js";
 import { runExecutorLoop } from "./executor.js";
@@ -14,14 +13,13 @@ import { TaskStore } from "./tasks.js";
 import { mountDashboard } from "./ui/mount.js";
 import { Waker } from "./waker.js";
 
-export async function startWorker(envFile?: string): Promise<void> {
+export async function startWorker(): Promise<void> {
   let config;
   let store;
   let memory;
   try {
-    const paths = await ensureReady(envFile);
-    config = await loadWorkerConfig(envFile, paths);
-    await mkdir(config.cwd, { recursive: true });
+    const paths = await ensureReady();
+    config = await loadWorkerConfig({}, paths);
     store = await TaskStore.open(config.tasksFilePath);
     memory = MemoryStore.open(config.memoryDbPath);
   } catch (err) {

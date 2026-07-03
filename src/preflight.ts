@@ -3,15 +3,14 @@ import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import {
   COMMAND,
-  loadEnvFile,
-  parseEnv,
   PROMPT_FILE_LABELS,
-  resolveEnvPath,
   resolvePromptPaths,
+  type ConfigDirs,
   type WorkerPromptPaths,
 } from "./config.js";
 import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
+import { projectPaths } from "./paths.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
 const CONFIGURE_HINT = 'run "brownie --configure" to create the configuration';
@@ -54,10 +53,9 @@ async function checkClaude(): Promise<Check> {
   );
 }
 
-function checkEnvFile(envFile?: string): Check {
-  const path = resolveEnvPath(envFile);
+function checkSettingsFile(path: string): Check {
   return check(
-    `.env file (${path})`,
+    `settings file (${path})`,
     existsSync(path),
     `file missing: ${path} — ${CONFIGURE_HINT}`,
   );
@@ -71,14 +69,12 @@ async function checkFile(path: string, label: string): Promise<Check> {
   );
 }
 
-export async function ensureReady(envFile?: string): Promise<WorkerPromptPaths> {
-  loadEnvFile(envFile);
-  const env = parseEnv(process.env);
-  const paths = resolvePromptPaths(env);
+export async function ensureReady(dirs: ConfigDirs = {}): Promise<WorkerPromptPaths> {
+  const paths = resolvePromptPaths(dirs);
 
   const checks = await Promise.all([
     checkClaude(),
-    Promise.resolve(checkEnvFile(envFile)),
+    Promise.resolve(checkSettingsFile(projectPaths(dirs.projectDir).settingsFile)),
     checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
     checkFile(
       paths.monitor.systemPromptPath,

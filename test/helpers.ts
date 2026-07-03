@@ -36,35 +36,39 @@ export function snapshotEnv(): () => void {
   };
 }
 
-export interface SeedWorkerFilesOptions {
-  env?: string | false;
+export interface SeedProjectOptions {
+  settings?: object | string | false;
   monitorPrompt?: string;
-  monitorSystem?: string;
   executorPrompt?: string;
-  executorSystem?: string;
-  summarizerSystem?: string;
 }
 
-export async function seedWorkerFiles(
+export async function seedProject(
   dir: string,
-  options: SeedWorkerFilesOptions = {},
+  options: SeedProjectOptions = {},
 ): Promise<void> {
   const {
-    env = "CLAUDE_WORKER_MONITOR_MODEL=haiku\n",
+    settings = {},
     monitorPrompt = "observe\n",
-    monitorSystem = "monitor system\n",
     executorPrompt = "execute\n",
-    executorSystem = "executor system\n",
-    summarizerSystem = "summarizer system\n",
   } = options;
-  const promptsDir = join(dir, "prompts");
+  const promptsDir = join(dir, ".brownie", "prompts");
   await mkdir(promptsDir, { recursive: true });
   await writeFile(join(promptsDir, "monitor.prompt.md"), monitorPrompt, "utf8");
-  await writeFile(join(promptsDir, "monitor.system.md"), monitorSystem, "utf8");
   await writeFile(join(promptsDir, "executor.prompt.md"), executorPrompt, "utf8");
-  await writeFile(join(promptsDir, "executor.system.md"), executorSystem, "utf8");
-  await writeFile(join(promptsDir, "summarizer.system.md"), summarizerSystem, "utf8");
-  if (env !== false) await writeFile(join(dir, ".env"), env, "utf8");
+  if (settings !== false) {
+    const raw =
+      typeof settings === "string" ? settings : `${JSON.stringify(settings, null, 2)}\n`;
+    await writeFile(join(dir, ".brownie", "settings.json"), raw, "utf8");
+  }
+}
+
+export async function seedSystemPrompts(dir: string): Promise<string> {
+  const systemDir = join(dir, "system-prompts");
+  await mkdir(systemDir, { recursive: true });
+  await writeFile(join(systemDir, "monitor.system.md"), "monitor system\n", "utf8");
+  await writeFile(join(systemDir, "executor.system.md"), "executor system\n", "utf8");
+  await writeFile(join(systemDir, "summarizer.system.md"), "summarizer system\n", "utf8");
+  return systemDir;
 }
 
 export function fakeClaudeEnv(
@@ -222,9 +226,9 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     summarizer: buildSummarizerConfig(),
     streamPartial: false,
     cwd: process.cwd(),
-    tasksFilePath: join(process.cwd(), "data", "tasks.json"),
-    memoryDbPath: join(process.cwd(), "data", "memory.db"),
-    logsDir: join(process.cwd(), "logs"),
+    tasksFilePath: join(process.cwd(), ".brownie", "data", "tasks.json"),
+    memoryDbPath: join(process.cwd(), ".brownie", "data", "memory.db"),
+    logsDir: join(process.cwd(), ".brownie", "logs"),
     childEnv: { ...process.env },
     ...overrides,
   };

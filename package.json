@@ -1,14 +1,19 @@
 {
-  "name": "brownie",
+  "name": "@midaz-studio/brownie",
   "version": "0.1.0",
   "description": "CLI worker that runs Claude Code sessions on a cycle",
   "type": "module",
+  "repository": "github:midaz-studio/brownie",
   "bin": {
     "brownie": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "prompts"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -26,7 +31,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "prepublishOnly": "pnpm check && pnpm build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

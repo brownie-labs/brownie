@@ -34,11 +34,11 @@ describe("runBrownie", () => {
   it("starts the worker directly when everything is configured", async () => {
     mocks.isConfigured.mockReturnValue(true);
 
-    await runBrownie({ envFile: "./custom.env", interactive: true });
+    await runBrownie({ interactive: true });
 
-    expect(mocks.isConfigured).toHaveBeenCalledWith("./custom.env");
+    expect(mocks.isConfigured).toHaveBeenCalledTimes(1);
     expect(mocks.runConfigure).not.toHaveBeenCalled();
-    expect(mocks.startWorker).toHaveBeenCalledWith("./custom.env");
+    expect(mocks.startWorker).toHaveBeenCalledTimes(1);
   });
 
   it("runs the wizard before starting on first run", async () => {
@@ -53,9 +53,9 @@ describe("runBrownie", () => {
       return Promise.resolve();
     });
 
-    await runBrownie({ envFile: "./custom.env", interactive: true });
+    await runBrownie({ interactive: true });
 
-    expect(mocks.runConfigure).toHaveBeenCalledWith("./custom.env");
+    expect(mocks.runConfigure).toHaveBeenCalledTimes(1);
     expect(order).toEqual(["configure", "start"]);
   });
 
@@ -139,9 +139,9 @@ describe("mainCommand", () => {
     mocks.isConfigured.mockReturnValue(true);
 
     await (mainCommand.run as (ctx: unknown) => Promise<void>)({
-      args: { env: "./custom.env", configure: false, _: [] },
+      args: { configure: false, _: [] },
     });
 
-    expect(mocks.startWorker).toHaveBeenCalledWith("./custom.env");
+    expect(mocks.startWorker).toHaveBeenCalledTimes(1);
   });
 });

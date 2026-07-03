@@ -57,83 +57,101 @@ Two loops run in parallel and communicate only through the shared task store:
 - ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
 - 🔂 **Smart retries** — distinguishes transient from permanent errors, configurable number of attempts and delay.
 - 📺 **TUI dashboard** — a live view of both loops (Ink/React): session statuses, tasks, events.
-- 🗂️ **Persistent session logs** — every session lands in `logs/<agent>/<day>/<hour>_<sessionId>.log`.
+- 🗂️ **Persistent session logs** — every session lands in `.brownie/logs/<agent>/<day>/<hour>_<sessionId>.log`.
 - 🎛️ **Per-agent model and effort** — sonnet for the patrol, opus for the work; all configurable.
-- 🧾 **Tasks in JSON** — `data/tasks.json` with atomic writes; stalled `in_progress` tasks return to `pending` after a restart.
-- 📝 **Prompts in files** — the entire personality of the agents lives in `prompts/*.md`, no prompts baked into the code.
+- 🧾 **Tasks in JSON** — `.brownie/data/tasks.json` with atomic writes; stalled `in_progress` tasks return to `pending` after a restart.
+- 📝 **Prompts in files** — the entire personality of the agents lives in markdown files, no prompts baked into the code.
+- 📁 **Per-project state** — like Claude Code's `.claude/`, everything brownie needs lives in `.brownie/` inside your project.
 
 ## Requirements
 
-- Node.js ≥ 22 and pnpm
+- Node.js ≥ 22
 - The [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in
 
 ## Quick start (TL;DR)
 
 ```bash
-pnpm install
+npm install -g @midaz-studio/brownie
 
-# release the sprite — the first run walks you through configuration,
-# every next run goes straight to the dashboard
-pnpm start        # or: pnpm dev (watch)
+cd your-project
+brownie           # first run: configuration wizard, then both loops + dashboard
 ```
 
 Binary usage:
 
 ```bash
 brownie                # first run: configuration wizard, then both loops + dashboard
-brownie --configure    # rerun the configuration wizard (.env, prompts)
-brownie --env ./x.env  # use a custom .env file
+brownie --configure    # rerun the configuration wizard (settings + project prompts)
 brownie mcp --db …     # memory MCP server (used internally by the executor)
 ```
 
+Working from a clone instead:
+
+```bash
+pnpm install
+pnpm start        # or: pnpm dev (watch)
+```
+
+## The `.brownie/` directory
+
+Like Claude Code's `.claude/`, brownie keeps all per-project state in `.brownie/` inside the directory you run it from:
+
+```
+your-project/
+└── .brownie/
+    ├── settings.json              # configuration (validated with zod)
+    ├── .gitignore                 # ignores data/ and logs/ (written once by the wizard)
+    ├── prompts/
+    │   ├── monitor.prompt.md      # what the monitor should check on every patrol
+    │   └── executor.prompt.md     # who the executor is and how it works
+    ├── data/                      # tasks.json + memory.db (runtime state)
+    └── logs/                      # session logs per agent/day
+```
+
+Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are ignored automatically via the wizard-written `.brownie/.gitignore`.
+
+> Migrating from an older version? Configuration moved from `.env` to `.brownie/settings.json` — rerun `brownie --configure`.
+
 ## Configuration
 
-Everything through `CLAUDE_WORKER_*` variables in `.env` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie --configure`) walks you through all of it, but you can also do it by hand:
+Everything lives in `.brownie/settings.json` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie --configure`) walks you through all of it, but you can also edit it by hand. Every section is optional — `{}` is a valid file:
 
-| Variable                                      | Default                          | Description                                       |
-| --------------------------------------------- | -------------------------------- | ------------------------------------------------- |
-| `CLAUDE_WORKER_MONITOR_MODEL`                 | `sonnet`                         | monitor model                                     |
-| `CLAUDE_WORKER_MONITOR_EFFORT`                | `medium`                         | monitor effort                                    |
-| `CLAUDE_WORKER_MONITOR_INTERVAL_MS`           | `900000` (15 min)                | patrol interval                                   |
-| `CLAUDE_WORKER_MONITOR_ACTIVE_HOURS`          | _(24/7)_                         | working window, e.g. `08:00-18:00`                |
-| `CLAUDE_WORKER_MONITOR_ACTIVE_DAYS`           | _(daily)_                        | working days, e.g. `mon-fri` or `mon,wed,sat-sun` |
-| `CLAUDE_WORKER_MONITOR_PROMPT_FILE`           | `./prompts/monitor.prompt.md`    | monitor prompt                                    |
-| `CLAUDE_WORKER_MONITOR_SYSTEM_PROMPT_FILE`    | `./prompts/monitor.system.md`    | monitor system prompt                             |
-| `CLAUDE_WORKER_MONITOR_SESSION_TIMEOUT_MS`    | _(none)_                         | monitor session timeout                           |
-| `CLAUDE_WORKER_EXECUTOR_MODEL`                | `opus`                           | executor model                                    |
-| `CLAUDE_WORKER_EXECUTOR_EFFORT`               | `high`                           | executor effort                                   |
-| `CLAUDE_WORKER_EXECUTOR_PROMPT_FILE`          | `./prompts/executor.prompt.md`   | executor prompt                                   |
-| `CLAUDE_WORKER_EXECUTOR_SYSTEM_PROMPT_FILE`   | `./prompts/executor.system.md`   | executor system prompt                            |
-| `CLAUDE_WORKER_EXECUTOR_SESSION_TIMEOUT_MS`   | _(none)_                         | executor session timeout                          |
-| `CLAUDE_WORKER_EXECUTOR_TASK_ATTEMPTS`        | `3`                              | max task attempts                                 |
-| `CLAUDE_WORKER_EXECUTOR_RETRY_DELAY_MS`       | `30000`                          | delay between attempts                            |
-| `CLAUDE_WORKER_SUMMARIZER_MODEL`              | `sonnet`                         | summarizer model                                  |
-| `CLAUDE_WORKER_SUMMARIZER_EFFORT`             | `medium`                         | summarizer effort                                 |
-| `CLAUDE_WORKER_SUMMARIZER_SYSTEM_PROMPT_FILE` | `./prompts/summarizer.system.md` | summarizer system prompt                          |
-| `CLAUDE_WORKER_SUMMARIZER_SESSION_TIMEOUT_MS` | `300000` (5 min)                 | summarizer session timeout                        |
-| `CLAUDE_WORKER_MEMORY_DB`                     | `./data/memory.db`               | long-term memory database                         |
-| `CLAUDE_WORKER_TASKS_FILE`                    | `./data/tasks.json`              | task store                                        |
-| `CLAUDE_WORKER_LOGS_DIR`                      | `./logs`                         | session logs directory                            |
-| `CLAUDE_WORKER_STREAM_PARTIAL`                | `true`                           | stream partial responses to the dashboard         |
-| `CLAUDE_WORKER_CWD`                           | `./workspace`                    | working directory for agent sessions              |
+| Key                           | Default          | Description                                       |
+| ----------------------------- | ---------------- | ------------------------------------------------- |
+| `monitor.model`               | `sonnet`         | monitor model                                     |
+| `monitor.effort`              | `medium`         | monitor effort                                    |
+| `monitor.intervalMinutes`     | `15`             | patrol interval (fractions allowed)               |
+| `monitor.activeHours`         | _(24/7)_         | working window, e.g. `08:00-18:00`                |
+| `monitor.activeDays`          | _(daily)_        | working days, e.g. `mon-fri` or `mon,wed,sat-sun` |
+| `monitor.sessionTimeoutMs`    | _(none)_         | monitor session timeout                           |
+| `executor.model`              | `opus`           | executor model                                    |
+| `executor.effort`             | `high`           | executor effort                                   |
+| `executor.sessionTimeoutMs`   | _(none)_         | executor session timeout                          |
+| `executor.maxTaskAttempts`    | `3`              | max task attempts                                 |
+| `executor.retryDelayMs`       | `30000`          | delay between attempts                            |
+| `summarizer.model`            | `sonnet`         | summarizer model                                  |
+| `summarizer.effort`           | `medium`         | summarizer effort                                 |
+| `summarizer.sessionTimeoutMs` | `300000` (5 min) | summarizer session timeout                        |
+| `streamPartial`               | `true`           | stream partial responses to the dashboard         |
+| `claudeConfigDir`             | _(none)_         | separate Claude config dir (`CLAUDE_CONFIG_DIR`)  |
 
 ## Prompts
 
-The sprite's entire personality lives in `prompts/*.md`:
+The sprite's personality is split between the package and your project:
 
-| File                   | Role                                                            |
-| ---------------------- | --------------------------------------------------------------- |
-| `monitor.system.md`    | who the monitor is and how it decides what counts as a task     |
-| `monitor.prompt.md`    | what the monitor should check on every patrol                   |
-| `executor.system.md`   | the executor's working rules                                    |
-| `executor.prompt.md`   | the task template (the task description is appended at the end) |
-| `summarizer.system.md` | how to distill a session into findings worth remembering        |
+| File                                  | Lives in     | Role                                                            |
+| ------------------------------------- | ------------ | --------------------------------------------------------------- |
+| `prompts/monitor.system.md`           | the package  | who the monitor is and how it decides what counts as a task     |
+| `prompts/executor.system.md`          | the package  | the executor's working rules                                    |
+| `prompts/summarizer.system.md`        | the package  | how to distill a session into findings worth remembering        |
+| `.brownie/prompts/monitor.prompt.md`  | your project | what the monitor should check on every patrol                   |
+| `.brownie/prompts/executor.prompt.md` | your project | the task template (the task description is appended at the end) |
 
-This is where you decide what the sprite works on: reviewing PRs, watching CI, tidying the backlog — whatever you describe.
+The project prompts are where you decide what the sprite works on: reviewing PRs, watching CI, tidying the backlog — whatever you describe.
 
 ## Security
 
-Agent sessions run with `--permission-mode bypassPermissions` and full tool access — the sprite has a free hand within `CLAUDE_WORKER_CWD` (`./workspace` by default). So release it onto well-considered ground: a dedicated working directory, well-considered prompts, no secrets within reach. Treat tasks reported by the monitor like any input to an autonomous agent — the prompts define the boundaries.
+> **⚠️ The sprite works directly in your project.** Agent sessions run with `--permission-mode bypassPermissions` and full tool access **in the directory you run `brownie` from** — there is no isolated sandbox. Run it in projects you trust it with: well-considered prompts, no secrets within reach, version control as your safety net. Treat tasks reported by the monitor like any input to an autonomous agent — the prompts define the boundaries.
 
 ## Development
 

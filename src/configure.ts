@@ -1,10 +1,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
 import { consola, type PromptOptions } from "consola";
 import { parseTimeWindow } from "./active-hours.js";
-import { resolveEnvPath } from "./config.js";
 import { logger } from "./logger.js";
+import { projectPaths } from "./paths.js";
 import { EFFORT_LEVELS } from "./types.js";
 
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
@@ -89,60 +88,62 @@ interface ScheduleAnswers {
   activeDays: string;
 }
 
-interface BuildEnvOptions {
+interface BuildSettingsOptions {
   monitorModel: string;
   monitorEffort: string;
   executorModel: string;
   executorEffort: string;
-  intervalMs: number;
+  intervalMinutes: number;
   schedule: ScheduleAnswers;
   configDir?: string | undefined;
 }
 
-function buildEnv({
+function buildSettings({
   monitorModel,
   monitorEffort,
   executorModel,
   executorEffort,
-  intervalMs,
+  intervalMinutes,
   schedule,
   configDir,
-}: BuildEnvOptions): string {
-  const lines = [
-    `CLAUDE_WORKER_MONITOR_MODEL=${monitorModel}`,
-    `CLAUDE_WORKER_MONITOR_EFFORT=${monitorEffort}`,
-    `CLAUDE_WORKER_MONITOR_INTERVAL_MS=${intervalMs}`,
-  ];
-  if (schedule.activeHours) {
-    lines.push(`CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=${schedule.activeHours}`);
-  }
-  if (schedule.activeDays) {
-    lines.push(`CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=${schedule.activeDays}`);
-  }
-  lines.push(`CLAUDE_WORKER_EXECUTOR_MODEL=${executorModel}`);
-  lines.push(`CLAUDE_WORKER_EXECUTOR_EFFORT=${executorEffort}`);
-  if (configDir) lines.push("", `CLAUDE_CONFIG_DIR=${configDir}`);
-  return `${lines.join("\n")}\n`;
+}: BuildSettingsOptions): object {
+  return {
+    monitor: {
+      model: monitorModel,
+      effort: monitorEffort,
+      intervalMinutes,
+      ...(schedule.activeHours ? { activeHours: schedule.activeHours } : {}),
+      ...(schedule.activeDays ? { activeDays: schedule.activeDays } : {}),
+    },
+    executor: {
+      model: executorModel,
+      effort: executorEffort,
+    },
+    ...(configDir ? { claudeConfigDir: configDir } : {}),
+  };
 }
 
-function configFilePaths(envFile?: string): [string, string, string] {
-  const promptsDir = resolve(process.cwd(), "prompts");
-  return [
-    resolveEnvPath(envFile),
-    resolve(promptsDir, "monitor.prompt.md"),
-    resolve(promptsDir, "executor.prompt.md"),
-  ];
+const BROWNIE_GITIGNORE = "data/\nlogs/\n";
+
+export function isConfigured(projectDir?: string): boolean {
+  const paths = projectPaths(projectDir);
+  return [paths.settingsFile, paths.monitorPromptFile, paths.executorPromptFile].every(
+    (path) => existsSync(path),
+  );
 }
 
-export function isConfigured(envFile?: string): boolean {
-  return configFilePaths(envFile).every((path) => existsSync(path));
-}
-
-export async function runConfigure(envFile?: string): Promise<boolean> {
-  const [envPath, monitorPromptPath, executorPromptPath] = configFilePaths(envFile);
+export async function runConfigure(projectDir?: string): Promise<boolean> {
+  const paths = projectPaths(projectDir);
+  const {
+    settingsFile,
+    monitorPromptFile: monitorPromptPath,
+    executorPromptFile: executorPromptPath,
+  } = paths;
 
   try {
-    if (!(await confirmOverwrite([envPath, monitorPromptPath, executorPromptPath]))) {
+    if (
+      !(await confirmOverwrite([settingsFile, monitorPromptPath, executorPromptPath]))
+    ) {
       logger.info(CANCEL_MESSAGE);
       return false;
     }
@@ -165,7 +166,6 @@ export async function runConfigure(envFile?: string): Promise<boolean> {
     });
 
     const intervalMinutes = await askIntervalMinutes();
-    const intervalMs = Math.round(intervalMinutes * 60_000);
 
     const activeHours = await askOptional(
       "Monitor working hours (HH:MM-HH:MM, Enter = 24/7)",
@@ -195,39 +195,39 @@ export async function runConfigure(envFile?: string): Promise<boolean> {
     );
 
     const useConfigDir = await ask(
-      "Use a separate Claude config directory (CLAUDE_CONFIG_DIR)?",
+      "Use a separate Claude config directory (claudeConfigDir)?",
       { type: "confirm", initial: false },
     );
     let configDir: string | undefined;
     if (useConfigDir) {
-      configDir = await askText("CLAUDE_CONFIG_DIR path", {
+      configDir = await askText("Claude config directory path", {
         placeholder: "e.g. ~/.claude-other-profile",
       });
     }
 
-    await mkdir(dirname(monitorPromptPath), { recursive: true });
-    await writeFile(
-      envPath,
-      buildEnv({
-        monitorModel,
-        monitorEffort,
-        executorModel,
-        executorEffort,
-        intervalMs,
-        schedule: { activeHours, activeDays },
-        configDir,
-      }),
-      "utf8",
-    );
+    await mkdir(paths.promptsDir, { recursive: true });
+    const settings = buildSettings({
+      monitorModel,
+      monitorEffort,
+      executorModel,
+      executorEffort,
+      intervalMinutes,
+      schedule: { activeHours, activeDays },
+      configDir,
+    });
+    await writeFile(settingsFile, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
     await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");
     await writeFile(executorPromptPath, `${executorPrompt}\n`, "utf8");
+    if (!existsSync(paths.gitignoreFile)) {
+      await writeFile(paths.gitignoreFile, BROWNIE_GITIGNORE, "utf8");
+    }
 
-    logger.success(`Saved ${envPath}`);
+    logger.success(`Saved ${settingsFile}`);
     logger.success(`Saved ${monitorPromptPath}`);
     logger.success(`Saved ${executorPromptPath}`);
     logger.info(
-      "Agent role definitions live in prompts/monitor.system.md and prompts/executor.system.md " +
-        "(versioned in the repo) — you can edit them manually.",
+      "Agent role definitions (prompts/*.system.md) ship with the brownie package — " +
+        "you can edit them inside the installation directory.",
     );
     return true;
   } catch (err) {

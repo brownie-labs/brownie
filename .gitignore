@@ -13,23 +13,8 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 
-# Środowisko (specyficzne dla maszyny)
-.env
-.env.local
-.env.*.local
-
-# Prompty agentów są częścią konfiguracji środowiska (pliki *.system.md zostają w repo)
-prompts/*.prompt.md
-prompts/prompt.md
-
-# Trwały magazyn zadań workera
-data/
-
-# Logi sesji Claude Code (monitor/egzekutor, z podziałem na dni)
-logs/
-
-# Katalog roboczy sesji Claude (izolacja od kodu agenta)
-workspace/
+# Stan per-projekt workera (settings, prompty projektowe, dane, logi)
+.brownie/
 
 # IDE / OS
 .idea/

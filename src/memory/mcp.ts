@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defineCommand } from "citty";
@@ -10,9 +11,15 @@ export function buildMcpConfig(
   dbPath: string,
   entry: string = process.argv[1] ?? "",
 ): string {
-  const args = entry.endsWith(".ts")
-    ? ["--import", "tsx", entry, "mcp", "--db", dbPath]
-    : [entry, "mcp", "--db", dbPath];
+  let resolved: string;
+  try {
+    resolved = realpathSync(entry);
+  } catch {
+    resolved = entry;
+  }
+  const args = resolved.endsWith(".ts")
+    ? ["--import", "tsx", resolved, "mcp", "--db", dbPath]
+    : [resolved, "mcp", "--db", dbPath];
   return JSON.stringify({
     mcpServers: { memory: { command: process.execPath, args } },
   });

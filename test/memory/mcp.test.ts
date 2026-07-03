@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { realpath, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildMcpConfig, createMemoryMcpServer } from "../../src/memory/mcp.js";
@@ -50,6 +51,24 @@ describe("buildMcpConfig", () => {
       "--db",
       "/data/memory.db",
     ]);
+  });
+
+  it("resolves a bin symlink to the real entry file", async () => {
+    const dir = await createTempDir();
+    try {
+      const realEntry = join(dir, "entry.js");
+      const link = join(dir, "brownie");
+      await writeFile(realEntry, "", "utf8");
+      await symlink(realEntry, link);
+
+      const config = JSON.parse(buildMcpConfig("/data/memory.db", link)) as {
+        mcpServers: { memory: { args: string[] } };
+      };
+
+      expect(config.mcpServers.memory.args[0]).toBe(await realpath(realEntry));
+    } finally {
+      await removeTempDir(dir);
+    }
   });
 });
 

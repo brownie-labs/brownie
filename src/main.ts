@@ -4,10 +4,6 @@ import { logger } from "./logger.js";
 import { startWorker } from "./start.js";
 
 const mainArgs = {
-  env: {
-    type: "string",
-    description: "Path to the .env file (defaults to ./.env)",
-  },
   configure: {
     type: "boolean",
     description: "Rerun the configuration wizard before starting the worker",
@@ -15,7 +11,6 @@ const mainArgs = {
 } satisfies ArgsDef;
 
 export interface RunBrownieOptions {
-  envFile?: string | undefined;
   configure?: boolean | undefined;
   positionals?: string[] | undefined;
   interactive?: boolean | undefined;
@@ -36,13 +31,13 @@ export async function runBrownie(options: RunBrownieOptions = {}): Promise<void>
   }
 
   const interactive = options.interactive ?? isInteractiveTerminal();
-  const needsConfig = !isConfigured(options.envFile);
+  const needsConfig = !isConfigured();
   if ((options.configure === true || needsConfig) && interactive) {
-    const saved = await runConfigure(options.envFile);
+    const saved = await runConfigure();
     if (!saved && needsConfig) return;
   }
 
-  await startWorker(options.envFile);
+  await startWorker();
 }
 
 export const mainCommand = defineCommand({
@@ -55,7 +50,6 @@ export const mainCommand = defineCommand({
   args: mainArgs,
   run: ({ args }) =>
     runBrownie({
-      envFile: args.env,
       configure: args.configure,
       positionals: args._,
     }),

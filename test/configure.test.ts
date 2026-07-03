@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { consola } from "consola";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTempDir, removeTempDir } from "./helpers.js";
+import { createTempDir, removeTempDir, seedProject } from "./helpers.js";
 
 vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
@@ -18,16 +18,17 @@ function queueAnswers(...answers: unknown[]): void {
 
 describe("runConfigure", () => {
   let dir: string;
-  let envPath: string;
+  let settingsPath: string;
+  let gitignorePath: string;
   let monitorPromptPath: string;
   let executorPromptPath: string;
 
   beforeEach(async () => {
     dir = await createTempDir();
-    envPath = join(dir, ".env");
-    monitorPromptPath = join(dir, "prompts", "monitor.prompt.md");
-    executorPromptPath = join(dir, "prompts", "executor.prompt.md");
-    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    settingsPath = join(dir, ".brownie", "settings.json");
+    gitignorePath = join(dir, ".brownie", ".gitignore");
+    monitorPromptPath = join(dir, ".brownie", "prompts", "monitor.prompt.md");
+    executorPromptPath = join(dir, ".brownie", "prompts", "executor.prompt.md");
   });
 
   afterEach(async () => {
@@ -35,7 +36,11 @@ describe("runConfigure", () => {
     await removeTempDir(dir);
   });
 
-  it("writes .env and both agents' prompts without CLAUDE_CONFIG_DIR", async () => {
+  async function readSettings(): Promise<unknown> {
+    return JSON.parse(await readFile(settingsPath, "utf8"));
+  }
+
+  it("writes settings.json and both agents' prompts without claudeConfigDir", async () => {
     queueAnswers(
       "haiku",
       "medium",
@@ -48,19 +53,53 @@ describe("runConfigure", () => {
       "execute diligently",
       false,
     );
-    await expect(runConfigure()).resolves.toBe(true);
+    await expect(runConfigure(dir)).resolves.toBe(true);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_MODEL=haiku");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_EFFORT=medium");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=900000");
-    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=opus");
-    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_EFFORT=high");
-    expect(env).not.toContain("CLAUDE_CONFIG_DIR");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+    expect(await readSettings()).toEqual({
+      monitor: { model: "haiku", effort: "medium", intervalMinutes: 15 },
+      executor: { model: "opus", effort: "high" },
+    });
     expect(await readFile(monitorPromptPath, "utf8")).toBe("watch Redmine\n");
     expect(await readFile(executorPromptPath, "utf8")).toBe("execute diligently\n");
+  });
+
+  it("creates .brownie/.gitignore ignoring runtime state", async () => {
+    queueAnswers(
+      "haiku",
+      "medium",
+      "15",
+      "",
+      [],
+      "watch",
+      "opus",
+      "high",
+      "execute",
+      false,
+    );
+    await runConfigure(dir);
+
+    expect(await readFile(gitignorePath, "utf8")).toBe("data/\nlogs/\n");
+  });
+
+  it("does not overwrite an existing .brownie/.gitignore", async () => {
+    await seedProject(dir);
+    await writeFile(gitignorePath, "custom\n", "utf8");
+    queueAnswers(
+      true,
+      "haiku",
+      "medium",
+      "15",
+      "",
+      [],
+      "watch",
+      "opus",
+      "high",
+      "execute",
+      false,
+    );
+    await runConfigure(dir);
+
+    expect(await readFile(gitignorePath, "utf8")).toBe("custom\n");
   });
 
   it("writes the monitor's working hours and selected days", async () => {
@@ -76,11 +115,13 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=08:00-18:00");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,tue,wed,thu,fri");
+    const settings = (await readSettings()) as {
+      monitor: { activeHours?: string; activeDays?: string };
+    };
+    expect(settings.monitor.activeHours).toBe("08:00-18:00");
+    expect(settings.monitor.activeDays).toBe("mon,tue,wed,thu,fri");
   });
 
   it("normalizes the order of selected days", async () => {
@@ -96,10 +137,10 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS=mon,wed,fri");
+    const settings = (await readSettings()) as { monitor: { activeDays?: string } };
+    expect(settings.monitor.activeDays).toBe("mon,wed,fri");
   });
 
   it("omits days when all are selected", async () => {
@@ -115,10 +156,10 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+    const settings = (await readSettings()) as { monitor: { activeDays?: string } };
+    expect(settings.monitor.activeDays).toBeUndefined();
   });
 
   it("re-asks the working hours question on an invalid format", async () => {
@@ -135,14 +176,16 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS=08:00-18:00");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+    const settings = (await readSettings()) as {
+      monitor: { activeHours?: string; activeDays?: string };
+    };
+    expect(settings.monitor.activeHours).toBe("08:00-18:00");
+    expect(settings.monitor.activeDays).toBeUndefined();
   });
 
-  it("appends CLAUDE_CONFIG_DIR when selected", async () => {
+  it("stores claudeConfigDir when selected", async () => {
     queueAnswers(
       "haiku",
       "medium",
@@ -156,11 +199,13 @@ describe("runConfigure", () => {
       true,
       "~/claude-profile",
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_CONFIG_DIR=~/claude-profile");
-    expect(env).toContain("CLAUDE_WORKER_EXECUTOR_MODEL=sonnet");
+    expect(await readSettings()).toEqual({
+      monitor: { model: "haiku", effort: "medium", intervalMinutes: 2 },
+      executor: { model: "sonnet", effort: "high" },
+      claudeConfigDir: "~/claude-profile",
+    });
   });
 
   it("re-asks the interval question on an invalid value", async () => {
@@ -178,10 +223,12 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=180000");
+    const settings = (await readSettings()) as {
+      monitor: { intervalMinutes: number };
+    };
+    expect(settings.monitor.intervalMinutes).toBe(3);
   });
 
   it("handles a decimal comma in the interval", async () => {
@@ -197,10 +244,12 @@ describe("runConfigure", () => {
       "execute",
       false,
     );
-    await runConfigure();
+    await runConfigure(dir);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).toContain("CLAUDE_WORKER_MONITOR_INTERVAL_MS=90000");
+    const settings = (await readSettings()) as {
+      monitor: { intervalMinutes: number };
+    };
+    expect(settings.monitor.intervalMinutes).toBe(1.5);
   });
 
   it("treats empty text and multiselect answers (undefined from consola) as defaults", async () => {
@@ -217,11 +266,13 @@ describe("runConfigure", () => {
       false,
     );
 
-    await expect(runConfigure()).resolves.toBe(true);
+    await expect(runConfigure(dir)).resolves.toBe(true);
 
-    const env = await readFile(envPath, "utf8");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_HOURS");
-    expect(env).not.toContain("CLAUDE_WORKER_MONITOR_ACTIVE_DAYS");
+    const settings = (await readSettings()) as {
+      monitor: { activeHours?: string; activeDays?: string };
+    };
+    expect(settings.monitor.activeHours).toBeUndefined();
+    expect(settings.monitor.activeDays).toBeUndefined();
     expect(await readFile(monitorPromptPath, "utf8")).toBe("\n");
     expect(await readFile(executorPromptPath, "utf8")).toBe("\n");
   });
@@ -231,24 +282,23 @@ describe("runConfigure", () => {
     cancelled.name = "ConsolaPromptCancelledError";
     vi.spyOn(consola, "prompt").mockRejectedValueOnce(cancelled);
 
-    await expect(runConfigure()).resolves.toBe(false);
-    expect(existsSync(envPath)).toBe(false);
+    await expect(runConfigure(dir)).resolves.toBe(false);
+    expect(existsSync(settingsPath)).toBe(false);
     expect(existsSync(monitorPromptPath)).toBe(false);
     expect(existsSync(executorPromptPath)).toBe(false);
   });
 
   it("declining to overwrite existing files finishes without changes", async () => {
-    await writeFile(envPath, "OLD=1\n", "utf8");
+    await seedProject(dir, { settings: '{"old": true}\n' });
     vi.spyOn(consola, "prompt").mockResolvedValueOnce(false);
 
-    await expect(runConfigure()).resolves.toBe(false);
+    await expect(runConfigure(dir)).resolves.toBe(false);
 
-    expect(await readFile(envPath, "utf8")).toBe("OLD=1\n");
-    expect(existsSync(monitorPromptPath)).toBe(false);
+    expect(await readFile(settingsPath, "utf8")).toBe('{"old": true}\n');
   });
 
-  it("writes .env at the path given via envFile", async () => {
-    const customEnvPath = join(dir, "custom.env");
+  it("defaults to process.cwd() when no project directory is given", async () => {
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
     queueAnswers(
       "haiku",
       "medium",
@@ -262,10 +312,9 @@ describe("runConfigure", () => {
       false,
     );
 
-    await expect(runConfigure(customEnvPath)).resolves.toBe(true);
+    await expect(runConfigure()).resolves.toBe(true);
 
-    expect(existsSync(customEnvPath)).toBe(true);
-    expect(existsSync(envPath)).toBe(false);
+    expect(existsSync(settingsPath)).toBe(true);
   });
 });
 
@@ -274,7 +323,6 @@ describe("isConfigured", () => {
 
   beforeEach(async () => {
     dir = await createTempDir();
-    vi.spyOn(process, "cwd").mockReturnValue(dir);
   });
 
   afterEach(async () => {
@@ -282,34 +330,26 @@ describe("isConfigured", () => {
     await removeTempDir(dir);
   });
 
-  async function seedAll(): Promise<void> {
-    await mkdir(join(dir, "prompts"), { recursive: true });
-    await writeFile(join(dir, ".env"), "X=1\n", "utf8");
-    await writeFile(join(dir, "prompts", "monitor.prompt.md"), "watch\n", "utf8");
-    await writeFile(join(dir, "prompts", "executor.prompt.md"), "execute\n", "utf8");
-  }
-
-  it("returns true when .env and both prompt files exist", async () => {
-    await seedAll();
-    expect(isConfigured()).toBe(true);
+  it("returns true when settings.json and both prompt files exist", async () => {
+    await seedProject(dir);
+    expect(isConfigured(dir)).toBe(true);
   });
 
-  it("returns false when .env is missing", async () => {
-    await seedAll();
-    await rm(join(dir, ".env"));
-    expect(isConfigured()).toBe(false);
+  it("returns false when settings.json is missing", async () => {
+    await seedProject(dir, { settings: false });
+    expect(isConfigured(dir)).toBe(false);
   });
 
   it("returns false when a prompt file is missing", async () => {
-    await seedAll();
-    await rm(join(dir, "prompts", "executor.prompt.md"));
-    expect(isConfigured()).toBe(false);
+    await seedProject(dir);
+    await rm(join(dir, ".brownie", "prompts", "executor.prompt.md"));
+    expect(isConfigured(dir)).toBe(false);
   });
 
-  it("checks the custom env path when envFile is given", async () => {
-    await seedAll();
-    expect(isConfigured(join(dir, "custom.env"))).toBe(false);
-    await writeFile(join(dir, "custom.env"), "X=1\n", "utf8");
-    expect(isConfigured(join(dir, "custom.env"))).toBe(true);
+  it("defaults to process.cwd() when no project directory is given", async () => {
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    expect(isConfigured()).toBe(false);
+    await seedProject(dir);
+    expect(isConfigured()).toBe(true);
   });
 });
