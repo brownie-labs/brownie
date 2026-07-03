@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@midaz-studio/brownie"><img alt="npm" src="https://img.shields.io/npm/v/%40midaz-studio%2Fbrownie?logo=npm&color=CB3837"></a>
-  <a href="https://github.com/midaz-studio/brownie/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/midaz-studio/brownie/ci.yml?branch=main&logo=github&label=CI"></a>
+  <a href="https://www.npmjs.com/package/@brownie-labs/brownie"><img alt="npm" src="https://img.shields.io/npm/v/%40brownie-labs%2Fbrownie?logo=npm&color=CB3837"></a>
+  <a href="https://github.com/brownie-labs/brownie/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/brownie-labs/brownie/ci.yml?branch=main&logo=github&label=CI"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white">
 </p>
@@ -79,7 +79,7 @@ Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
 You need Node.js ≥ 22 and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
 
 ```bash
-npm install -g @midaz-studio/brownie
+npm install -g @brownie-labs/brownie
 
 cd your-project
 brownie          # first run opens the configuration wizard, then the TUI
@@ -144,8 +144,8 @@ Claude sessions are tested against a fake `claude` binary (`test/fixtures/claude
 
 ## License
 
-[MIT](LICENSE) © Midaz Studio
+[MIT](LICENSE) © Brownie Labs
 
-## Why "Brownie"?
+## Why "Brownie"? 🧌
 
-In British folklore a **brownie** is a household spirit that, at night — while the household sleeps — quietly finishes their work for them. It has two iron rules: it works unbidden, and it vanishes when watched. Ours is a touch more modern: instead of a bowl of milk it takes tokens, and instead of sweeping the room it closes out your tasks. Watching is allowed (that's what the dashboard is for). 🧝
+In British folklore a **brownie** is a household spirit that, at night — while the household sleeps — quietly finishes their work for them. It has two iron rules: it works unbidden, and it vanishes when watched. Ours is a touch more modern: instead of a bowl of milk it takes tokens, and instead of sweeping the room it closes out your tasks. Watching is allowed (that's what the dashboard is for).

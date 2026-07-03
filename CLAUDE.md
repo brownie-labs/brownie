@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`brownie` — a CLI (Node >= 22, pnpm, ESM, TypeScript, npm package `@midaz-studio/brownie`, binary `brownie`) that cyclically runs Claude Code sessions in a two-agent setup: the **monitor** reports tasks, the **executor** completes them, and the **summarizer** writes findings to long-term memory. Code, messages, and commits are in English.
+`brownie` — a CLI (Node >= 22, pnpm, ESM, TypeScript, npm package `@brownie-labs/brownie`, binary `brownie`) that cyclically runs Claude Code sessions in a two-agent setup: the **monitor** reports tasks, the **executor** completes them, and the **summarizer** writes findings to long-term memory. Code, messages, and commits are in English.
 
 Like Claude Code's `.claude/`, all per-project state lives in `<cwd>/.brownie/`: `settings.json` (configuration), `prompts/*.prompt.md` (project prompts), `data/` (tasks.json, memory.db), `logs/` (session logs), `.gitignore` (self-ignores data/ and logs/). System prompts ship with the package (`<packageRoot>/prompts/*.system.md`). Agent sessions run in the project directory itself (`cwd`), not in a sandbox. The full path layout is defined in `src/paths.ts` (`projectPaths`, `packagePromptsDir`, `systemPromptFiles`).
 

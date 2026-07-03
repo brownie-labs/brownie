@@ -1,12 +1,12 @@
 {
-  "name": "@midaz-studio/brownie",
+  "name": "@brownie-labs/brownie",
   "version": "0.1.0",
   "description": "Autonomous two-agent Claude Code worker: a monitor that finds tasks, an executor that completes them, and long-term memory in between",
   "type": "module",
   "license": "MIT",
-  "repository": "github:midaz-studio/brownie",
-  "homepage": "https://github.com/midaz-studio/brownie#readme",
-  "bugs": "https://github.com/midaz-studio/brownie/issues",
+  "repository": "github:brownie-labs/brownie",
+  "homepage": "https://github.com/brownie-labs/brownie#readme",
+  "bugs": "https://github.com/brownie-labs/brownie/issues",
   "keywords": [
     "claude-code",
     "claude",
