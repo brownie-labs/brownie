@@ -17,6 +17,7 @@ describe("projectPaths", () => {
       projectDir: "/proj",
       brownieDir,
       settingsFile: join(brownieDir, "settings.json"),
+      mcpFile: join(brownieDir, "mcp.json"),
       promptsDir: join(brownieDir, "prompts"),
       monitorPromptFile: join(brownieDir, "prompts", "monitor.prompt.md"),
       executorPromptFile: join(brownieDir, "prompts", "executor.prompt.md"),

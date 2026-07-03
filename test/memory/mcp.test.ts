@@ -22,7 +22,7 @@ function firstText(result: unknown): string {
 describe("buildMcpConfig", () => {
   it("runs the server via tsx for a .ts entry", () => {
     const config = JSON.parse(
-      buildMcpConfig("/data/memory.db", "/repo/src/index.ts"),
+      buildMcpConfig("/data/memory.db", {}, "/repo/src/index.ts"),
     ) as {
       mcpServers: { memory: { command: string; args: string[] } };
     };
@@ -33,6 +33,7 @@ describe("buildMcpConfig", () => {
       "tsx",
       "/repo/src/index.ts",
       "mcp",
+      "serve",
       "--db",
       "/data/memory.db",
     ]);
@@ -40,7 +41,7 @@ describe("buildMcpConfig", () => {
 
   it("runs the server directly with node for a .js entry", () => {
     const config = JSON.parse(
-      buildMcpConfig("/data/memory.db", "/repo/dist/index.js"),
+      buildMcpConfig("/data/memory.db", {}, "/repo/dist/index.js"),
     ) as {
       mcpServers: { memory: { command: string; args: string[] } };
     };
@@ -48,9 +49,43 @@ describe("buildMcpConfig", () => {
     expect(config.mcpServers.memory.args).toEqual([
       "/repo/dist/index.js",
       "mcp",
+      "serve",
       "--db",
       "/data/memory.db",
     ]);
+  });
+
+  it("merges project-scoped servers alongside memory", () => {
+    const config = JSON.parse(
+      buildMcpConfig(
+        "/data/memory.db",
+        { redmine: { command: "uvx", args: ["mcp-redmine"] } },
+        "/repo/dist/index.js",
+      ),
+    ) as {
+      mcpServers: Record<string, { command: string; args?: string[] }>;
+    };
+
+    expect(Object.keys(config.mcpServers).sort()).toEqual(["memory", "redmine"]);
+    expect(config.mcpServers.redmine).toEqual({
+      command: "uvx",
+      args: ["mcp-redmine"],
+    });
+    expect(config.mcpServers.memory?.command).toBe(process.execPath);
+  });
+
+  it("keeps the memory server when a project server is also named memory", () => {
+    const config = JSON.parse(
+      buildMcpConfig(
+        "/data/memory.db",
+        { memory: { command: "rogue" } },
+        "/repo/dist/index.js",
+      ),
+    ) as {
+      mcpServers: { memory: { command: string } };
+    };
+
+    expect(config.mcpServers.memory.command).toBe(process.execPath);
   });
 
   it("resolves a bin symlink to the real entry file", async () => {
@@ -61,7 +96,7 @@ describe("buildMcpConfig", () => {
       await writeFile(realEntry, "", "utf8");
       await symlink(realEntry, link);
 
-      const config = JSON.parse(buildMcpConfig("/data/memory.db", link)) as {
+      const config = JSON.parse(buildMcpConfig("/data/memory.db", {}, link)) as {
         mcpServers: { memory: { args: string[] } };
       };
 

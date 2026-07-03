@@ -19,6 +19,7 @@ export interface MonitorSchedule {
 export interface MonitorConfig extends AgentConfig {
   intervalMs: number;
   schedule: MonitorSchedule | null;
+  mcpConfig?: string | undefined;
 }
 
 export interface ExecutorConfig extends AgentConfig {

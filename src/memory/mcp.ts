@@ -3,12 +3,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defineCommand } from "citty";
 import { z } from "zod";
+import type { McpServers } from "../mcp-config.js";
 import { MemoryStore, type TaskSummaryRecord } from "./store.js";
 
 export type MemoryReader = Pick<MemoryStore, "search" | "get">;
 
 export function buildMcpConfig(
   dbPath: string,
+  servers: McpServers = {},
   entry: string = process.argv[1] ?? "",
 ): string {
   let resolved: string;
@@ -18,10 +20,10 @@ export function buildMcpConfig(
     resolved = entry;
   }
   const args = resolved.endsWith(".ts")
-    ? ["--import", "tsx", resolved, "mcp", "--db", dbPath]
-    : [resolved, "mcp", "--db", dbPath];
+    ? ["--import", "tsx", resolved, "mcp", "serve", "--db", dbPath]
+    : [resolved, "mcp", "serve", "--db", dbPath];
   return JSON.stringify({
-    mcpServers: { memory: { command: process.execPath, args } },
+    mcpServers: { ...servers, memory: { command: process.execPath, args } },
   });
 }
 
@@ -98,9 +100,9 @@ export async function runMemoryMcpServer(dbPath: string): Promise<void> {
   await server.connect(new StdioServerTransport());
 }
 
-export const mcpCommand = defineCommand({
+export const mcpServeCommand = defineCommand({
   meta: {
-    name: "mcp",
+    name: "serve",
     description:
       "MCP server (stdio) exposing task summary memory for the executor session",
   },

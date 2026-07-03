@@ -2,7 +2,7 @@
 import { runMain } from "citty";
 import { configCommand } from "./config-command.js";
 import { mainCommand } from "./main.js";
-import { mcpCommand } from "./memory/mcp.js";
+import { mcpCommand } from "./mcp-command.js";
 
 const rawArgs = process.argv.slice(2);
 

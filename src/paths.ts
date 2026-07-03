@@ -9,6 +9,7 @@ export interface ProjectPaths {
   projectDir: string;
   brownieDir: string;
   settingsFile: string;
+  mcpFile: string;
   promptsDir: string;
   monitorPromptFile: string;
   executorPromptFile: string;
@@ -27,6 +28,7 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
     projectDir,
     brownieDir,
     settingsFile: join(brownieDir, "settings.json"),
+    mcpFile: join(brownieDir, "mcp.json"),
     promptsDir,
     monitorPromptFile: join(promptsDir, "monitor.prompt.md"),
     executorPromptFile: join(promptsDir, "executor.prompt.md"),

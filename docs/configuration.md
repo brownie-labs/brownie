@@ -65,6 +65,7 @@ Like Claude Code's `.claude/`, brownie keeps all per-project state in `.brownie/
 your-project/
 └── .brownie/
     ├── settings.json              # configuration (validated with zod)
+    ├── mcp.json                   # optional: project MCP servers (see docs/mcp.md)
     ├── .gitignore                 # ignores data/ and logs/ (written once by the wizard)
     ├── prompts/
     │   ├── monitor.prompt.md      # what the monitor should check on every patrol
@@ -75,6 +76,6 @@ your-project/
     └── logs/                      # session logs: <agent>/<day>/<hour>_<sessionId>.log
 ```
 
-Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are runtime state, ignored automatically via the wizard-written `.brownie/.gitignore`.
+Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are runtime state, ignored automatically via the wizard-written `.brownie/.gitignore`. `mcp.json` is optional and managed by `brownie mcp add` ([docs/mcp.md](mcp.md)); gitignore it if it holds API keys.
 
 Tasks live in `data/tasks.json` with atomic writes (tmp + rename); tasks stuck `in_progress` after a crash are reset to `pending` on the next start. Every session is also written to a persistent log under `logs/`, so you can always read back what an agent actually did.

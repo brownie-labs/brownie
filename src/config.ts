@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
+import { readMcpServers } from "./mcp-config.js";
 import { buildMcpConfig } from "./memory/mcp.js";
 import { projectPaths, systemPromptFiles } from "./paths.js";
 import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
@@ -178,6 +179,9 @@ export async function loadWorkerConfig(
     childEnv.CLAUDE_CONFIG_DIR = expandHome(configDir);
   }
 
+  const projectMcpServers = await readMcpServers(project.mcpFile);
+  const hasProjectMcpServers = Object.keys(projectMcpServers).length > 0;
+
   return {
     command: COMMAND,
     monitor: {
@@ -188,6 +192,9 @@ export async function loadWorkerConfig(
       promptPath: paths.monitor.promptPath,
       systemPromptPath: paths.monitor.systemPromptPath,
       sessionTimeoutMs: settings.monitor.sessionTimeoutMs,
+      ...(hasProjectMcpServers
+        ? { mcpConfig: JSON.stringify({ mcpServers: projectMcpServers }) }
+        : {}),
     },
     executor: {
       model: settings.executor.model,
@@ -197,7 +204,7 @@ export async function loadWorkerConfig(
       sessionTimeoutMs: settings.executor.sessionTimeoutMs,
       maxTaskAttempts: settings.executor.maxTaskAttempts,
       retryDelayMs: settings.executor.retryDelayMs,
-      mcpConfig: buildMcpConfig(project.memoryDbFile),
+      mcpConfig: buildMcpConfig(project.memoryDbFile, projectMcpServers),
     },
     summarizer: {
       model: settings.summarizer.model,
