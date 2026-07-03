@@ -49,8 +49,11 @@ export function Header({ config, version, status, now }: HeaderProps): JSX.Eleme
     >
       <HeaderLine
         left={
-          <Text color={theme.accent} bold wrap="truncate-end">
-            {`🧌 Brownie v${version}`}
+          <Text wrap="truncate-end">
+            <Text color={theme.accent} bold>
+              {"🧌 Brownie"}
+            </Text>
+            <Text color={theme.muted}>{` v${version}`}</Text>
           </Text>
         }
         right={shortenPath(config.cwd)}
