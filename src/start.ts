@@ -13,6 +13,7 @@ import { abortOnSignals } from "./shutdown.js";
 import { WorkerStatusStore } from "./status.js";
 import { TaskStore } from "./tasks.js";
 import { mountDashboard } from "./ui/mount.js";
+import { UsageLimitGate } from "./usage-limit.js";
 import { Waker } from "./waker.js";
 
 export async function startWorker(): Promise<void> {
@@ -36,6 +37,7 @@ export async function startWorker(): Promise<void> {
 
   const signal = abortOnSignals((signalName) => status.shutdownRequested(signalName));
   const waker = new Waker();
+  const limitGate = new UsageLimitGate();
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const initialControlState = interactive ? "paused" : "running";
   const monitorControl = new AgentController((state) => {
@@ -73,6 +75,7 @@ export async function startWorker(): Promise<void> {
       return executorLog.pathFor(sessionId);
     },
     reporter: teeSession(status.executor, summarizerLog.sink),
+    limitGate,
   });
 
   let loopError: unknown;
@@ -84,6 +87,7 @@ export async function startWorker(): Promise<void> {
         waker,
         teeSession(status.monitor, monitorLog.sink),
         monitorControl,
+        limitGate,
         signal,
       ),
       runExecutorLoop(
@@ -93,6 +97,7 @@ export async function startWorker(): Promise<void> {
         teeSession(status.executor, executorLog.sink),
         summarizer,
         executorControl,
+        limitGate,
         signal,
       ),
     ]);

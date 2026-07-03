@@ -72,6 +72,7 @@ Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
 - 📺 **Interactive TUI** — a Claude-Code-style shell (Ink/React): live agent status, switchable views, slash commands.
 - ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
 - 🔂 **Smart retries** — transient failures are retried, permanent ones fail fast; stalled tasks recover on restart.
+- ⛔ **Usage-limit aware** — when Claude Code hits its 5-hour or weekly limit, both agents park with a countdown and resume automatically after the reset; interrupted tasks go back to the queue without burning a retry.
 - 📝 **Prompts in files** — the entire personality lives in markdown, no prompts baked into the code.
 
 ## Quick start

@@ -122,6 +122,7 @@ export function createSessionEventCollector(): SessionEventCollector {
 export interface MonitorReporterSpy {
   reporter: MonitorReporter;
   offHours: ReturnType<typeof vi.fn>;
+  usageLimit: ReturnType<typeof vi.fn>;
   cycleStarted: ReturnType<typeof vi.fn>;
   cycleFinished: ReturnType<typeof vi.fn>;
   sleepUntil: ReturnType<typeof vi.fn>;
@@ -131,6 +132,7 @@ export interface MonitorReporterSpy {
 export function createMonitorReporterSpy(): MonitorReporterSpy {
   const spies = {
     offHours: vi.fn(),
+    usageLimit: vi.fn(),
     cycleStarted: vi.fn(),
     cycleFinished: vi.fn(),
     sleepUntil: vi.fn(),
@@ -144,6 +146,7 @@ export interface ExecutorReporterSpy {
   taskStarted: ReturnType<typeof vi.fn>;
   taskFinished: ReturnType<typeof vi.fn>;
   retryScheduled: ReturnType<typeof vi.fn>;
+  usageLimit: ReturnType<typeof vi.fn>;
   waiting: ReturnType<typeof vi.fn>;
   summaryStarted: ReturnType<typeof vi.fn>;
   summaryFinished: ReturnType<typeof vi.fn>;
@@ -155,6 +158,7 @@ export function createExecutorReporterSpy(): ExecutorReporterSpy {
     taskStarted: vi.fn(),
     taskFinished: vi.fn(),
     retryScheduled: vi.fn(),
+    usageLimit: vi.fn(),
     waiting: vi.fn(),
     summaryStarted: vi.fn(),
     summaryFinished: vi.fn(),

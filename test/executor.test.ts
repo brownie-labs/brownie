@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
+import { UsageLimitGate } from "../src/usage-limit.js";
 import { Waker } from "../src/waker.js";
 import {
   buildConfig,
@@ -133,6 +134,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -170,6 +172,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
@@ -208,6 +211,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -240,6 +244,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -267,6 +272,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -294,6 +300,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -324,6 +331,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("good"));
@@ -350,6 +358,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -375,6 +384,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -405,6 +415,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await promise;
@@ -435,6 +446,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("flaky"));
@@ -475,6 +487,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -510,6 +523,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -547,6 +561,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -559,6 +574,73 @@ describe("runExecutorLoop", () => {
 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(takeNext).toHaveBeenCalledTimes(2);
+
+    controller.abort();
+    await promise;
+  });
+
+  it("a usage-limit failure releases the task and parks the loop until the reset", async () => {
+    vi.useFakeTimers();
+    const takeNext = vi
+      .fn()
+      .mockResolvedValueOnce({ ...task("limited"), attempts: 1 })
+      .mockResolvedValueOnce({ ...task("limited"), attempts: 1 })
+      .mockResolvedValue(undefined);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const complete = vi.fn().mockResolvedValue(undefined);
+    const fail = vi.fn().mockResolvedValue(undefined);
+    const requeue = vi.fn().mockResolvedValue(undefined);
+    const store = {
+      takeNext,
+      release,
+      complete,
+      fail,
+      requeue,
+    } as unknown as TaskStore;
+    const controller = new AbortController();
+    const resetsAt = Math.floor(Date.now() / 1000) + 2;
+    mocks.runSession
+      .mockResolvedValueOnce({
+        ok: false,
+        durationMs: 10,
+        failureReason: "isError",
+        error: "Session ended with an error (is_error)",
+        rateLimit: { status: "rejected", resetsAt, rateLimitType: "five_hour" },
+      } satisfies SessionResult)
+      .mockResolvedValue(ok());
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      noopController(),
+      new UsageLimitGate(),
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(release).toHaveBeenCalledWith("limited", "usage limit reached");
+    expect(fail).not.toHaveBeenCalled();
+    expect(requeue).not.toHaveBeenCalled();
+    expect(summarizerSpy.summarize).not.toHaveBeenCalled();
+    expect(spy.taskFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "limited",
+        ok: false,
+        willRetry: true,
+        error: "usage limit reached — task requeued",
+      }),
+    );
+    expect(spy.usageLimit).toHaveBeenCalledWith(expect.any(Date));
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(33_000);
+    expect(complete).toHaveBeenCalledWith("limited");
 
     controller.abort();
     await promise;
@@ -588,6 +670,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       control,
+      new UsageLimitGate(),
       abort.signal,
     );
     await vi.waitFor(() => expect(spy.waiting).toHaveBeenCalled());
@@ -632,6 +715,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       control,
+      new UsageLimitGate(),
       abort.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalledTimes(1));

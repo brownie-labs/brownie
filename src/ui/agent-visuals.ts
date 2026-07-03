@@ -73,6 +73,7 @@ export function phaseColor(kind: string): string {
     case "summary":
       return theme.accent;
     case "backoff":
+    case "limitWait":
       return theme.warn;
     default:
       return theme.muted;

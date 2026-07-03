@@ -6,6 +6,7 @@ import { runSession } from "./runner.js";
 import type { MonitorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { WorkerConfig } from "./types.js";
+import { detectUsageLimit, type UsageLimitGate } from "./usage-limit.js";
 import type { Waker } from "./waker.js";
 
 export async function runMonitorLoop(
@@ -14,6 +15,7 @@ export async function runMonitorLoop(
   waker: Waker,
   reporter: MonitorReporter,
   controller: AgentController,
+  limitGate: UsageLimitGate,
   signal: AbortSignal,
 ): Promise<void> {
   const { monitor } = config;
@@ -29,6 +31,13 @@ export async function runMonitorLoop(
     if (waitForWindow > 0) {
       reporter.offHours(new Date(now.getTime() + waitForWindow));
       await controller.sleep(waitForWindow, signal);
+      continue;
+    }
+
+    const limitWaitMs = limitGate.msRemaining(now.getTime());
+    if (limitWaitMs > 0) {
+      reporter.usageLimit(new Date(now.getTime() + limitWaitMs));
+      await controller.sleep(limitWaitMs, signal);
       continue;
     }
 
@@ -62,6 +71,8 @@ export async function runMonitorLoop(
       if (aborted()) break;
 
       if (!result.ok) {
+        const limit = detectUsageLimit(result);
+        if (limit) limitGate.engage(limit, Date.now());
         reporter.cycleFinished({
           cycle,
           ok: false,
@@ -69,8 +80,9 @@ export async function runMonitorLoop(
           costUsd: result.costUsd,
           addedTasks: 0,
           skippedDuplicates: 0,
-          error: result.error ?? "unknown error",
+          error: limit ? "usage limit reached" : (result.error ?? "unknown error"),
         });
+        if (limit) continue;
       } else {
         const report =
           result.resultText === undefined ? null : parseTaskReport(result.resultText);

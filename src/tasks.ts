@@ -143,6 +143,18 @@ export class TaskStore {
     return this.setStatus(id, "failed", error);
   }
 
+  release(id: string, error: string): Promise<void> {
+    return this.run(async () => {
+      const task = this.tasks.find((candidate) => candidate.id === id);
+      if (!task) return;
+      task.status = "pending";
+      task.attempts = Math.max(0, task.attempts - 1);
+      task.error = error;
+      task.updatedAt = new Date().toISOString();
+      await this.persist();
+    });
+  }
+
   requeue(id: string, error: string): Promise<void> {
     return this.run(async () => {
       const task = this.tasks.find((candidate) => candidate.id === id);

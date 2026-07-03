@@ -1,5 +1,5 @@
 import { truncate, type SessionEventSink } from "./session-events.js";
-import type { SessionSummary } from "./types.js";
+import type { RateLimitInfo, SessionSummary } from "./types.js";
 
 interface ContentBlock {
   type: string;
@@ -47,6 +47,23 @@ interface StreamEvent {
   num_turns?: number;
   total_cost_usd?: number;
   result?: string;
+  rate_limit_info?: {
+    status?: string;
+    resetsAt?: number;
+    rateLimitType?: string;
+  };
+}
+
+function parseRateLimitInfo(
+  info: NonNullable<StreamEvent["rate_limit_info"]>,
+): RateLimitInfo | undefined {
+  if (typeof info.status !== "string") return undefined;
+  return {
+    status: info.status,
+    resetsAt: typeof info.resetsAt === "number" ? info.resetsAt : undefined,
+    rateLimitType:
+      typeof info.rateLimitType === "string" ? info.rateLimitType : undefined,
+  };
 }
 
 export class StreamRenderer {
@@ -127,8 +144,16 @@ export class StreamRenderer {
         }
         break;
 
+      case "rate_limit_event":
+        if (event.rate_limit_info) {
+          this.summary.rateLimit =
+            parseRateLimitInfo(event.rate_limit_info) ?? this.summary.rateLimit;
+        }
+        break;
+
       case "result":
         this.summary = {
+          rateLimit: this.summary.rateLimit,
           isError: event.is_error,
           costUsd: event.total_cost_usd,
           numTurns: event.num_turns,

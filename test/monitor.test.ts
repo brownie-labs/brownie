@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
+import { UsageLimitGate } from "../src/usage-limit.js";
 import { Waker } from "../src/waker.js";
 import {
   buildConfig,
@@ -78,6 +79,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -114,6 +116,7 @@ describe("runMonitorLoop", () => {
       waker,
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -146,6 +149,7 @@ describe("runMonitorLoop", () => {
       waker,
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -174,6 +178,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -205,6 +210,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -216,6 +222,46 @@ describe("runMonitorLoop", () => {
       }),
     );
     expect(addTasks).not.toHaveBeenCalled();
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("a usage-limit failure skips the interval and waits for the reset", async () => {
+    const resetsAt = Math.floor(Date.now() / 1000) + 2;
+    mocks.runSession
+      .mockResolvedValueOnce({
+        ok: false,
+        durationMs: 10,
+        failureReason: "isError",
+        error: "Session ended with an error (is_error)",
+        rateLimit: { status: "rejected", resetsAt, rateLimitType: "five_hour" },
+      } satisfies SessionResult)
+      .mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const controller = new AbortController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      noopController(),
+      new UsageLimitGate(),
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, error: "usage limit reached" }),
+    );
+    expect(spy.sleepUntil).not.toHaveBeenCalled();
+    expect(spy.usageLimit).toHaveBeenCalledWith(expect.any(Date));
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(63_000);
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
 
     controller.abort();
     await vi.advanceTimersByTimeAsync(INTERVAL);
@@ -240,6 +286,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -268,6 +315,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -299,6 +347,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
 
@@ -325,6 +374,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -354,6 +404,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -381,6 +432,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
+      new UsageLimitGate(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -408,6 +460,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       control,
+      new UsageLimitGate(),
       abort.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -445,6 +498,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       control,
+      new UsageLimitGate(),
       abort.signal,
     );
     await vi.advanceTimersByTimeAsync(1);

@@ -3,6 +3,7 @@ import { runSession } from "../runner.js";
 import type { SessionEventSink } from "../session-events.js";
 import type { SummaryOutcome } from "../status.js";
 import type { SessionResult, SummarizerConfig, Task } from "../types.js";
+import { detectUsageLimit, type UsageLimitGate } from "../usage-limit.js";
 import type { MemoryStore } from "./store.js";
 import { composeSummaryPrompt, parseSummary, SUMMARY_JSON_SCHEMA } from "./summary.js";
 
@@ -34,6 +35,7 @@ export interface SessionSummarizerDeps {
   store: MemoryStore;
   resolveLogPath(sessionId: string): Promise<string | undefined>;
   reporter: SummaryReporter;
+  limitGate: UsageLimitGate;
 }
 
 export class SessionSummarizer implements TaskSummarizer {
@@ -97,9 +99,13 @@ export class SessionSummarizer implements TaskSummarizer {
       if (aborted()) return;
 
       if (!sessionResult.ok) {
+        const limit = detectUsageLimit(sessionResult);
+        if (limit) this.deps.limitGate.engage(limit, Date.now());
         finished(
           false,
-          sessionResult.error ?? "unknown summarizer session error",
+          limit
+            ? "usage limit reached"
+            : (sessionResult.error ?? "unknown summarizer session error"),
           sessionResult.costUsd,
         );
         return;

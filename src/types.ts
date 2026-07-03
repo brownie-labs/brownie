@@ -44,6 +44,12 @@ export interface WorkerConfig {
 
 export type SessionFailureReason = "timeout" | "abort" | "isError" | "exit" | "spawn";
 
+export interface RateLimitInfo {
+  status: string;
+  resetsAt?: number | undefined;
+  rateLimitType?: string | undefined;
+}
+
 export interface SessionResult {
   ok: boolean;
   durationMs: number;
@@ -53,6 +59,7 @@ export interface SessionResult {
   resultText?: string | undefined;
   error?: string | undefined;
   failureReason?: SessionFailureReason | undefined;
+  rateLimit?: RateLimitInfo | undefined;
 }
 
 export interface SessionSummary {
@@ -61,6 +68,7 @@ export interface SessionSummary {
   sessionId?: string | undefined;
   isError?: boolean | undefined;
   resultText?: string | undefined;
+  rateLimit?: RateLimitInfo | undefined;
 }
 
 export type TaskStatus = "pending" | "in_progress" | "done" | "failed" | "cancelled";

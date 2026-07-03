@@ -61,6 +61,14 @@ describe("WorkerStatusStore", () => {
       kind: "sleeping",
       nextCycleAt: nextCycleAt.getTime(),
     });
+
+    const limitResumeAt = new Date(Date.now() + 3_600_000);
+    store.monitor.usageLimit(limitResumeAt);
+    store.flush();
+    expect(store.getSnapshot().monitor.phase).toEqual({
+      kind: "limitWait",
+      resumeAt: limitResumeAt.getTime(),
+    });
     store.dispose();
   });
 
@@ -256,6 +264,18 @@ describe("WorkerStatusStore", () => {
     expect(store.getSnapshot().executor.phase).toEqual({
       kind: "backoff",
       task: expect.objectContaining({ id: "t-1" }) as Task,
+      resumeAt: resumeAt.getTime(),
+    });
+    store.dispose();
+  });
+
+  it("usageLimit sets the limitWait phase with a resume time", () => {
+    const store = createStore();
+    const resumeAt = new Date(Date.now() + 3_600_000);
+    store.executor.usageLimit(resumeAt);
+    store.flush();
+    expect(store.getSnapshot().executor.phase).toEqual({
+      kind: "limitWait",
       resumeAt: resumeAt.getTime(),
     });
     store.dispose();

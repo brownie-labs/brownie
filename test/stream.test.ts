@@ -223,6 +223,38 @@ describe("StreamRenderer", () => {
     });
   });
 
+  it("rate_limit_event emits no event and lands in the summary", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1778193600,
+          rateLimitType: "five_hour",
+        },
+      }),
+    );
+    renderer.handleLine(line({ type: "result", is_error: true, session_id: "sess-7" }));
+    expect(events).toEqual([]);
+    expect(renderer.getSummary()).toMatchObject({
+      isError: true,
+      rateLimit: {
+        status: "rejected",
+        resetsAt: 1778193600,
+        rateLimitType: "five_hour",
+      },
+    });
+  });
+
+  it("a rate_limit_event without a status is ignored", () => {
+    const { renderer } = createRenderer();
+    renderer.handleLine(
+      line({ type: "rate_limit_event", rate_limit_info: { resetsAt: 123 } }),
+    );
+    expect(renderer.getSummary().rateLimit).toBeUndefined();
+  });
+
   it("getSummary passes the text from the result field", () => {
     const { renderer } = createRenderer();
     renderer.handleLine(

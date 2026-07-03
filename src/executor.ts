@@ -5,6 +5,7 @@ import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { SessionResult, Task, WorkerConfig } from "./types.js";
+import { detectUsageLimit, type UsageLimitGate } from "./usage-limit.js";
 import type { Waker } from "./waker.js";
 
 const TRANSIENT_RESULT_PATTERN =
@@ -35,6 +36,7 @@ export async function runExecutorLoop(
   reporter: ExecutorReporter,
   summarizer: TaskSummarizer,
   controller: AgentController,
+  limitGate: UsageLimitGate,
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
@@ -43,6 +45,13 @@ export async function runExecutorLoop(
   while (!aborted()) {
     await controller.gate(signal);
     if (aborted()) break;
+
+    const limitWaitMs = limitGate.msRemaining(Date.now());
+    if (limitWaitMs > 0) {
+      reporter.usageLimit(new Date(Date.now() + limitWaitMs));
+      await controller.sleep(limitWaitMs, signal);
+      continue;
+    }
 
     const task = await store.takeNext();
     if (!task) {
@@ -94,6 +103,22 @@ export async function runExecutorLoop(
           .catch(() => undefined);
       } else {
         const error = result.error ?? "unknown error";
+        const limit = detectUsageLimit(result);
+        if (limit) {
+          limitGate.engage(limit, Date.now());
+          await store.release(task.id, "usage limit reached");
+          reporter.taskFinished({
+            taskId: task.id,
+            title: task.title,
+            ok: false,
+            durationMs: result.durationMs,
+            costUsd: result.costUsd,
+            numTurns: result.numTurns,
+            error: "usage limit reached — task requeued",
+            willRetry: true,
+          });
+          continue;
+        }
         const willRetry =
           isTransientFailure(result) && task.attempts < executor.maxTaskAttempts;
         if (willRetry) {

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionResult, Task } from "../../src/types.js";
+import { UsageLimitGate } from "../../src/usage-limit.js";
 import {
   buildSummarizerConfig,
   createExecutorReporterSpy,
@@ -63,6 +64,7 @@ describe("SessionSummarizer", () => {
   let spy: ExecutorReporterSpy;
   const logPath = "/logs/executor/2026-07-02/10-00-00-executor-session.log";
   const resolveLogPath = vi.fn();
+  let limitGate: UsageLimitGate;
 
   function buildSummarizer() {
     return new SessionSummarizer({
@@ -74,6 +76,7 @@ describe("SessionSummarizer", () => {
       store,
       resolveLogPath,
       reporter: spy.reporter,
+      limitGate,
     });
   }
 
@@ -81,6 +84,7 @@ describe("SessionSummarizer", () => {
     dir = await createTempDir();
     store = MemoryStore.open(join(dir, "memory.db"));
     spy = createExecutorReporterSpy();
+    limitGate = new UsageLimitGate();
     resolveLogPath.mockReset().mockResolvedValue(logPath);
     mocks.readFile.mockReset().mockResolvedValue("summarizer system\n");
     mocks.runSession.mockReset().mockResolvedValue(summarySessionResult());
@@ -221,6 +225,30 @@ describe("SessionSummarizer", () => {
     expect(store.get("redmine-1")).toHaveLength(0);
     expect(spy.summaryFinished).toHaveBeenCalledWith(
       expect.objectContaining({ ok: false, error: "API Error" }),
+    );
+  });
+
+  it("a usage-limit failure engages the shared limit gate", async () => {
+    mocks.runSession.mockResolvedValue(
+      summarySessionResult({
+        ok: false,
+        error: "Session ended with an error (is_error)",
+        resultText: undefined,
+        failureReason: "isError",
+        rateLimit: { status: "rejected", resetsAt: Math.floor(Date.now() / 1000) + 60 },
+      }),
+    );
+
+    await buildSummarizer().summarize(
+      task(),
+      executorResult(),
+      { willRetry: false },
+      new AbortController().signal,
+    );
+
+    expect(limitGate.msRemaining(Date.now())).toBeGreaterThan(0);
+    expect(spy.summaryFinished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, error: "usage limit reached" }),
     );
   });
 

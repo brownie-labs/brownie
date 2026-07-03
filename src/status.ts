@@ -23,11 +23,13 @@ export interface TailLine {
 export type MonitorPhase =
   | { kind: "starting" }
   | { kind: "offHours"; resumeAt: number }
+  | { kind: "limitWait"; resumeAt: number }
   | { kind: "session"; cycle: number; startedAt: number }
   | { kind: "sleeping"; nextCycleAt: number };
 
 export type ExecutorPhase =
   | { kind: "waiting" }
+  | { kind: "limitWait"; resumeAt: number }
   | { kind: "session"; task: Task; startedAt: number }
   | { kind: "summary"; task: Task; startedAt: number }
   | { kind: "backoff"; task: Task; resumeAt: number };
@@ -94,6 +96,7 @@ export interface WorkerStatus {
 
 export interface MonitorReporter {
   offHours(resumeAt: Date): void;
+  usageLimit(resumeAt: Date): void;
   cycleStarted(cycle: number): void;
   cycleFinished(outcome: Omit<MonitorCycleOutcome, "finishedAt">): void;
   sleepUntil(nextCycleAt: Date): void;
@@ -104,6 +107,7 @@ export interface ExecutorReporter {
   taskStarted(task: Task): void;
   taskFinished(outcome: Omit<ExecutorTaskOutcome, "finishedAt">): void;
   retryScheduled(task: Task, resumeAt: Date): void;
+  usageLimit(resumeAt: Date): void;
   waiting(): void;
   summaryStarted(task: Task): void;
   summaryFinished(outcome: Omit<SummaryOutcome, "finishedAt">): void;
@@ -197,6 +201,10 @@ export class WorkerStatusStore {
       this.monitorState.phase = { kind: "offHours", resumeAt: resumeAt.getTime() };
       this.markDirty();
     },
+    usageLimit: (resumeAt) => {
+      this.monitorState.phase = { kind: "limitWait", resumeAt: resumeAt.getTime() };
+      this.markDirty();
+    },
     cycleStarted: (cycle) => {
       this.resetForSession(this.monitorState, {
         kind: "session",
@@ -245,6 +253,10 @@ export class WorkerStatusStore {
         task,
         resumeAt: resumeAt.getTime(),
       };
+      this.markDirty();
+    },
+    usageLimit: (resumeAt) => {
+      this.executorState.phase = { kind: "limitWait", resumeAt: resumeAt.getTime() };
       this.markDirty();
     },
     waiting: () => {

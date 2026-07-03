@@ -34,6 +34,7 @@ const { startWorker } = await import("../src/start.js");
 const { AgentController } = await import("../src/control.js");
 const { Waker } = await import("../src/waker.js");
 const { WorkerStatusStore } = await import("../src/status.js");
+const { UsageLimitGate } = await import("../src/usage-limit.js");
 const { SessionSummarizer } = await import("../src/memory/summarizer.js");
 const { logger } = await import("../src/logger.js");
 
@@ -109,6 +110,7 @@ describe("startWorker", () => {
       expect.any(Waker),
       expect.objectContaining({ cycleStarted: expect.any(Function) as unknown }),
       expect.any(AgentController),
+      expect.any(UsageLimitGate),
       signal,
     );
     expect(mocks.memoryStoreOpen).toHaveBeenCalledWith(config.memoryDbPath);
@@ -119,6 +121,7 @@ describe("startWorker", () => {
       expect.objectContaining({ taskStarted: expect.any(Function) as unknown }),
       expect.any(SessionSummarizer),
       expect.any(AgentController),
+      expect.any(UsageLimitGate),
       signal,
     );
     const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
@@ -133,6 +136,9 @@ describe("startWorker", () => {
     const monitorWaker = mocks.runMonitorLoop.mock.calls[0]?.[2] as unknown;
     const executorWaker = mocks.runExecutorLoop.mock.calls[0]?.[2] as unknown;
     expect(monitorWaker).toBe(executorWaker);
+    const monitorGate = mocks.runMonitorLoop.mock.calls[0]?.[5] as unknown;
+    const executorGate = mocks.runExecutorLoop.mock.calls[0]?.[6] as unknown;
+    expect(monitorGate).toBe(executorGate);
     expect(store.onChange).toHaveBeenCalledWith(expect.any(Function));
     expect(mocks.mountDashboard).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -160,6 +160,34 @@ describe("TaskStore", () => {
     expect(again?.attempts).toBe(2);
   });
 
+  it("release restores the task to pending and gives the attempt back", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+    await store.takeNext();
+
+    await store.release("a", "usage limit reached");
+
+    expect(store.list()[0]).toMatchObject({
+      id: "a",
+      status: "pending",
+      attempts: 0,
+      error: "usage limit reached",
+    });
+
+    const again = await store.takeNext();
+    expect(again?.attempts).toBe(1);
+  });
+
+  it("release of an unknown id is ignored", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+
+    await store.release("not-there", "error");
+
+    expect(store.list()).toHaveLength(1);
+    expect(store.list()[0]?.status).toBe("pending");
+  });
+
   it("requeue of an unknown id is ignored", async () => {
     const store = await TaskStore.open(path);
     await store.addTasks([newTask("a")]);

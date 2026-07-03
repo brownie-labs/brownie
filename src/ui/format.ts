@@ -36,12 +36,18 @@ export function formatInterval(ms: number): string {
   return parts.join(" ");
 }
 
+function formatLimitWait(resumeAt: number, now: number): string {
+  return `⛔ usage limit reached · resume ${formatResume(new Date(resumeAt))} (in ${formatCountdown(resumeAt - now)})`;
+}
+
 export function formatMonitorPhase(phase: MonitorPhase, now: number): string {
   switch (phase.kind) {
     case "starting":
       return "starting…";
     case "offHours":
       return `⏸ outside working hours · resume ${formatResume(new Date(phase.resumeAt))} (in ${formatCountdown(phase.resumeAt - now)})`;
+    case "limitWait":
+      return formatLimitWait(phase.resumeAt, now);
     case "session":
       return `▶ cycle #${phase.cycle} · running ${formatDuration(now - phase.startedAt)}`;
     case "sleeping":
@@ -53,6 +59,8 @@ export function formatExecutorPhase(phase: ExecutorPhase, now: number): string {
   switch (phase.kind) {
     case "waiting":
       return "⏳ waiting for tasks";
+    case "limitWait":
+      return formatLimitWait(phase.resumeAt, now);
     case "session":
       return `▶ ${phase.task.id}: ${phase.task.title} · running ${formatDuration(now - phase.startedAt)}`;
     case "summary":

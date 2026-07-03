@@ -86,6 +86,12 @@ describe("formatMonitorPhase", () => {
     );
     expect(label).toContain("next cycle in 02:05");
   });
+
+  it("usage limit with countdown to the reset", () => {
+    const label = formatMonitorPhase({ kind: "limitWait", resumeAt: now + 90_000 }, now);
+    expect(label).toContain("usage limit reached");
+    expect(label).toContain("01:30");
+  });
 });
 
 describe("formatExecutorPhase", () => {
@@ -120,6 +126,12 @@ describe("formatExecutorPhase", () => {
     );
     expect(label).toContain("summarizing t-1");
     expect(label).toContain("2.0s");
+  });
+
+  it("usage limit with countdown to the reset", () => {
+    const label = formatExecutorPhase({ kind: "limitWait", resumeAt: now + 90_000 }, now);
+    expect(label).toContain("usage limit reached");
+    expect(label).toContain("01:30");
   });
 });
 

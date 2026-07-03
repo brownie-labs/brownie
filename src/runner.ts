@@ -123,6 +123,7 @@ export async function runSession(
       resultText: summary.resultText,
       error: ok ? undefined : describeFailure(failureReason, code, exitSignal),
       failureReason,
+      rateLimit: summary.rateLimit,
     };
   } finally {
     if (timeout) clearTimeout(timeout);
