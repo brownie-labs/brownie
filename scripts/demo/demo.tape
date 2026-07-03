@@ -27,4 +27,4 @@ Enter
 
 Sleep 7s
 Sleep 12s
-Sleep 4s
+Sleep 14s
