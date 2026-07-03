@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+
+const modelIndex = process.argv.indexOf("--model");
+const model = modelIndex >= 0 ? process.argv[modelIndex + 1] : "sonnet";
+const sessionId = `demo-${model}-${process.pid}`;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function emit(event) {
+  process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+function init(tools) {
+  emit({ type: "system", subtype: "init", model, session_id: sessionId, tools });
+}
+
+function text(content) {
+  emit({ type: "assistant", message: { content: [{ type: "text", text: content }] } });
+}
+
+function toolUse(name, input) {
+  emit({ type: "assistant", message: { content: [{ type: "tool_use", name, input }] } });
+}
+
+function toolResult(content) {
+  emit({ type: "user", message: { content: [{ type: "tool_result", content }] } });
+}
+
+function result(numTurns, costUsd, resultText) {
+  emit({
+    type: "result",
+    is_error: false,
+    duration_ms: 1000 * numTurns,
+    num_turns: numTurns,
+    total_cost_usd: costUsd,
+    session_id: sessionId,
+    result: resultText,
+  });
+}
+
+const MONITOR_REPORT = JSON.stringify({
+  tasks: [
+    {
+      id: "ci-9182634",
+      title: "Fix failing refund test on main",
+      description:
+        "CI run #9182634 on main is red: test/payments/refund.test.ts expects 12.35 " +
+        "but got 12.34 — rounding is applied before the discount. Fix the calculation " +
+        "in src/payments/refund.ts, run pnpm check, open a PR.",
+    },
+  ],
+});
+
+async function monitorSession() {
+  init(["Bash", "Read", "Grep", "WebFetch"]);
+  await sleep(900);
+  toolUse("Bash", { command: "gh run list --branch main --limit 5" });
+  await sleep(1100);
+  toolResult("failure  CI  main  #9182634  2m11s\nsuccess  CI  main  #9182590  1m58s");
+  await sleep(900);
+  text(
+    "The latest CI run on main is red — test/payments/refund.test.ts is failing. Reporting a fix task.",
+  );
+  await sleep(700);
+  result(3, 0.0214, MONITOR_REPORT);
+}
+
+async function executorSession() {
+  init(["Bash", "Read", "Edit", "Write", "Grep", "Glob", "mcp__memory__memory_search"]);
+  await sleep(900);
+  text("Reading the failing test to understand the expected rounding.");
+  await sleep(800);
+  toolUse("Read", { file_path: "test/payments/refund.test.ts" });
+  await sleep(700);
+  toolResult("expect(refund(19.99, 0.35)).toBe(12.35)");
+  await sleep(700);
+  toolUse("Read", { file_path: "src/payments/refund.ts" });
+  await sleep(700);
+  toolResult("return round(amount) * (1 - discount);");
+  await sleep(900);
+  text(
+    "Found it — the amount is rounded before the discount is applied. Moving the rounding to the final step.",
+  );
+  await sleep(800);
+  toolUse("Edit", { file_path: "src/payments/refund.ts" });
+  await sleep(600);
+  toolResult("Edited src/payments/refund.ts");
+  await sleep(600);
+  toolUse("Bash", { command: "pnpm check" });
+  await sleep(1400);
+  toolResult("typecheck ✓  lint ✓  format ✓  214 tests passed");
+  await sleep(800);
+  text("All green. Opening a pull request with the fix.");
+  await sleep(700);
+  toolUse("Bash", { command: 'gh pr create --title "Fix refund rounding" --fill' });
+  await sleep(900);
+  toolResult("https://github.com/acme/shop/pull/512");
+  await sleep(600);
+  result(
+    11,
+    0.3187,
+    "Fixed the refund rounding bug in src/payments/refund.ts and opened PR #512.",
+  );
+}
+
+async function summarizerSession() {
+  init(["Read"]);
+  await sleep(500);
+  result(
+    2,
+    0.0031,
+    JSON.stringify({
+      headline: "Fixed refund rounding bug on main and opened PR #512",
+      summary:
+        "CI run #9182634 failed because refund() rounded the amount before applying " +
+        "the discount. Moved the rounding to the final step, pnpm check green, PR #512 opened.",
+    }),
+  );
+}
+
+process.stdin.resume();
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  const session =
+    model === "opus"
+      ? executorSession
+      : model === "haiku"
+        ? summarizerSession
+        : monitorSession;
+  session()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+});

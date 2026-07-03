@@ -1,20 +1,23 @@
-# Zależności
+# Dependencies
 node_modules
 
 # Build
 dist
 *.tsbuildinfo
 
-# Pokrycie testów
+# Test coverage
 coverage/
 
-# Logi
+# Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
 
-# Stan per-projekt workera (settings, prompty projektowe, dane, logi)
+# Per-project worker state (settings, project prompts, data, logs)
 .brownie/
+
+# Generated demo project (scripts/demo/setup.mjs)
+scripts/demo/acme-shop/
 
 # IDE / OS
 .idea/

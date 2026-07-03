@@ -9,19 +9,17 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@midaz-studio/brownie"><img alt="npm" src="https://img.shields.io/npm/v/%40midaz-studio%2Fbrownie?logo=npm&color=CB3837"></a>
+  <a href="https://github.com/midaz-studio/brownie/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/midaz-studio/brownie/ci.yml?branch=main&logo=github&label=CI"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
-  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white">
-  <img alt="Vitest" src="https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white">
 </p>
 
----
+<p align="center">
+  <img alt="Brownie demo" src="assets/demo.gif" width="800">
+</p>
 
 Brownie is a CLI that cyclically runs [Claude Code](https://claude.com/claude-code) sessions in a two-agent setup: the **monitor** watches for tasks, the **executor** completes them, and the **summarizer** writes findings to long-term memory. You sleep — the sprite tidies up.
-
-> If you want an agent that finds its own work, gets it done, and even remembers what it learned — this is it.
-
-## How it works
 
 ```
         every N minutes (only during working hours)
@@ -45,59 +43,55 @@ Brownie is a CLI that cyclically runs [Claude Code](https://claude.com/claude-co
 └───────────────────────────────────────────────┘
 ```
 
-Two loops run in parallel and communicate only through the shared task store:
+Two loops run in parallel and talk only through the shared task store: the monitor patrols your sources on an interval and reports tasks as structured JSON; the executor wakes the moment tasks land and completes them one by one, with full tool access and searchable memory of past sessions.
 
-1. **Monitor** — every configured interval (and only within the configured window of hours/days) it fires a Claude session with an enforced JSON schema. The result is a list of tasks, deduplicated by `id` and written to the `TaskStore`.
-2. **Executor** — woken immediately when new tasks arrive, it completes them one by one in sessions with full access to tools and to long-term memory via MCP. Transient errors (timeout, known patterns) are retried with a delay; the rest are marked as `failed`.
-3. **Summarizer** — after each executor session (success or failure) it reads the session log and writes findings to SQLite. Later sessions can search them full-text (FTS5) with the `memory_search` / `memory_get` tools.
+## What can it do for you?
+
+Whatever you describe in one markdown file. Some sprites people keep:
+
+- **CI medic** — watch the pipeline on `main`, investigate red builds, open a fix PR.
+- **Issue triager** — pick up well-scoped bug reports and turn them into pull requests.
+- **Dependency groundskeeper** — notice pending patch updates, bump, run the tests.
+- **Backlog sweeper** — work through `TODO`s, flaky tests, and lint debt while you build features.
+
+The monitor's patrol is just a prompt:
+
+```markdown
+1. **CI on main** — run `gh run list --branch main --limit 5`. If the latest
+   run failed, report a task to investigate and fix it (id: `ci-<run-id>`).
+2. **Issues labeled `bug`** — for each issue describing a concrete,
+   self-contained change, report a task with id `issue-<number>`.
+```
+
+Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
 
 ## Highlights
 
-- 🔁 **Autonomous loop** — the monitor reports tasks on its own, the executor completes them on its own; zero manual queuing.
-- 🧠 **Long-term memory** — SQLite + FTS5 exposed to the executor as an MCP server; the sprite learns from its own sessions.
+- 🔁 **Autonomous loop** — the monitor finds work, the executor does it; zero manual queuing (though `/task` adds work by hand).
+- 🧠 **Long-term memory** — SQLite + FTS5 exposed to the executor over MCP; the sprite learns from its own sessions.
+- 📺 **Interactive TUI** — a Claude-Code-style shell (Ink/React): live agent status, switchable views, slash commands.
 - ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
-- 🔂 **Smart retries** — distinguishes transient from permanent errors, configurable number of attempts and delay.
-- 📺 **Interactive TUI** — a Claude-Code-style shell (Ink/React): live header, switchable views (dashboard, per-agent, tasks, memory) and a slash-command input.
-- ⏯️ **Deliberate start, graceful pause** — agents boot paused and wait for `/start`; `/pause` pauses them gracefully (the current session finishes first).
-- ✍️ **Manual task control** — `/task` adds work by hand, `/retry` requeues a failed task, `/cancel` drops a pending one.
-- 🗂️ **Persistent session logs** — every session lands in `.brownie/logs/<agent>/<day>/<hour>_<sessionId>.log`.
-- 🎛️ **Per-agent model and effort** — sonnet for the patrol, opus for the work; all configurable.
-- 🧾 **Tasks in JSON** — `.brownie/data/tasks.json` with atomic writes; stalled `in_progress` tasks return to `pending` after a restart.
-- 📝 **Prompts in files** — the entire personality of the agents lives in markdown files, no prompts baked into the code.
-- 📁 **Per-project state** — like Claude Code's `.claude/`, everything brownie needs lives in `.brownie/` inside your project.
+- 🔂 **Smart retries** — transient failures are retried, permanent ones fail fast; stalled tasks recover on restart.
+- 📝 **Prompts in files** — the entire personality lives in markdown, no prompts baked into the code.
 
-## Requirements
+## Quick start
 
-- Node.js ≥ 22
-- The [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in
-
-## Quick start (TL;DR)
+You need Node.js ≥ 22 and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
 
 ```bash
 npm install -g @midaz-studio/brownie
 
 cd your-project
-brownie           # first run: configuration wizard, then both loops + the TUI
+brownie          # first run opens the configuration wizard, then the TUI
 ```
 
-Binary usage:
+Agents boot **paused** — nothing runs until you type `/start`. Rerun the wizard anytime with `brownie config`.
 
-```bash
-brownie                # first run: configuration wizard, then both loops + the TUI
-brownie config         # rerun the configuration wizard (settings + project prompts)
-brownie mcp --db …     # memory MCP server (used internally by the executor)
-```
-
-Working from a clone instead:
-
-```bash
-pnpm install
-pnpm start        # or: pnpm dev (watch)
-```
+Working from a clone instead: `pnpm install && pnpm start`.
 
 ## The TUI
 
-The screen is a shell in the style of Claude Code: a header with the live status of both agents (state, model, cost, task counters), a view in the middle, and a command input at the bottom (with history, tab completion and pgup/pgdn scrolling). Everything is driven by slash commands:
+A shell in the style of Claude Code: a header with the live status of both agents (state, model, cost, task counters), a view in the middle, and a command input at the bottom (history, tab completion, pgup/pgdn scrolling):
 
 | Command                      | Effect                                                     |
 | ---------------------------- | ---------------------------------------------------------- |
@@ -113,80 +107,44 @@ The screen is a shell in the style of Claude Code: a header with the live status
 | `/help`                      | list all commands                                          |
 | `/exit`                      | graceful shutdown (same as ctrl+c)                         |
 
-In an interactive terminal the agents boot **paused** — nothing runs until you type `/start` (all agents) or `/start monitor` / `/start executor`. Without a TTY (CI, piping) there is no way to type commands, so brownie starts the agents immediately and falls back to a read-only dashboard render.
-
-## The `.brownie/` directory
-
-Like Claude Code's `.claude/`, brownie keeps all per-project state in `.brownie/` inside the directory you run it from:
-
-```
-your-project/
-└── .brownie/
-    ├── settings.json              # configuration (validated with zod)
-    ├── .gitignore                 # ignores data/ and logs/ (written once by the wizard)
-    ├── prompts/
-    │   ├── monitor.prompt.md      # what the monitor should check on every patrol
-    │   └── executor.prompt.md     # who the executor is and how it works
-    ├── data/                      # tasks.json + memory.db (runtime state)
-    └── logs/                      # session logs per agent/day
-```
-
-Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are ignored automatically via the wizard-written `.brownie/.gitignore`.
-
-> Migrating from an older version? Configuration moved from `.env` to `.brownie/settings.json` — rerun `brownie config`.
+Without a TTY (CI, piping) there is no way to type commands, so brownie starts the agents immediately and renders a read-only dashboard.
 
 ## Configuration
 
-Everything lives in `.brownie/settings.json` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie config`) walks you through all of it, but you can also edit it by hand. Every section is optional — `{}` is a valid file:
+Like Claude Code's `.claude/`, all per-project state lives in `.brownie/` inside the directory you run brownie from: `settings.json`, the two project prompts, and runtime data (tasks, memory, logs — gitignored automatically). The settings file is a zod-validated JSON where every section is optional:
 
-| Key                           | Default          | Description                                       |
-| ----------------------------- | ---------------- | ------------------------------------------------- |
-| `monitor.model`               | `sonnet`         | monitor model                                     |
-| `monitor.effort`              | `medium`         | monitor effort                                    |
-| `monitor.intervalMinutes`     | `15`             | patrol interval (fractions allowed)               |
-| `monitor.activeHours`         | _(24/7)_         | working window, e.g. `08:00-18:00`                |
-| `monitor.activeDays`          | _(daily)_        | working days, e.g. `mon-fri` or `mon,wed,sat-sun` |
-| `monitor.sessionTimeoutMs`    | _(none)_         | monitor session timeout                           |
-| `executor.model`              | `opus`           | executor model                                    |
-| `executor.effort`             | `high`           | executor effort                                   |
-| `executor.sessionTimeoutMs`   | _(none)_         | executor session timeout                          |
-| `executor.maxTaskAttempts`    | `3`              | max task attempts                                 |
-| `executor.retryDelayMs`       | `30000`          | delay between attempts                            |
-| `summarizer.model`            | `sonnet`         | summarizer model                                  |
-| `summarizer.effort`           | `medium`         | summarizer effort                                 |
-| `summarizer.sessionTimeoutMs` | `300000` (5 min) | summarizer session timeout                        |
-| `streamPartial`               | `true`           | stream partial responses to the dashboard         |
-| `claudeConfigDir`             | _(none)_         | separate Claude config dir (`CLAUDE_CONFIG_DIR`)  |
+```json
+{
+  "monitor": {
+    "intervalMinutes": 15,
+    "activeHours": "08:00-18:00",
+    "activeDays": "mon-fri"
+  },
+  "executor": { "model": "opus", "effort": "high" }
+}
+```
 
-## Prompts
+All settings, the full directory layout, and what to commit: [docs/configuration.md](docs/configuration.md).
 
-The sprite's personality is split between the package and your project:
-
-| File                                  | Lives in     | Role                                                            |
-| ------------------------------------- | ------------ | --------------------------------------------------------------- |
-| `prompts/monitor.system.md`           | the package  | who the monitor is and how it decides what counts as a task     |
-| `prompts/executor.system.md`          | the package  | the executor's working rules                                    |
-| `prompts/summarizer.system.md`        | the package  | how to distill a session into findings worth remembering        |
-| `.brownie/prompts/monitor.prompt.md`  | your project | what the monitor should check on every patrol                   |
-| `.brownie/prompts/executor.prompt.md` | your project | the task template (the task description is appended at the end) |
-
-The project prompts are where you decide what the sprite works on: reviewing PRs, watching CI, tidying the backlog — whatever you describe.
-
-## Security
+## Security & costs
 
 > **⚠️ The sprite works directly in your project.** Agent sessions run with `--permission-mode bypassPermissions` and full tool access **in the directory you run `brownie` from** — there is no isolated sandbox. Run it in projects you trust it with: well-considered prompts, no secrets within reach, version control as your safety net. Treat tasks reported by the monitor like any input to an autonomous agent — the prompts define the boundaries.
+
+Brownie spends real tokens: every patrol is a session, every task is a session. Interval × models = your bill, so start conservative — a longer `intervalMinutes`, `sonnet` on the executor — and scale up once you trust the prompts. Working hours keep the sprite from patrolling an empty repo at 3 a.m.
 
 ## Development
 
 ```bash
 pnpm dev              # start with watch (tsx)
 pnpm check            # typecheck + lint + format:check + test — before every commit
-pnpm test             # vitest run
-pnpm test:coverage    # coverage thresholds enforced in vitest.config.ts
 pnpm build            # tsup -> dist/
 ```
 
-Claude sessions are tested without the real CLI — `test/fixtures/claude` is a fake binary driven by `FAKE_CLAUDE_*` variables. Coverage thresholds (statements 92%, lines 94%) are enforced, so new code must be tested.
+Claude sessions are tested against a fake `claude` binary (`test/fixtures/claude`) — no real API calls. Coverage thresholds are enforced. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) © Midaz Studio
 
 ## Why "Brownie"?
 
