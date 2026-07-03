@@ -42,7 +42,7 @@ describe("runConfigure", () => {
 
   it("writes settings.json and both agents' prompts", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "",
@@ -55,15 +55,25 @@ describe("runConfigure", () => {
     await expect(runConfigure(dir)).resolves.toBe(true);
 
     expect(await readSettings()).toEqual({
-      monitor: { model: "haiku", effort: "medium", intervalMinutes: 15 },
+      monitor: { model: "sonnet", effort: "medium", intervalMinutes: 15 },
       executor: { model: "opus", effort: "high" },
     });
     expect(await readFile(monitorPromptPath, "utf8")).toBe("watch Redmine\n");
     expect(await readFile(executorPromptPath, "utf8")).toBe("execute diligently\n");
   });
 
+  it("skips the effort question for models without reasoning effort", async () => {
+    queueAnswers("haiku", "15", "", [], "watch", "haiku", "execute");
+    await expect(runConfigure(dir)).resolves.toBe(true);
+
+    expect(await readSettings()).toEqual({
+      monitor: { model: "haiku", intervalMinutes: 15 },
+      executor: { model: "haiku" },
+    });
+  });
+
   it("creates .brownie/.gitignore ignoring runtime state", async () => {
-    queueAnswers("haiku", "medium", "15", "", [], "watch", "opus", "high", "execute");
+    queueAnswers("sonnet", "medium", "15", "", [], "watch", "opus", "high", "execute");
     await runConfigure(dir);
 
     expect(await readFile(gitignorePath, "utf8")).toBe("data/\nlogs/\n");
@@ -74,7 +84,7 @@ describe("runConfigure", () => {
     await writeFile(gitignorePath, "custom\n", "utf8");
     queueAnswers(
       true,
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "",
@@ -100,7 +110,7 @@ describe("runConfigure", () => {
     });
     queueAnswers(
       true,
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "",
@@ -113,7 +123,7 @@ describe("runConfigure", () => {
     await runConfigure(dir);
 
     expect(await readSettings()).toEqual({
-      monitor: { model: "haiku", effort: "medium", intervalMinutes: 15 },
+      monitor: { model: "sonnet", effort: "medium", intervalMinutes: 15 },
       executor: { model: "opus", effort: "high" },
       claudeConfigDir: "~/.claude-work",
       streamPartial: false,
@@ -122,7 +132,7 @@ describe("runConfigure", () => {
 
   it("writes the monitor's working hours and selected days", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "08:00-18:00",
@@ -143,7 +153,7 @@ describe("runConfigure", () => {
 
   it("normalizes the order of selected days", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "",
@@ -161,7 +171,7 @@ describe("runConfigure", () => {
 
   it("omits days when all are selected", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "",
@@ -179,7 +189,7 @@ describe("runConfigure", () => {
 
   it("re-asks the working hours question on an invalid format", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       "bad value",
@@ -201,7 +211,7 @@ describe("runConfigure", () => {
 
   it("re-asks the interval question on an invalid value", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "0",
       "abc",
@@ -222,7 +232,7 @@ describe("runConfigure", () => {
   });
 
   it("handles a decimal comma in the interval", async () => {
-    queueAnswers("haiku", "medium", "1,5", "", [], "watch", "opus", "high", "execute");
+    queueAnswers("sonnet", "medium", "1,5", "", [], "watch", "opus", "high", "execute");
     await runConfigure(dir);
 
     const settings = (await readSettings()) as {
@@ -233,7 +243,7 @@ describe("runConfigure", () => {
 
   it("treats empty text and multiselect answers (undefined from consola) as defaults", async () => {
     queueAnswers(
-      "haiku",
+      "sonnet",
       "medium",
       "15",
       undefined,
@@ -277,7 +287,7 @@ describe("runConfigure", () => {
 
   it("defaults to process.cwd() when no project directory is given", async () => {
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    queueAnswers("haiku", "medium", "15", "", [], "watch", "opus", "high", "execute");
+    queueAnswers("sonnet", "medium", "15", "", [], "watch", "opus", "high", "execute");
 
     await expect(runConfigure()).resolves.toBe(true);
 

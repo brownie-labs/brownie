@@ -9,7 +9,12 @@ import { EFFORT_LEVELS } from "./types.js";
 const CANCELLED_ERROR = "ConsolaPromptCancelledError";
 const CANCEL_MESSAGE = "Cancelled — nothing changed.";
 const MODELS = ["haiku", "sonnet", "opus"];
+const MODELS_WITHOUT_EFFORT = new Set(["haiku"]);
 const EFFORTS = [...EFFORT_LEVELS];
+
+function supportsEffort(model: string): boolean {
+  return !MODELS_WITHOUT_EFFORT.has(model);
+}
 
 const DAY_OPTIONS: { value: string; label: string }[] = [
   { value: "mon", label: "Monday" },
@@ -83,6 +88,18 @@ async function askActiveDays(): Promise<string> {
   return [...selected].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(",");
 }
 
+async function askEffort(
+  message: string,
+  initial: string,
+  model: string,
+): Promise<string | undefined> {
+  if (!supportsEffort(model)) {
+    logger.info(`${model} has no reasoning effort level — skipping.`);
+    return undefined;
+  }
+  return ask(message, { type: "select", options: EFFORTS, initial });
+}
+
 interface ScheduleAnswers {
   activeHours: string;
   activeDays: string;
@@ -90,9 +107,9 @@ interface ScheduleAnswers {
 
 interface BuildSettingsOptions {
   monitorModel: string;
-  monitorEffort: string;
+  monitorEffort: string | undefined;
   executorModel: string;
-  executorEffort: string;
+  executorEffort: string | undefined;
   intervalMinutes: number;
   schedule: ScheduleAnswers;
 }
@@ -108,14 +125,14 @@ function buildSettings({
   return {
     monitor: {
       model: monitorModel,
-      effort: monitorEffort,
+      ...(monitorEffort ? { effort: monitorEffort } : {}),
       intervalMinutes,
       ...(schedule.activeHours ? { activeHours: schedule.activeHours } : {}),
       ...(schedule.activeDays ? { activeDays: schedule.activeDays } : {}),
     },
     executor: {
       model: executorModel,
-      effort: executorEffort,
+      ...(executorEffort ? { effort: executorEffort } : {}),
     },
   };
 }
@@ -180,11 +197,11 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
       initial: "sonnet",
     });
 
-    const monitorEffort = await ask("Monitor effort (reasoning effort level)", {
-      type: "select",
-      options: EFFORTS,
-      initial: "medium",
-    });
+    const monitorEffort = await askEffort(
+      "Monitor effort (reasoning effort level)",
+      "medium",
+      monitorModel,
+    );
 
     const intervalMinutes = await askIntervalMinutes();
 
@@ -205,11 +222,11 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
       initial: "opus",
     });
 
-    const executorEffort = await ask("Executor effort (reasoning effort level)", {
-      type: "select",
-      options: EFFORTS,
-      initial: "high",
-    });
+    const executorEffort = await askEffort(
+      "Executor effort (reasoning effort level)",
+      "high",
+      executorModel,
+    );
 
     const executorPrompt = await askText(
       "Who is the executor and how should it complete tasks? (identity, working rules, available tools)",
