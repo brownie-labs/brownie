@@ -1,9 +1,24 @@
 {
   "name": "@midaz-studio/brownie",
   "version": "0.1.0",
-  "description": "CLI worker that runs Claude Code sessions on a cycle",
+  "description": "Autonomous two-agent Claude Code worker: a monitor that finds tasks, an executor that completes them, and long-term memory in between",
   "type": "module",
+  "license": "MIT",
   "repository": "github:midaz-studio/brownie",
+  "homepage": "https://github.com/midaz-studio/brownie#readme",
+  "bugs": "https://github.com/midaz-studio/brownie/issues",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "ai-agent",
+    "autonomous-agent",
+    "agent",
+    "automation",
+    "cli",
+    "tui",
+    "mcp",
+    "anthropic"
+  ],
   "bin": {
     "brownie": "./dist/index.js"
   },
