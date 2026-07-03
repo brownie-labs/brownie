@@ -382,14 +382,14 @@ describe("App", () => {
     expect(frame).toContain(" …");
     expect(frame).not.toContain("TAIL_MARKER");
     expect(frame).not.toContain("SECOND_LINE_MARKER");
-    expect(frame).toContain("ctrl+o expand");
+    expect(frame).not.toContain("expanded output (ctrl+o)");
 
     await type(stdin, "\u000F");
     frame = lastFrame() ?? "";
     expect(frame).toContain("TAIL_MARKER");
     expect(frame).toContain("SECOND_LINE_MARKER");
     expect(frame).toContain("+1 line");
-    expect(frame).toContain("ctrl+o collapse");
+    expect(frame).toContain("expanded output (ctrl+o)");
 
     await type(stdin, "\u000F");
     expect(lastFrame()).not.toContain("TAIL_MARKER");
@@ -510,6 +510,8 @@ describe("App", () => {
     frame = lastFrame() ?? "";
     expect(frame).toContain("Commands");
     expect(frame).toContain("/pause [monitor|executor]");
+    expect(frame).toContain("Keys");
+    expect(frame).toContain("expand or collapse tool output");
 
     await submit(stdin, "/dashboard");
     expect(lastFrame()).toContain("Executor");

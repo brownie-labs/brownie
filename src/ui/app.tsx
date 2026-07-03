@@ -328,7 +328,7 @@ export function App({
           />
         );
       case "help":
-        return <HelpView height={contentHeight} />;
+        return <HelpView width={columns} height={contentHeight} />;
     }
   })();
 
@@ -353,7 +353,7 @@ export function App({
       ) : null}
       {interactive ? (
         <Text dimColor wrap="truncate-end">
-          {`${view.kind} · /help commands · ↑/↓ history · tab complete · pgup/pgdn scroll · ctrl+o ${expanded ? "collapse" : "expand"} · esc clear/follow · ctrl+c quit`}
+          {`${view.kind} · /help commands & keys · ctrl+c quit${expanded ? " · expanded output (ctrl+o)" : ""}`}
         </Text>
       ) : null}
       {status.shutdownSignal === undefined ? null : (
