@@ -40,7 +40,7 @@ describe("runConfigure", () => {
     return JSON.parse(await readFile(settingsPath, "utf8"));
   }
 
-  it("writes settings.json and both agents' prompts without claudeConfigDir", async () => {
+  it("writes settings.json and both agents' prompts", async () => {
     queueAnswers(
       "haiku",
       "medium",
@@ -51,7 +51,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute diligently",
-      false,
     );
     await expect(runConfigure(dir)).resolves.toBe(true);
 
@@ -64,18 +63,7 @@ describe("runConfigure", () => {
   });
 
   it("creates .brownie/.gitignore ignoring runtime state", async () => {
-    queueAnswers(
-      "haiku",
-      "medium",
-      "15",
-      "",
-      [],
-      "watch",
-      "opus",
-      "high",
-      "execute",
-      false,
-    );
+    queueAnswers("haiku", "medium", "15", "", [], "watch", "opus", "high", "execute");
     await runConfigure(dir);
 
     expect(await readFile(gitignorePath, "utf8")).toBe("data/\nlogs/\n");
@@ -95,7 +83,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -113,7 +100,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -135,7 +121,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -154,7 +139,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -174,7 +158,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -183,29 +166,6 @@ describe("runConfigure", () => {
     };
     expect(settings.monitor.activeHours).toBe("08:00-18:00");
     expect(settings.monitor.activeDays).toBeUndefined();
-  });
-
-  it("stores claudeConfigDir when selected", async () => {
-    queueAnswers(
-      "haiku",
-      "medium",
-      "2",
-      "",
-      [],
-      "watch",
-      "sonnet",
-      "high",
-      "execute",
-      true,
-      "~/claude-profile",
-    );
-    await runConfigure(dir);
-
-    expect(await readSettings()).toEqual({
-      monitor: { model: "haiku", effort: "medium", intervalMinutes: 2 },
-      executor: { model: "sonnet", effort: "high" },
-      claudeConfigDir: "~/claude-profile",
-    });
   });
 
   it("re-asks the interval question on an invalid value", async () => {
@@ -221,7 +181,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       "execute",
-      false,
     );
     await runConfigure(dir);
 
@@ -232,18 +191,7 @@ describe("runConfigure", () => {
   });
 
   it("handles a decimal comma in the interval", async () => {
-    queueAnswers(
-      "haiku",
-      "medium",
-      "1,5",
-      "",
-      [],
-      "watch",
-      "opus",
-      "high",
-      "execute",
-      false,
-    );
+    queueAnswers("haiku", "medium", "1,5", "", [], "watch", "opus", "high", "execute");
     await runConfigure(dir);
 
     const settings = (await readSettings()) as {
@@ -263,7 +211,6 @@ describe("runConfigure", () => {
       "opus",
       "high",
       undefined,
-      false,
     );
 
     await expect(runConfigure(dir)).resolves.toBe(true);
@@ -299,18 +246,7 @@ describe("runConfigure", () => {
 
   it("defaults to process.cwd() when no project directory is given", async () => {
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    queueAnswers(
-      "haiku",
-      "medium",
-      "15",
-      "",
-      [],
-      "watch",
-      "opus",
-      "high",
-      "execute",
-      false,
-    );
+    queueAnswers("haiku", "medium", "15", "", [], "watch", "opus", "high", "execute");
 
     await expect(runConfigure()).resolves.toBe(true);
 

@@ -95,7 +95,6 @@ interface BuildSettingsOptions {
   executorEffort: string;
   intervalMinutes: number;
   schedule: ScheduleAnswers;
-  configDir?: string | undefined;
 }
 
 function buildSettings({
@@ -105,7 +104,6 @@ function buildSettings({
   executorEffort,
   intervalMinutes,
   schedule,
-  configDir,
 }: BuildSettingsOptions): object {
   return {
     monitor: {
@@ -119,7 +117,6 @@ function buildSettings({
       model: executorModel,
       effort: executorEffort,
     },
-    ...(configDir ? { claudeConfigDir: configDir } : {}),
   };
 }
 
@@ -194,17 +191,6 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
       "Who is the executor and how should it complete tasks? (identity, working rules, available tools)",
     );
 
-    const useConfigDir = await ask(
-      "Use a separate Claude config directory (claudeConfigDir)?",
-      { type: "confirm", initial: false },
-    );
-    let configDir: string | undefined;
-    if (useConfigDir) {
-      configDir = await askText("Claude config directory path", {
-        placeholder: "e.g. ~/.claude-other-profile",
-      });
-    }
-
     await mkdir(paths.promptsDir, { recursive: true });
     const settings = buildSettings({
       monitorModel,
@@ -213,7 +199,6 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
       executorEffort,
       intervalMinutes,
       schedule: { activeHours, activeDays },
-      configDir,
     });
     await writeFile(settingsFile, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
     await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");
