@@ -10,6 +10,27 @@ interface ContentBlock {
   is_error?: boolean;
 }
 
+function blockText(block: unknown): string {
+  if (typeof block !== "object" || block === null || !("text" in block)) return "";
+  const { text } = block;
+  return typeof text === "string" ? text : "";
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map(blockText).filter(Boolean).join("\n");
+  }
+  return content == null ? "" : JSON.stringify(content);
+}
+
+function unescapeNewlines(text: string): string {
+  return text.includes("\n") ? text : text.replaceAll("\\n", "\n");
+}
+
+const MAX_RESULT_LINES = 20;
+const MAX_RESULT_LINE_LENGTH = 300;
+
 interface StreamEvent {
   type: string;
   subtype?: string;
@@ -70,7 +91,7 @@ export class StreamRenderer {
             this.emit({
               type: "toolUse",
               name: block.name ?? "?",
-              input: truncate(block.input, 300),
+              input: block.input,
             });
           }
         }
@@ -79,10 +100,17 @@ export class StreamRenderer {
       case "user":
         for (const block of event.message?.content ?? []) {
           if (block.type === "tool_result") {
+            const lines = unescapeNewlines(toolResultText(block.content))
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean);
             this.emit({
               type: "toolResult",
               isError: block.is_error ?? false,
-              content: truncate(block.content, 300),
+              lines: lines
+                .slice(0, MAX_RESULT_LINES)
+                .map((line) => truncate(line, MAX_RESULT_LINE_LENGTH)),
+              dropped: Math.max(0, lines.length - MAX_RESULT_LINES),
             });
           }
         }

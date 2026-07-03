@@ -5,6 +5,7 @@ import type {
   ExecutorTaskOutcome,
   MonitorCycleOutcome,
   MonitorPhase,
+  TailLine,
 } from "../status.js";
 import {
   detectStall,
@@ -19,7 +20,7 @@ import { theme } from "./theme.js";
 export interface AgentPanelModel {
   phaseLabel: string;
   phaseColor: string;
-  tail: readonly string[];
+  tail: readonly TailLine[];
   outcomeLabel: string | undefined;
   outcomeColor: string;
   recentOutcomeLabels: readonly string[];
@@ -37,7 +38,7 @@ function stallFor(
 function buildModel(
   panel: {
     control: AgentControlState;
-    tail: readonly string[];
+    tail: readonly TailLine[];
     lastEventAt?: number | undefined;
   },
   phase: { kind: string; startedAt?: number },

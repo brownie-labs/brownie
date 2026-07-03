@@ -27,7 +27,7 @@ describe("SessionLog", () => {
     );
     expect(content).toBe(
       [
-        "[09:05:07] init · model=haiku · session=sess-1 · tools: 3",
+        "[09:05:07] session started · model haiku · 3 tools · sess-1",
         "[09:05:07] line one",
         "[09:05:07] line two",
         "",
@@ -59,7 +59,7 @@ describe("SessionLog", () => {
     const content = await readFile(join(dir, "2026-07-02", "10-00-00-s.log"), "utf8");
     expect(content).toBe(
       [
-        "[10:00:00] init · model=haiku · session=s · tools: 0",
+        "[10:00:00] session started · model haiku · 0 tools · s",
         "[10:00:00] full",
         "",
       ].join("\n"),

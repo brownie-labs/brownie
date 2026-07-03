@@ -1,11 +1,24 @@
 import type { AgentControlState } from "./control.js";
 import {
-  formatSessionEvent,
+  describeToolUse,
+  formatToolCount,
   type SessionEvent,
   type SessionEventSink,
 } from "./session-events.js";
 import { formatDuration } from "./timing.js";
 import type { Task } from "./types.js";
+
+export type TailTone = "ok" | "warn" | "error";
+
+export interface TailLine {
+  kind: "message" | "tool" | "result" | "meta" | "notice";
+  text: string;
+  tool?: string | undefined;
+  cont?: boolean | undefined;
+  tone?: TailTone | undefined;
+  extra?: string[] | undefined;
+  dropped?: number | undefined;
+}
 
 export type MonitorPhase =
   | { kind: "starting" }
@@ -56,7 +69,7 @@ export interface SummaryOutcome {
 export interface AgentPanelStatus<Phase, Outcome> {
   phase: Phase;
   control: AgentControlState;
-  tail: readonly string[];
+  tail: readonly TailLine[];
   recentOutcomes: readonly Outcome[];
   sessionId?: string | undefined;
   lastOutcome?: Outcome | undefined;
@@ -97,13 +110,23 @@ export interface ExecutorReporter {
   session: SessionEventSink;
 }
 
-function formatSummaryOutcome(outcome: SummaryOutcome): string {
-  const cost = outcome.costUsd != null ? ` · cost=$${outcome.costUsd.toFixed(4)}` : "";
-  const base = `memory: summary ${outcome.taskId} · time=${formatDuration(outcome.durationMs)}${cost}`;
-  return outcome.ok ? `✔ ${base}` : `✖ ${base} · ${outcome.error ?? "unknown error"}`;
+function summaryTailLine(outcome: SummaryOutcome): TailLine {
+  if (!outcome.ok) {
+    return {
+      kind: "notice",
+      tone: "error",
+      text: `✖ memory summary failed (${outcome.taskId}) · ${outcome.error ?? "unknown error"}`,
+    };
+  }
+  const cost = outcome.costUsd != null ? ` · $${outcome.costUsd.toFixed(4)}` : "";
+  return {
+    kind: "notice",
+    tone: "ok",
+    text: `✔ memory saved (${outcome.taskId}) · ${formatDuration(outcome.durationMs)}${cost}`,
+  };
 }
 
-const TAIL_LINE_MAX = 300;
+const TAIL_LINE_MAX = 600;
 
 function clipLine(line: string): string {
   return line.length > TAIL_LINE_MAX ? `${line.slice(0, TAIL_LINE_MAX)}…` : line;
@@ -112,7 +135,7 @@ function clipLine(line: string): string {
 interface AgentState<Phase, Outcome> {
   phase: Phase;
   control: AgentControlState;
-  tail: string[];
+  tail: TailLine[];
   recentOutcomes: Outcome[];
   openPartial: string;
   partialSeen: boolean;
@@ -240,7 +263,7 @@ export class WorkerStatusStore {
       this.stats.totalCostUsd += outcome.costUsd ?? 0;
       this.pushTail(
         this.executorState,
-        formatSummaryOutcome({ ...outcome, finishedAt: Date.now() }),
+        summaryTailLine({ ...outcome, finishedAt: Date.now() }),
       );
       this.markDirty();
     },
@@ -318,7 +341,7 @@ export class WorkerStatusStore {
       const lines = combined.split("\n");
       state.openPartial = lines.pop() ?? "";
       for (const line of lines) {
-        if (line.trim()) this.pushTail(state, line);
+        this.pushMessage(state, line);
       }
     } else if (event.type === "text" && state.partialSeen) {
       this.closePartial(state);
@@ -326,13 +349,79 @@ export class WorkerStatusStore {
       this.closePartial(state);
       if (event.type === "init") state.sessionId = event.sessionId;
       if (event.type !== "text") state.partialSeen = false;
-      this.pushTail(state, formatSessionEvent(event));
+      this.pushEvent(state, event);
     }
     this.markDirty();
   }
 
+  private pushEvent<Phase, Outcome>(
+    state: AgentState<Phase, Outcome>,
+    event: Exclude<SessionEvent, { type: "partial" }>,
+  ): void {
+    switch (event.type) {
+      case "init":
+        this.pushTail(state, {
+          kind: "meta",
+          text: `model ${event.model} · ${formatToolCount(event.toolCount)} · ${event.sessionId}`,
+        });
+        break;
+      case "text":
+        for (const line of event.text.split("\n")) this.pushMessage(state, line);
+        break;
+      case "toolUse": {
+        const call = describeToolUse(event.name, event.input);
+        this.pushTail(state, { kind: "tool", tool: call.name, text: call.detail });
+        break;
+      }
+      case "toolResult": {
+        const [first, ...extra] = event.lines;
+        this.pushTail(state, {
+          kind: "result",
+          text: `${event.isError ? "error: " : ""}${first ?? "(no output)"}`,
+          extra: extra.length > 0 ? extra : undefined,
+          dropped: event.dropped > 0 ? event.dropped : undefined,
+          tone: event.isError ? "error" : undefined,
+        });
+        break;
+      }
+      case "raw":
+        this.pushTail(state, { kind: "meta", text: event.line });
+        break;
+      case "stderr":
+        this.pushTail(state, { kind: "meta", text: `stderr: ${event.line}` });
+        break;
+      case "killing":
+        this.pushTail(state, {
+          kind: "notice",
+          tone: "warn",
+          text: `⏹ stopping session (${event.reason})…`,
+        });
+        break;
+      case "procError":
+        this.pushTail(state, {
+          kind: "notice",
+          tone: "error",
+          text: `✖ ${event.message}`,
+        });
+        break;
+    }
+  }
+
+  private pushMessage<Phase, Outcome>(
+    state: AgentState<Phase, Outcome>,
+    line: string,
+  ): void {
+    if (!line.trim()) return;
+    const previous = state.tail.at(-1);
+    this.pushTail(state, {
+      kind: "message",
+      text: line,
+      cont: previous?.kind === "message" ? true : undefined,
+    });
+  }
+
   private closePartial<Phase, Outcome>(state: AgentState<Phase, Outcome>): void {
-    if (state.openPartial.trim()) this.pushTail(state, state.openPartial);
+    this.pushMessage(state, state.openPartial);
     state.openPartial = "";
   }
 
@@ -348,11 +437,13 @@ export class WorkerStatusStore {
 
   private pushTail<Phase, Outcome>(
     state: AgentState<Phase, Outcome>,
-    text: string,
+    line: TailLine,
   ): void {
-    for (const line of text.split("\n")) {
-      state.tail.push(clipLine(line));
-    }
+    state.tail.push({
+      ...line,
+      text: clipLine(line.text),
+      extra: line.extra?.map(clipLine),
+    });
     if (state.tail.length > this.tailLimit) {
       state.tail.splice(0, state.tail.length - this.tailLimit);
     }
@@ -384,9 +475,14 @@ export class WorkerStatusStore {
   private buildPanel<Phase, Outcome>(
     state: AgentState<Phase, Outcome>,
   ): AgentPanelStatus<Phase, Outcome> {
-    const tail = state.openPartial.trim()
-      ? [...state.tail, clipLine(state.openPartial)]
-      : [...state.tail];
+    const tail: TailLine[] = [...state.tail];
+    if (state.openPartial.trim()) {
+      tail.push({
+        kind: "message",
+        text: clipLine(state.openPartial),
+        cont: tail.at(-1)?.kind === "message" ? true : undefined,
+      });
+    }
     return {
       phase: state.phase,
       control: state.control,

@@ -136,7 +136,7 @@ export function App({
   noticeTimeoutMs = NOTICE_TIMEOUT_MS,
 }: AppProps): JSX.Element {
   const status = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const { rows } = useTerminalSize();
+  const { columns, rows } = useTerminalSize();
   const now = useNow();
   const { isRawModeSupported } = useStdin();
   const interactive = (isRawModeSupported as boolean | undefined) === true;
@@ -149,6 +149,7 @@ export function App({
       : { text: "agents are paused — run /start to wake them", tone: "info" },
   );
   const [focusedPanel, setFocusedPanel] = useState<PanelId>("monitor");
+  const [expanded, setExpanded] = useState(false);
   const [scrollOffsets, setScrollOffsets] = useState<Record<PanelId, number>>({
     monitor: 0,
     executor: 0,
@@ -202,6 +203,10 @@ export function App({
         process.kill(process.pid, "SIGINT");
         return;
       }
+      if (key.ctrl && rawInput === "o") {
+        setExpanded((current) => !current);
+        return;
+      }
       if (key.return) {
         const line = input.value.trim();
         if (!line.startsWith("/")) return;
@@ -249,12 +254,12 @@ export function App({
         if (scrollTarget === null) return;
         const step = Math.max(1, contentHeight - SCROLL_PAGE_MARGIN);
         const direction = key.pageUp ? 1 : -1;
-        const tailLength = status[scrollTarget].tail.length;
+        const maxOffset = Math.max(0, status[scrollTarget].tail.length * 4 - 1);
         setScrollOffsets((current) => ({
           ...current,
           [scrollTarget]: Math.min(
             Math.max(0, current[scrollTarget] + direction * step),
-            Math.max(0, tailLength - 1),
+            maxOffset,
           ),
         }));
         return;
@@ -280,11 +285,13 @@ export function App({
         return (
           <DashboardView
             status={status}
+            width={columns}
             height={contentHeight}
             now={now}
             interactive={interactive}
             focusedPanel={focusedPanel}
             scrollOffsets={scrollOffsets}
+            expanded={expanded}
           />
         );
       case "monitor":
@@ -292,8 +299,10 @@ export function App({
           <AgentView
             title="Monitor"
             model={monitorPanelModel(status.monitor, now)}
+            width={columns}
             height={contentHeight}
             scrollOffset={scrollOffsets.monitor}
+            expanded={expanded}
           />
         );
       case "executor":
@@ -301,8 +310,10 @@ export function App({
           <AgentView
             title="Executor"
             model={executorPanelModel(status.executor, now)}
+            width={columns}
             height={contentHeight}
             scrollOffset={scrollOffsets.executor}
+            expanded={expanded}
           />
         );
       case "tasks":
@@ -342,7 +353,7 @@ export function App({
       ) : null}
       {interactive ? (
         <Text dimColor wrap="truncate-end">
-          {`${view.kind} · /help commands · ↑/↓ history · tab complete · pgup/pgdn scroll · esc clear/follow · ctrl+c quit`}
+          {`${view.kind} · /help commands · ↑/↓ history · tab complete · pgup/pgdn scroll · ctrl+o ${expanded ? "collapse" : "expand"} · esc clear/follow · ctrl+c quit`}
         </Text>
       ) : null}
       {status.shutdownSignal === undefined ? null : (

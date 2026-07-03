@@ -158,7 +158,7 @@ describe("CLI start (smoke E2E)", () => {
 
     expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([{ headline: "e2e summary" }]);
 
-    expect(result.output).toContain("model=haiku");
+    expect(result.output).toContain("model haiku");
     expect(result.output).toContain("e2e-1");
     expect(result.output).toContain("done: 1");
   }, 30_000);

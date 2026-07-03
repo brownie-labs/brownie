@@ -105,7 +105,9 @@ describe("WorkerStatusStore", () => {
     const status = store.getSnapshot().executor;
     expect(status.phase.kind).toBe("summary");
     if (status.phase.kind === "summary") expect(status.phase.task.id).toBe("t-1");
-    expect(status.tail).toContain("working on task");
+    expect(status.tail).toContainEqual(
+      expect.objectContaining({ kind: "message", text: "working on task" }),
+    );
     store.dispose();
   });
 
@@ -138,11 +140,21 @@ describe("WorkerStatusStore", () => {
 
     const status = store.getSnapshot().executor;
     expect(status.lastOutcome?.taskId).toBe("t-1");
-    expect(status.tail.some((l) => l.includes("✔ memory: summary t-1"))).toBe(true);
     expect(
       status.tail.some(
         (l) =>
-          l.includes("✖ memory: summary t-1") && l.includes("invalid summary report"),
+          l.kind === "notice" &&
+          l.tone === "ok" &&
+          l.text.includes("✔ memory saved (t-1)"),
+      ),
+    ).toBe(true);
+    expect(
+      status.tail.some(
+        (l) =>
+          l.kind === "notice" &&
+          l.tone === "error" &&
+          l.text.includes("✖ memory summary failed (t-1)") &&
+          l.text.includes("invalid summary report"),
       ),
     ).toBe(true);
     store.dispose();
@@ -184,9 +196,9 @@ describe("WorkerStatusStore", () => {
     const panel = store.getSnapshot().monitor;
     expect(panel.sessionId).toBe("sess-7");
     expect(panel.tail).toEqual([
-      "init · model=haiku · session=sess-7 · tools: 2",
-      "Checking repo",
-      "🔧 Bash git status",
+      { kind: "meta", text: "model haiku · 2 tools · sess-7" },
+      { kind: "message", text: "Checking repo" },
+      { kind: "tool", tool: "Bash", text: "git status" },
     ]);
     store.dispose();
   });
@@ -196,11 +208,17 @@ describe("WorkerStatusStore", () => {
     store.monitor.session({ type: "partial", text: "abc" });
     store.monitor.session({ type: "partial", text: "def\ngh" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["abcdef", "gh"]);
+    expect(store.getSnapshot().monitor.tail).toEqual([
+      { kind: "message", text: "abcdef" },
+      { kind: "message", text: "gh", cont: true },
+    ]);
 
     store.monitor.session({ type: "partial", text: "i\n" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["abcdef", "ghi"]);
+    expect(store.getSnapshot().monitor.tail).toEqual([
+      { kind: "message", text: "abcdef" },
+      { kind: "message", text: "ghi", cont: true },
+    ]);
     store.dispose();
   });
 
@@ -209,7 +227,9 @@ describe("WorkerStatusStore", () => {
     store.monitor.session({ type: "partial", text: "Report ready" });
     store.monitor.session({ type: "text", text: "Report ready" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["Report ready"]);
+    expect(store.getSnapshot().monitor.tail).toEqual([
+      { kind: "message", text: "Report ready" },
+    ]);
     store.dispose();
   });
 
@@ -220,7 +240,11 @@ describe("WorkerStatusStore", () => {
     store.monitor.session({ type: "toolUse", name: "Bash", input: "ls" });
     store.monitor.session({ type: "text", text: "second" });
     store.flush();
-    expect(store.getSnapshot().monitor.tail).toEqual(["first", "🔧 Bash ls", "second"]);
+    expect(store.getSnapshot().monitor.tail).toEqual([
+      { kind: "message", text: "first" },
+      { kind: "tool", tool: "Bash", text: "ls" },
+      { kind: "message", text: "second" },
+    ]);
     store.dispose();
   });
 
@@ -260,17 +284,21 @@ describe("WorkerStatusStore", () => {
       store.executor.session({ type: "text", text: `line ${i}` });
     }
     store.flush();
-    expect(store.getSnapshot().executor.tail).toEqual(["line 3", "line 4", "line 5"]);
+    expect(store.getSnapshot().executor.tail).toEqual([
+      { kind: "message", text: "line 3", cont: true },
+      { kind: "message", text: "line 4", cont: true },
+      { kind: "message", text: "line 5", cont: true },
+    ]);
     store.dispose();
   });
 
   it("truncates very long tail lines", () => {
     const store = createStore();
-    store.monitor.session({ type: "text", text: "x".repeat(500) });
+    store.monitor.session({ type: "text", text: "x".repeat(800) });
     store.flush();
     const [line] = store.getSnapshot().monitor.tail;
-    expect(line?.length).toBeLessThanOrEqual(301);
-    expect(line?.endsWith("…")).toBe(true);
+    expect(line?.text.length).toBeLessThanOrEqual(601);
+    expect(line?.text.endsWith("…")).toBe(true);
     store.dispose();
   });
 
@@ -479,17 +507,35 @@ describe("formatSessionEvent", () => {
   it("formats all event types", () => {
     expect(
       formatSessionEvent({ type: "init", model: "haiku", sessionId: "s", toolCount: 1 }),
-    ).toBe("init · model=haiku · session=s · tools: 1");
+    ).toBe("session started · model haiku · 1 tool · s");
     expect(formatSessionEvent({ type: "text", text: "abc" })).toBe("abc");
     expect(formatSessionEvent({ type: "toolUse", name: "Bash", input: "ls" })).toBe(
-      "🔧 Bash ls",
+      "⏺ Bash(ls)",
     );
     expect(
-      formatSessionEvent({ type: "toolResult", isError: false, content: "ok" }),
-    ).toBe("↳ result ok");
+      formatSessionEvent({
+        type: "toolResult",
+        isError: false,
+        lines: ["ok"],
+        dropped: 0,
+      }),
+    ).toBe("  ⎿ ok");
     expect(
-      formatSessionEvent({ type: "toolResult", isError: true, content: "boom" }),
-    ).toBe("⚠ result(error) boom");
+      formatSessionEvent({
+        type: "toolResult",
+        isError: false,
+        lines: [],
+        dropped: 0,
+      }),
+    ).toBe("  ⎿ (no output)");
+    expect(
+      formatSessionEvent({
+        type: "toolResult",
+        isError: true,
+        lines: ["boom", "context"],
+        dropped: 2,
+      }),
+    ).toBe("  ⎿ error: boom\n    context … +2 lines");
     expect(formatSessionEvent({ type: "raw", line: "x" })).toBe("(non-JSON) x");
     expect(formatSessionEvent({ type: "stderr", line: "err" })).toBe("stderr: err");
     expect(formatSessionEvent({ type: "killing", reason: "timeout" })).toBe(

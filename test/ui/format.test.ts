@@ -232,9 +232,7 @@ describe("formatMonitorOutcome", () => {
       skippedDuplicates: 1,
       finishedAt: 0,
     });
-    expect(label).toBe(
-      "✔ cycle #2 · time=1.5s · cost=$0.0123 · new tasks: 3 · skipped duplicates: 1",
-    );
+    expect(label).toBe("✔ cycle #2 · 1.5s · $0.0123 · +3 tasks · 1 duplicate skipped");
   });
 
   it("error with description", () => {
@@ -247,7 +245,7 @@ describe("formatMonitorOutcome", () => {
       error: "invalid task report",
       finishedAt: 0,
     });
-    expect(label).toBe("✖ cycle #3 · time=0.5s · invalid task report");
+    expect(label).toBe("✖ cycle #3 · 0.5s · invalid task report");
   });
 });
 
@@ -262,7 +260,7 @@ describe("formatExecutorOutcome", () => {
       numTurns: 7,
       finishedAt: 0,
     });
-    expect(label).toBe("✔ t-1 · time=2.0s · cost=$0.5000 · turns=7");
+    expect(label).toBe("✔ t-1 · 2.0s · $0.5000 · 7 turns");
   });
 
   it("error with description", () => {
@@ -274,7 +272,7 @@ describe("formatExecutorOutcome", () => {
       error: "Session timed out",
       finishedAt: 0,
     });
-    expect(label).toBe("✖ t-2 · time=0.1s · Session timed out");
+    expect(label).toBe("✖ t-2 · 0.1s · Session timed out");
   });
 
   it("transient error with a scheduled retry", () => {
@@ -290,7 +288,7 @@ describe("formatExecutorOutcome", () => {
       finishedAt: 0,
     });
     expect(label).toBe(
-      "↻ t-3 · time=0.1s · Session ended with an error (is_error) · retry (attempt 1/3)",
+      "↻ t-3 · 0.1s · Session ended with an error (is_error) · retry 1/3",
     );
   });
 });

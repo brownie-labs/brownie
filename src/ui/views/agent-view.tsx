@@ -7,15 +7,19 @@ import { theme } from "../theme.js";
 export interface AgentViewProps {
   title: string;
   model: AgentPanelModel;
+  width: number;
   height: number;
   scrollOffset: number;
+  expanded: boolean;
 }
 
 export function AgentView({
   title,
   model,
+  width,
   height,
   scrollOffset,
+  expanded,
 }: AgentViewProps): JSX.Element {
   const outcomes = model.recentOutcomeLabels;
   const outcomesHeight =
@@ -34,9 +38,11 @@ export function AgentView({
         tail={model.tail}
         outcomeLabel={undefined}
         outcomeColor={model.outcomeColor}
+        width={width}
         height={panelHeight}
         focused={false}
         scrollOffset={scrollOffset}
+        expanded={expanded}
       />
       <Box
         borderStyle="round"

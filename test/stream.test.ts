@@ -60,7 +60,7 @@ describe("StreamRenderer", () => {
     );
     expect(events).toEqual([
       { type: "text", text: "Hi" },
-      { type: "toolUse", name: "Bash", input: '{"command":"ls"}' },
+      { type: "toolUse", name: "Bash", input: { command: "ls" } },
     ]);
   });
 
@@ -91,8 +91,86 @@ describe("StreamRenderer", () => {
       }),
     );
     expect(events).toEqual([
-      { type: "toolResult", isError: false, content: "ok" },
-      { type: "toolResult", isError: true, content: "boom" },
+      { type: "toolResult", isError: false, lines: ["ok"], dropped: 0 },
+      { type: "toolResult", isError: true, lines: ["boom"], dropped: 0 },
+    ]);
+  });
+
+  it("user: a multi-line tool_result keeps the lines and skips empty ones", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", content: "first\n\nsecond\nthird", is_error: false },
+          ],
+        },
+      }),
+    );
+    expect(events).toEqual([
+      {
+        type: "toolResult",
+        isError: false,
+        lines: ["first", "second", "third"],
+        dropped: 0,
+      },
+    ]);
+  });
+
+  it("user: keeps at most 20 result lines and counts the dropped ones", () => {
+    const { events, renderer } = createRenderer();
+    const content = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`).join("\n");
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: { content: [{ type: "tool_result", content }] },
+      }),
+    );
+    const [event] = events;
+    if (event?.type !== "toolResult") throw new Error("expected a toolResult event");
+    expect(event.lines).toHaveLength(20);
+    expect(event.lines[0]).toBe("line 1");
+    expect(event.lines[19]).toBe("line 20");
+    expect(event.dropped).toBe(5);
+  });
+
+  it("user: extracts text from tool_result content blocks", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              content: [
+                { type: "text", text: "alpha" },
+                { type: "image" },
+                { type: "text", text: "beta" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(events).toEqual([
+      { type: "toolResult", isError: false, lines: ["alpha", "beta"], dropped: 0 },
+    ]);
+  });
+
+  it("user: serializes a non-text tool_result payload", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", content: { status: 200 } }],
+        },
+      }),
+    );
+    expect(events).toEqual([
+      { type: "toolResult", isError: false, lines: ['{"status":200}'], dropped: 0 },
     ]);
   });
 
@@ -166,20 +244,76 @@ describe("StreamRenderer", () => {
     expect(summary.sessionId).toBe("sess-err");
   });
 
-  it("truncates long tool input with an ellipsis", () => {
+  it("passes the raw tool input through untouched", () => {
     const { events, renderer } = createRenderer();
-    const long = "a".repeat(1000);
     renderer.handleLine(
       line({
         type: "assistant",
         message: {
-          content: [{ type: "tool_use", name: "Bash", input: { command: long } }],
+          content: [{ type: "tool_use", name: "Bash", input: { command: "ls -la" } }],
         },
       }),
     );
     const [event] = events;
     if (event?.type !== "toolUse") throw new Error("expected a toolUse event");
-    expect(event.input).toContain("…");
-    expect(event.input.length).toBeLessThan(long.length);
+    expect(event.input).toEqual({ command: "ls -la" });
+  });
+
+  it("truncates a very long tool_result first line", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", content: "a".repeat(1000) }],
+        },
+      }),
+    );
+    const [event] = events;
+    if (event?.type !== "toolResult") throw new Error("expected a toolResult event");
+    expect(event.lines[0]?.endsWith("…")).toBe(true);
+    expect(event.lines[0]?.length).toBeLessThanOrEqual(301);
+  });
+
+  it("unescapes literal \\n sequences when the result has no real newlines", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", content: "status_code: 200\\nbody:\\n user: 179" },
+          ],
+        },
+      }),
+    );
+    expect(events).toEqual([
+      {
+        type: "toolResult",
+        isError: false,
+        lines: ["status_code: 200", "body:", "user: 179"],
+        dropped: 0,
+      },
+    ]);
+  });
+
+  it("keeps literal \\n sequences when real newlines are present", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", content: "diff uses \\n here\nsecond" }],
+        },
+      }),
+    );
+    expect(events).toEqual([
+      {
+        type: "toolResult",
+        isError: false,
+        lines: ["diff uses \\n here", "second"],
+        dropped: 0,
+      },
+    ]);
   });
 });

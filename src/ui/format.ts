@@ -112,29 +112,40 @@ export function formatAge(isoDate: string, now: number): string {
 }
 
 function formatCost(costUsd: number | undefined): string {
-  return costUsd != null ? ` · cost=$${costUsd.toFixed(4)}` : "";
+  return costUsd != null ? ` · $${costUsd.toFixed(4)}` : "";
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return count === 1 ? singular : pluralForm;
 }
 
 export function formatMonitorOutcome(outcome: MonitorCycleOutcome): string {
-  const base = `cycle #${outcome.cycle} · time=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
+  const base = `cycle #${outcome.cycle} · ${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
   if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "unknown error"}`;
+  const added =
+    outcome.addedTasks > 0
+      ? `+${outcome.addedTasks} ${plural(outcome.addedTasks, "task", "tasks")}`
+      : "no new tasks";
   const duplicates =
     outcome.skippedDuplicates > 0
-      ? ` · skipped duplicates: ${outcome.skippedDuplicates}`
+      ? ` · ${outcome.skippedDuplicates} ${plural(outcome.skippedDuplicates, "duplicate", "duplicates")} skipped`
       : "";
-  return `✔ ${base} · new tasks: ${outcome.addedTasks}${duplicates}`;
+  return `✔ ${base} · ${added}${duplicates}`;
 }
 
 export function formatExecutorOutcome(outcome: ExecutorTaskOutcome): string {
-  const base = `${outcome.taskId} · time=${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
+  const base = `${outcome.taskId} · ${formatDuration(outcome.durationMs)}${formatCost(outcome.costUsd)}`;
   if (outcome.willRetry) {
     const attempts =
       outcome.attempt != null && outcome.maxAttempts != null
-        ? ` · retry (attempt ${outcome.attempt}/${outcome.maxAttempts})`
+        ? ` · retry ${outcome.attempt}/${outcome.maxAttempts}`
         : " · retry";
     return `↻ ${base} · ${outcome.error ?? "unknown error"}${attempts}`;
   }
   if (!outcome.ok) return `✖ ${base} · ${outcome.error ?? "unknown error"}`;
-  const turns = outcome.numTurns != null ? ` · turns=${outcome.numTurns}` : "";
+  const turns =
+    outcome.numTurns != null
+      ? ` · ${outcome.numTurns} ${plural(outcome.numTurns, "turn", "turns")}`
+      : "";
   return `✔ ${base}${turns}`;
 }

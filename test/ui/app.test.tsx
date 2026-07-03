@@ -199,8 +199,27 @@ describe("App", () => {
     const { lastFrame, unmount } = render(<App {...props} />);
 
     store.monitor.cycleStarted(2);
+    store.monitor.session({
+      type: "init",
+      model: "sonnet",
+      sessionId: "s-1",
+      toolCount: 4,
+    });
     store.monitor.session({ type: "text", text: "Checking backlog" });
     store.monitor.session({ type: "toolUse", name: "Bash", input: "git log" });
+    store.monitor.session({
+      type: "toolResult",
+      isError: false,
+      lines: ["3 commits", "abc123 fix", "def456 feat"],
+      dropped: 0,
+    });
+    store.monitor.session({
+      type: "toolResult",
+      isError: true,
+      lines: ["boom"],
+      dropped: 0,
+    });
+    store.monitor.session({ type: "killing", reason: "timeout" });
     store.monitor.cycleFinished({
       cycle: 2,
       ok: true,
@@ -212,9 +231,13 @@ describe("App", () => {
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("cycle #2");
-    expect(frame).toContain("Checking backlog");
-    expect(frame).toContain("🔧 Bash git log");
-    expect(frame).toContain("new tasks: 1");
+    expect(frame).toContain("model sonnet · 4 tools · s-1");
+    expect(frame).toContain("⏺ Checking backlog");
+    expect(frame).toContain("⏺ Bash(git log)");
+    expect(frame).toContain("⎿ 3 commits … +2 lines");
+    expect(frame).toContain("⎿ error: boom");
+    expect(frame).toContain("⏹ stopping session (timeout)…");
+    expect(frame).toContain("+1 task");
 
     unmount();
     store.dispose();
@@ -312,7 +335,7 @@ describe("App", () => {
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("↻ retrying t-1 in");
-    expect(frame).toContain("↻ t-1 · time=0.3s");
+    expect(frame).toContain("↻ t-1 · 0.3s");
 
     unmount();
     store.dispose();
@@ -337,6 +360,56 @@ describe("App", () => {
     frame = lastFrame() ?? "";
     expect(frame).not.toContain("newer lines");
     expect(frame).toContain("line 60");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("caps a long tool result and ctrl+o expands it in place", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    store.monitor.session({
+      type: "toolResult",
+      isError: false,
+      lines: [`${"a".repeat(160)} TAIL_MARKER`, "SECOND_LINE_MARKER"],
+      dropped: 1,
+    });
+    await flushed(store);
+
+    let frame = lastFrame() ?? "";
+    expect(frame).toContain("⎿");
+    expect(frame).toContain(" …");
+    expect(frame).not.toContain("TAIL_MARKER");
+    expect(frame).not.toContain("SECOND_LINE_MARKER");
+    expect(frame).toContain("ctrl+o expand");
+
+    await type(stdin, "\u000F");
+    frame = lastFrame() ?? "";
+    expect(frame).toContain("TAIL_MARKER");
+    expect(frame).toContain("SECOND_LINE_MARKER");
+    expect(frame).toContain("+1 line");
+    expect(frame).toContain("ctrl+o collapse");
+
+    await type(stdin, "\u000F");
+    expect(lastFrame()).not.toContain("TAIL_MARKER");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("wraps a long agent message instead of truncating it", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, unmount } = render(<App {...props} />);
+
+    store.monitor.session({
+      type: "text",
+      text: "Connection to Redmine works fine — the query returned status 200 and I am logged in as dawid END_OF_MESSAGE",
+    });
+    await flushed(store);
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("END_OF_MESSAGE");
 
     unmount();
     store.dispose();
