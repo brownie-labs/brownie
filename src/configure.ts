@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { consola, type PromptOptions } from "consola";
 import { parseTimeWindow } from "./active-hours.js";
 import { logger } from "./logger.js";
@@ -104,7 +104,7 @@ function buildSettings({
   executorEffort,
   intervalMinutes,
   schedule,
-}: BuildSettingsOptions): object {
+}: BuildSettingsOptions): Record<string, unknown> {
   return {
     monitor: {
       model: monitorModel,
@@ -118,6 +118,30 @@ function buildSettings({
       effort: executorEffort,
     },
   };
+}
+
+const PRESERVED_SETTINGS_KEYS = [
+  "claudeConfigDir",
+  "summarizer",
+  "streamPartial",
+] as const;
+
+async function readPreservedSettings(
+  settingsFile: string,
+): Promise<Record<string, unknown>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(settingsFile, "utf8"));
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null) return {};
+  const source = parsed as Record<string, unknown>;
+  const preserved: Record<string, unknown> = {};
+  for (const key of PRESERVED_SETTINGS_KEYS) {
+    if (source[key] !== undefined) preserved[key] = source[key];
+  }
+  return preserved;
 }
 
 const BROWNIE_GITIGNORE = "data/\nlogs/\n";
@@ -192,14 +216,17 @@ export async function runConfigure(projectDir?: string): Promise<boolean> {
     );
 
     await mkdir(paths.promptsDir, { recursive: true });
-    const settings = buildSettings({
-      monitorModel,
-      monitorEffort,
-      executorModel,
-      executorEffort,
-      intervalMinutes,
-      schedule: { activeHours, activeDays },
-    });
+    const settings = {
+      ...buildSettings({
+        monitorModel,
+        monitorEffort,
+        executorModel,
+        executorEffort,
+        intervalMinutes,
+        schedule: { activeHours, activeDays },
+      }),
+      ...(await readPreservedSettings(settingsFile)),
+    };
     await writeFile(settingsFile, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
     await writeFile(monitorPromptPath, `${monitorPrompt}\n`, "utf8");
     await writeFile(executorPromptPath, `${executorPrompt}\n`, "utf8");

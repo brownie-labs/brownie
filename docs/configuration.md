@@ -55,7 +55,9 @@ The monitor patrols only inside the configured window; outside it the loop sleep
 
 ## `claudeConfigDir`
 
-Points the spawned Claude Code sessions at a separate config directory (exported as `CLAUDE_CONFIG_DIR`). Useful when brownie should run on its own Claude account or settings, isolated from your interactive one. `~` expands to your home directory.
+Points the spawned Claude Code sessions at a separate config directory (exported as `CLAUDE_CONFIG_DIR`). Useful when brownie should run on its own Claude account or settings — e.g. so usage is billed to a different subscription — isolated from your interactive one. `~` expands to your home directory.
+
+The wizard does not ask about this — set it by hand in `settings.json`. It (along with `summarizer` and `streamPartial`) is preserved when you re-run `brownie config`, so reconfiguring the models never wipes it.
 
 ## The `.brownie/` directory
 

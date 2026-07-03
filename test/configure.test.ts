@@ -89,6 +89,37 @@ describe("runConfigure", () => {
     expect(await readFile(gitignorePath, "utf8")).toBe("custom\n");
   });
 
+  it("preserves manual settings the wizard does not manage when reconfiguring", async () => {
+    await seedProject(dir, {
+      settings: {
+        monitor: { model: "opus", intervalMinutes: 5 },
+        executor: { model: "opus" },
+        claudeConfigDir: "~/.claude-work",
+        streamPartial: false,
+      },
+    });
+    queueAnswers(
+      true,
+      "haiku",
+      "medium",
+      "15",
+      "",
+      [],
+      "watch",
+      "opus",
+      "high",
+      "execute",
+    );
+    await runConfigure(dir);
+
+    expect(await readSettings()).toEqual({
+      monitor: { model: "haiku", effort: "medium", intervalMinutes: 15 },
+      executor: { model: "opus", effort: "high" },
+      claudeConfigDir: "~/.claude-work",
+      streamPartial: false,
+    });
+  });
+
   it("writes the monitor's working hours and selected days", async () => {
     queueAnswers(
       "haiku",
