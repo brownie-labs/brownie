@@ -10,8 +10,8 @@ export interface HelpViewProps {
 }
 
 const KEYS: readonly [string, string][] = [
-  ["↑/↓", "browse command history"],
-  ["tab", "complete a command / switch panel"],
+  ["↑/↓", "pick a suggestion / browse command history"],
+  ["tab", "complete the selected command / switch panel"],
   ["pgup/pgdn", "scroll the focused panel"],
   ["ctrl+o", "expand or collapse tool output"],
   ["esc", "clear the input / follow the tail"],

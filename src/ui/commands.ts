@@ -255,12 +255,18 @@ export function parseCommand(line: string): { name: string; args: string } | nul
   };
 }
 
-export function suggest(value: string): string | undefined {
-  if (!value.startsWith("/") || value.includes(" ")) return undefined;
+export interface CommandSuggestion {
+  name: string;
+  summary: string;
+}
+
+export function suggestions(value: string): CommandSuggestion[] {
+  if (!value.startsWith("/") || value.includes(" ")) return [];
   const prefix = value.slice(1).toLowerCase();
-  if (COMMANDS.some((command) => command.name === prefix)) return undefined;
-  const match = COMMANDS.find((command) => command.name.startsWith(prefix));
-  return match === undefined ? undefined : `/${match.name}`;
+  return COMMANDS.filter((command) => command.name.startsWith(prefix)).map((command) => ({
+    name: command.name,
+    summary: command.summary,
+  }));
 }
 
 export async function dispatchCommand(line: string, ctx: CommandContext): Promise<void> {

@@ -6,9 +6,10 @@ import type { WorkerConfig } from "../types.js";
 import type { Waker } from "../waker.js";
 import { executorPanelModel, monitorPanelModel } from "./agent-visuals.js";
 import { CommandInput } from "./command-input.js";
+import { CommandSuggestions } from "./command-suggestions.js";
 import {
   dispatchCommand,
-  suggest,
+  suggestions,
   type AgentControls,
   type CommandContext,
   type MemoryReader,
@@ -154,6 +155,18 @@ export function App({
     monitor: 0,
     executor: 0,
   });
+  const [selectedSuggestion, setSelectedSuggestion] = useState(0);
+  const [menuValue, setMenuValue] = useState(input.value);
+
+  const suggestionList = useMemo(() => suggestions(input.value), [input.value]);
+  const menuOpen =
+    interactive && suggestionList.length > 0 && input.historyIndex === null;
+  const matchLength = menuOpen ? input.value.length - 1 : 0;
+
+  if (menuValue !== input.value) {
+    setMenuValue(input.value);
+    setSelectedSuggestion(0);
+  }
 
   useEffect(() => {
     if (notice === null) return;
@@ -184,10 +197,17 @@ export function App({
   const noticeHeight = notice === null ? 0 : 1;
   const hintHeight = interactive ? 1 : 0;
   const inputHeight = interactive ? INPUT_HEIGHT : 0;
+  const menuHeight = menuOpen ? suggestionList.length : 0;
   const shutdownHeight = status.shutdownSignal === undefined ? 0 : 1;
   const contentHeight = Math.max(
     6,
-    rows - HEADER_HEIGHT - inputHeight - hintHeight - noticeHeight - shutdownHeight,
+    rows -
+      HEADER_HEIGHT -
+      inputHeight -
+      menuHeight -
+      hintHeight -
+      noticeHeight -
+      shutdownHeight,
   );
 
   const scrollTarget: PanelId | null =
@@ -208,8 +228,11 @@ export function App({
         return;
       }
       if (key.return) {
-        const line = input.value.trim();
-        if (!line.startsWith("/")) return;
+        const typed = input.value.trim();
+        if (!typed.startsWith("/")) return;
+        const chosen = menuOpen ? suggestionList[selectedSuggestion] : undefined;
+        const typedIsExact = suggestionList.some((item) => `/${item.name}` === typed);
+        const line = chosen === undefined || typedIsExact ? typed : `/${chosen.name}`;
         setInput((current) => submitToHistory(current, line));
         setNotice(null);
         void dispatchCommand(line, ctx);
@@ -220,10 +243,20 @@ export function App({
         return;
       }
       if (key.upArrow) {
+        if (menuOpen) {
+          setSelectedSuggestion(
+            (current) => (current - 1 + suggestionList.length) % suggestionList.length,
+          );
+          return;
+        }
         setInput(historyUp);
         return;
       }
       if (key.downArrow) {
+        if (menuOpen) {
+          setSelectedSuggestion((current) => (current + 1) % suggestionList.length);
+          return;
+        }
         setInput(historyDown);
         return;
       }
@@ -239,10 +272,10 @@ export function App({
         return;
       }
       if (key.tab) {
-        if (input.value.startsWith("/")) {
-          const completed = suggest(input.value);
-          if (completed !== undefined)
-            setInput((current) => withValue(current, completed));
+        if (menuOpen) {
+          const chosen = suggestionList[selectedSuggestion];
+          if (chosen !== undefined)
+            setInput((current) => withValue(current, `/${chosen.name}`));
           return;
         }
         if (view.kind === "dashboard" && input.value === "") {
@@ -344,13 +377,14 @@ export function App({
           {notice.text}
         </Text>
       )}
-      {interactive ? (
-        <CommandInput
-          value={input.value}
-          cursor={input.cursor}
-          suggestion={suggest(input.value)}
+      {menuOpen ? (
+        <CommandSuggestions
+          suggestions={suggestionList}
+          selected={selectedSuggestion}
+          matchLength={matchLength}
         />
       ) : null}
+      {interactive ? <CommandInput value={input.value} cursor={input.cursor} /> : null}
       {interactive ? (
         <Text dimColor wrap="truncate-end">
           {`${view.kind} · /help commands & keys · ctrl+c quit${expanded ? " · expanded output (ctrl+o)" : ""}`}

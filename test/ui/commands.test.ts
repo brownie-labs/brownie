@@ -6,7 +6,7 @@ import {
   COMMANDS,
   dispatchCommand,
   parseCommand,
-  suggest,
+  suggestions,
   type CommandContext,
   type View,
 } from "../../src/ui/commands.js";
@@ -96,17 +96,28 @@ describe("parseCommand", () => {
   });
 });
 
-describe("suggest", () => {
-  it("completes a unique prefix to a command", () => {
-    expect(suggest("/mo")).toBe("/monitor");
-    expect(suggest("/da")).toBe("/dashboard");
+describe("suggestions", () => {
+  it("lists every command matching the typed prefix, in registry order", () => {
+    expect(suggestions("/m").map((item) => item.name)).toEqual(["monitor", "memory"]);
+    expect(suggestions("/da").map((item) => item.name)).toEqual(["dashboard"]);
   });
 
-  it("returns nothing for exact names, unknown prefixes and lines with arguments", () => {
-    expect(suggest("/task")).toBeUndefined();
-    expect(suggest("/zzz")).toBeUndefined();
-    expect(suggest("/pause mon")).toBeUndefined();
-    expect(suggest("plain text")).toBeUndefined();
+  it("lists all commands for a bare slash", () => {
+    expect(suggestions("/")).toHaveLength(COMMANDS.length);
+    expect(suggestions("/")[0]).toEqual({
+      name: COMMANDS[0]?.name,
+      summary: COMMANDS[0]?.summary,
+    });
+  });
+
+  it("keeps an exact name in the list so it can still be run", () => {
+    expect(suggestions("/task").map((item) => item.name)).toEqual(["tasks", "task"]);
+  });
+
+  it("returns nothing for unknown prefixes, arguments or plain text", () => {
+    expect(suggestions("/zzz")).toEqual([]);
+    expect(suggestions("/pause mon")).toEqual([]);
+    expect(suggestions("plain text")).toEqual([]);
   });
 });
 

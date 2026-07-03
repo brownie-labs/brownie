@@ -452,38 +452,88 @@ describe("App", () => {
     killSpy.mockRestore();
   });
 
-  it("edits the command line: typing, ghost suggestion, backspace, cursor moves", async () => {
+  it("edits the command line: typing, backspace, cursor moves", async () => {
     const { store, props } = buildHarness();
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await type(stdin, "/mo");
     let frame = lastFrame() ?? "";
-    expect(frame).toContain("/mo");
-    expect(frame).toContain("nitor");
+    expect(frame).toContain("> /mo");
+    expect(frame).toContain("/monitor");
 
     await type(stdin, BACKSPACE);
     frame = lastFrame() ?? "";
-    expect(frame).toContain("/m");
-    expect(frame).not.toContain("/mo");
+    expect(frame).toContain("> /m");
+    expect(frame).not.toContain("> /mo");
 
     await type(stdin, ARROW_LEFT);
     await type(stdin, "x");
-    expect(lastFrame()).toContain("/xm");
+    expect(lastFrame()).toContain("> /xm");
 
     await type(stdin, ESCAPE);
-    expect(lastFrame()).not.toContain("/xm");
+    expect(lastFrame()).not.toContain("> /xm");
 
     unmount();
     store.dispose();
   });
 
-  it("tab completes a command prefix", async () => {
+  it("shows the slash-command menu with summaries and navigates it with the arrows", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await type(stdin, "/");
+    let frame = lastFrame() ?? "";
+    expect(frame).toContain("/dashboard");
+    expect(frame).toContain("show the combined monitor + executor + tasks view");
+    expect(frame).toContain("/executor");
+
+    await type(stdin, "m");
+    frame = lastFrame() ?? "";
+    expect(frame).toContain("/monitor");
+    expect(frame).toContain("/memory");
+    expect(frame).not.toContain("/dashboard");
+
+    await type(stdin, ARROW_DOWN);
+    await type(stdin, "\t");
+    expect(lastFrame()).toContain("> /memory");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("tab completes the highlighted command prefix", async () => {
     const { store, props } = buildHarness();
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await type(stdin, "/da");
     await type(stdin, "\t");
-    expect(lastFrame()).toContain("/dashboard");
+    expect(lastFrame()).toContain("> /dashboard");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("enter runs the highlighted command even from a shorter prefix", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await type(stdin, "/exe");
+    await type(stdin, ENTER);
+    expect(lastFrame()).toContain("executor · /help");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("enter runs the exact command typed, not the first suggestion sharing its prefix", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await type(stdin, "/task");
+    await type(stdin, ENTER);
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("usage: /task <description>");
+    expect(frame).not.toContain("tasks · /help");
 
     unmount();
     store.dispose();
