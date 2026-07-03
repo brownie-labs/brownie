@@ -28,7 +28,7 @@ export function AgentView({
     <Box flexDirection="column" height={height} overflow="hidden">
       <AgentPanel
         title={title}
-        color={theme.accent}
+        borderColor={theme.muted}
         phaseLabel={model.phaseLabel}
         phaseColor={model.phaseColor}
         tail={model.tail}

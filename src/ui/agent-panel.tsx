@@ -3,7 +3,7 @@ import type { JSX } from "react";
 
 export interface AgentPanelProps {
   title: string;
-  color: string;
+  borderColor: string;
   phaseLabel: string;
   phaseColor: string;
   tail: readonly string[];
@@ -16,7 +16,7 @@ export interface AgentPanelProps {
 
 export function AgentPanel({
   title,
-  color,
+  borderColor,
   phaseLabel,
   phaseColor,
   tail,
@@ -36,7 +36,7 @@ export function AgentPanel({
   return (
     <Box
       borderStyle={focused ? "bold" : "round"}
-      borderColor={color}
+      borderColor={borderColor}
       flexDirection="column"
       flexBasis={0}
       flexGrow={1}
@@ -44,9 +44,7 @@ export function AgentPanel({
       height={height}
       overflow="hidden"
     >
-      <Text bold color={color}>
-        {title}
-      </Text>
+      <Text bold>{title}</Text>
       <Text color={phaseColor} wrap="truncate-end">
         {phaseLabel}
       </Text>

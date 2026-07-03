@@ -139,7 +139,7 @@ describe("App", () => {
     const { lastFrame, unmount } = render(<App {...props} />);
 
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("🧝 Brownie v1.2.3");
+    expect(frame).toContain("🧌 Brownie v1.2.3");
     expect(frame).toContain("/tmp/ws");
     expect(frame).toContain("monitor");
     expect(frame).toContain("haiku · medium · every 5 min");

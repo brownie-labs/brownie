@@ -34,7 +34,7 @@ export function DashboardView({
       <Box>
         <AgentPanel
           title="Monitor"
-          color={theme.accent}
+          borderColor={theme.muted}
           phaseLabel={monitor.phaseLabel}
           phaseColor={monitor.phaseColor}
           tail={monitor.tail}
@@ -46,7 +46,7 @@ export function DashboardView({
         />
         <AgentPanel
           title="Executor"
-          color={theme.accent}
+          borderColor={theme.muted}
           phaseLabel={executor.phaseLabel}
           phaseColor={executor.phaseColor}
           tail={executor.tail}

@@ -50,7 +50,7 @@ export function Header({ config, version, status, now }: HeaderProps): JSX.Eleme
       <HeaderLine
         left={
           <Text color={theme.accent} bold wrap="truncate-end">
-            {`🧝 Brownie v${version}`}
+            {`🧌 Brownie v${version}`}
           </Text>
         }
         right={shortenPath(config.cwd)}
@@ -58,9 +58,7 @@ export function Header({ config, version, status, now }: HeaderProps): JSX.Eleme
       <HeaderLine
         left={
           <Text wrap="truncate-end">
-            <Text color={theme.accent} bold>
-              {"monitor  "}
-            </Text>
+            <Text bold>{"monitor  "}</Text>
             <Text color={monitor.phaseColor}>{monitor.phaseLabel}</Text>
           </Text>
         }
@@ -72,9 +70,7 @@ export function Header({ config, version, status, now }: HeaderProps): JSX.Eleme
       <HeaderLine
         left={
           <Text wrap="truncate-end">
-            <Text color={theme.accent} bold>
-              {"executor "}
-            </Text>
+            <Text bold>{"executor "}</Text>
             <Text color={executor.phaseColor}>{executor.phaseLabel}</Text>
           </Text>
         }

@@ -1,10 +1,11 @@
-<p align="center">
-  <h1 align="center">🧝 Brownie</h1>
-</p>
+<h1 align="center">
+  <img alt="Brownie" src="assets/brownie-logo.png" width="140"><br>
+  Brownie
+</h1>
 
 <p align="center">
   <strong>Your household sprite for the work you keep putting off. It works while you're not looking.</strong><br>
-  <em>Not the cake. The spirit. 🍪➡️🧝</em>
+  <em>Not the cake. The spirit.</em>
 </p>
 
 <p align="center">
