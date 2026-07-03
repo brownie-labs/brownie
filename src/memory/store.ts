@@ -144,6 +144,13 @@ export class MemoryStore {
     return rows.map(toRecord);
   }
 
+  recent(limit = 10): TaskSummaryRecord[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM summaries ORDER BY id DESC LIMIT ?`)
+      .all(limit);
+    return rows.map(toRecord);
+  }
+
   get(taskId: string): TaskSummaryRecord[] {
     const rows = this.db
       .prepare(`SELECT * FROM summaries WHERE task_id = ? ORDER BY id`)

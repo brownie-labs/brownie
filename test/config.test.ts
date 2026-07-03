@@ -135,7 +135,7 @@ describe("loadSettings", () => {
 
   it("throws with a configure hint when the file is missing", async () => {
     await expect(loadSettings(join(dir, "settings.json"))).rejects.toThrow(
-      /brownie --configure/,
+      /brownie config/,
     );
   });
 

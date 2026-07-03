@@ -1,3 +1,4 @@
+import type { AgentControlState } from "./control.js";
 import {
   formatSessionEvent,
   type SessionEvent,
@@ -54,7 +55,9 @@ export interface SummaryOutcome {
 
 export interface AgentPanelStatus<Phase, Outcome> {
   phase: Phase;
+  control: AgentControlState;
   tail: readonly string[];
+  recentOutcomes: readonly Outcome[];
   sessionId?: string | undefined;
   lastOutcome?: Outcome | undefined;
   lastEventAt?: number | undefined;
@@ -108,13 +111,17 @@ function clipLine(line: string): string {
 
 interface AgentState<Phase, Outcome> {
   phase: Phase;
+  control: AgentControlState;
   tail: string[];
+  recentOutcomes: Outcome[];
   openPartial: string;
   partialSeen: boolean;
   sessionId: string | undefined;
   lastOutcome: Outcome | undefined;
   lastEventAt: number | undefined;
 }
+
+const RECENT_OUTCOMES_LIMIT = 20;
 
 export interface WorkerStatusStoreOptions {
   tailLimit?: number;
@@ -140,7 +147,9 @@ export class WorkerStatusStore {
 
   private readonly monitorState: AgentState<MonitorPhase, MonitorCycleOutcome> = {
     phase: { kind: "starting" },
+    control: "running",
     tail: [],
+    recentOutcomes: [],
     openPartial: "",
     partialSeen: false,
     sessionId: undefined,
@@ -150,7 +159,9 @@ export class WorkerStatusStore {
 
   private readonly executorState: AgentState<ExecutorPhase, ExecutorTaskOutcome> = {
     phase: { kind: "waiting" },
+    control: "running",
     tail: [],
+    recentOutcomes: [],
     openPartial: "",
     partialSeen: false,
     sessionId: undefined,
@@ -171,7 +182,9 @@ export class WorkerStatusStore {
       });
     },
     cycleFinished: (outcome) => {
-      this.monitorState.lastOutcome = { ...outcome, finishedAt: Date.now() };
+      const finished = { ...outcome, finishedAt: Date.now() };
+      this.monitorState.lastOutcome = finished;
+      this.pushOutcome(this.monitorState, finished);
       this.stats.cycles += 1;
       this.stats.totalCostUsd += outcome.costUsd ?? 0;
       this.markDirty();
@@ -195,7 +208,9 @@ export class WorkerStatusStore {
       });
     },
     taskFinished: (outcome) => {
-      this.executorState.lastOutcome = { ...outcome, finishedAt: Date.now() };
+      const finished = { ...outcome, finishedAt: Date.now() };
+      this.executorState.lastOutcome = finished;
+      this.pushOutcome(this.executorState, finished);
       this.stats.totalCostUsd += outcome.costUsd ?? 0;
       if (outcome.ok) this.stats.tasksSucceeded += 1;
       else if (outcome.willRetry !== true) this.stats.tasksFailed += 1;
@@ -240,6 +255,12 @@ export class WorkerStatusStore {
 
   setTasks(tasks: readonly Task[]): void {
     this.tasks = tasks.map((task) => ({ ...task }));
+    this.markDirty();
+  }
+
+  setControl(agent: "monitor" | "executor", state: AgentControlState): void {
+    const target = agent === "monitor" ? this.monitorState : this.executorState;
+    target.control = state;
     this.markDirty();
   }
 
@@ -315,6 +336,16 @@ export class WorkerStatusStore {
     state.openPartial = "";
   }
 
+  private pushOutcome<Phase, Outcome>(
+    state: AgentState<Phase, Outcome>,
+    outcome: Outcome,
+  ): void {
+    state.recentOutcomes.unshift(outcome);
+    if (state.recentOutcomes.length > RECENT_OUTCOMES_LIMIT) {
+      state.recentOutcomes.length = RECENT_OUTCOMES_LIMIT;
+    }
+  }
+
   private pushTail<Phase, Outcome>(
     state: AgentState<Phase, Outcome>,
     text: string,
@@ -358,7 +389,9 @@ export class WorkerStatusStore {
       : [...state.tail];
     return {
       phase: state.phase,
+      control: state.control,
       tail,
+      recentOutcomes: [...state.recentOutcomes],
       sessionId: state.sessionId,
       lastOutcome: state.lastOutcome,
       lastEventAt: state.lastEventAt,

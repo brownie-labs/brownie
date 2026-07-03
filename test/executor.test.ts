@@ -6,6 +6,7 @@ import {
   buildConfig,
   createExecutorReporterSpy,
   createTaskSummarizerSpy,
+  noopController,
   type ExecutorReporterSpy,
   type TaskSummarizerSpy,
 } from "./helpers.js";
@@ -131,6 +132,7 @@ describe("runExecutorLoop", () => {
       waker,
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -167,6 +169,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
@@ -204,6 +207,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -235,6 +239,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -261,6 +266,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -287,6 +293,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -316,6 +323,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("good"));
@@ -341,6 +349,7 @@ describe("runExecutorLoop", () => {
       waker,
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -365,6 +374,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -394,6 +404,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await promise;
@@ -423,6 +434,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("flaky"));
@@ -462,6 +474,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -496,6 +509,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -532,6 +546,7 @@ describe("runExecutorLoop", () => {
       new Waker(),
       spy.reporter,
       summarizerSpy.summarizer,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -546,6 +561,90 @@ describe("runExecutorLoop", () => {
     expect(takeNext).toHaveBeenCalledTimes(2);
 
     controller.abort();
+    await promise;
+  });
+
+  it("pause while idle parks the loop and resume picks up new tasks", async () => {
+    const takeNext = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(task("after-resume"))
+      .mockResolvedValue(undefined);
+    const complete = vi.fn().mockResolvedValue(undefined);
+    const store = {
+      takeNext,
+      complete,
+      fail: vi.fn(),
+      requeue: vi.fn(),
+    } as unknown as TaskStore;
+    const abort = new AbortController();
+    const control = noopController();
+    mocks.runSession.mockResolvedValue(ok());
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      control,
+      abort.signal,
+    );
+    await vi.waitFor(() => expect(spy.waiting).toHaveBeenCalled());
+
+    control.pause();
+    await vi.waitFor(() => expect(control.state).toBe("paused"));
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    control.resume();
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("after-resume"));
+
+    abort.abort();
+    await promise;
+  });
+
+  it("pause during a task lets it finish and does not take the next one", async () => {
+    let finishSession: (result: SessionResult) => void = () => undefined;
+    mocks.runSession.mockImplementation(
+      () =>
+        new Promise<SessionResult>((resolvePromise) => {
+          finishSession = resolvePromise;
+        }),
+    );
+    const takeNext = vi
+      .fn()
+      .mockResolvedValueOnce(task("current"))
+      .mockResolvedValue(task("next"));
+    const complete = vi.fn().mockResolvedValue(undefined);
+    const store = {
+      takeNext,
+      complete,
+      fail: vi.fn(),
+      requeue: vi.fn(),
+    } as unknown as TaskStore;
+    const abort = new AbortController();
+    const control = noopController();
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      control,
+      abort.signal,
+    );
+    await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalledTimes(1));
+
+    control.pause();
+    expect(control.state).toBe("pausing");
+    finishSession(ok());
+
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("current"));
+    await vi.waitFor(() => expect(control.state).toBe("paused"));
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    abort.abort();
     await promise;
   });
 });

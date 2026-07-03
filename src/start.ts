@@ -1,10 +1,12 @@
 import { join } from "node:path";
 import { loadWorkerConfig } from "./config.js";
+import { AgentController } from "./control.js";
 import { runExecutorLoop } from "./executor.js";
 import { logger } from "./logger.js";
 import { MemoryStore } from "./memory/store.js";
 import { SessionSummarizer } from "./memory/summarizer.js";
 import { runMonitorLoop } from "./monitor.js";
+import { packageVersion } from "./paths.js";
 import { ensureReady } from "./preflight.js";
 import { SessionLog, teeSession } from "./session-log.js";
 import { abortOnSignals } from "./shutdown.js";
@@ -34,7 +36,26 @@ export async function startWorker(): Promise<void> {
 
   const signal = abortOnSignals((signalName) => status.shutdownRequested(signalName));
   const waker = new Waker();
-  const dashboard = mountDashboard(status, config);
+  const interactive = process.stdin.isTTY && process.stdout.isTTY;
+  const initialControlState = interactive ? "paused" : "running";
+  const monitorControl = new AgentController((state) => {
+    status.setControl("monitor", state);
+  }, initialControlState);
+  const executorControl = new AgentController((state) => {
+    status.setControl("executor", state);
+  }, initialControlState);
+  status.setControl("monitor", initialControlState);
+  status.setControl("executor", initialControlState);
+  const dashboard = mountDashboard({
+    store: status,
+    config,
+    version: packageVersion(),
+    controls: { monitor: monitorControl, executor: executorControl },
+    tasks: store,
+    memory,
+    waker,
+    requestExit: () => process.kill(process.pid, "SIGINT"),
+  });
 
   const monitorLog = new SessionLog(join(config.logsDir, "monitor"));
   const executorLog = new SessionLog(join(config.logsDir, "executor"));
@@ -62,6 +83,7 @@ export async function startWorker(): Promise<void> {
         store,
         waker,
         teeSession(status.monitor, monitorLog.sink),
+        monitorControl,
         signal,
       ),
       runExecutorLoop(
@@ -70,6 +92,7 @@ export async function startWorker(): Promise<void> {
         waker,
         teeSession(status.executor, executorLog.sink),
         summarizer,
+        executorControl,
         signal,
       ),
     ]);
@@ -77,9 +100,9 @@ export async function startWorker(): Promise<void> {
     loopError = err;
   } finally {
     await Promise.all([monitorLog.close(), executorLog.close(), summarizerLog.close()]);
-    memory.close();
     dashboard.unmount();
     await dashboard.waitUntilExit();
+    memory.close();
     status.dispose();
   }
 

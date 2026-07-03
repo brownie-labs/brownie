@@ -31,6 +31,7 @@ vi.mock("../src/logger.js", async () =>
 );
 
 const { startWorker } = await import("../src/start.js");
+const { AgentController } = await import("../src/control.js");
 const { Waker } = await import("../src/waker.js");
 const { WorkerStatusStore } = await import("../src/status.js");
 const { SessionSummarizer } = await import("../src/memory/summarizer.js");
@@ -56,6 +57,8 @@ function verifiedPaths(dir: string) {
 describe("startWorker", () => {
   let dir: string;
   let savedExitCode: typeof process.exitCode;
+  let stdinTty: boolean;
+  let stdoutTty: boolean;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -67,10 +70,16 @@ describe("startWorker", () => {
     mocks.memoryStoreOpen.mockReturnValue({ close: mocks.memoryStoreClose });
     dir = await createTempDir();
     savedExitCode = process.exitCode;
+    stdinTty = process.stdin.isTTY;
+    stdoutTty = process.stdout.isTTY;
+    process.stdin.isTTY = false;
+    process.stdout.isTTY = false;
   });
 
   afterEach(async () => {
     process.exitCode = savedExitCode;
+    process.stdin.isTTY = stdinTty;
+    process.stdout.isTTY = stdoutTty;
     await removeTempDir(dir);
   });
 
@@ -99,6 +108,7 @@ describe("startWorker", () => {
       store,
       expect.any(Waker),
       expect.objectContaining({ cycleStarted: expect.any(Function) as unknown }),
+      expect.any(AgentController),
       signal,
     );
     expect(mocks.memoryStoreOpen).toHaveBeenCalledWith(config.memoryDbPath);
@@ -108,19 +118,45 @@ describe("startWorker", () => {
       expect.any(Waker),
       expect.objectContaining({ taskStarted: expect.any(Function) as unknown }),
       expect.any(SessionSummarizer),
+      expect.any(AgentController),
       signal,
     );
+    const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
+      typeof AgentController
+    >;
+    const executorController = mocks.runExecutorLoop.mock.calls[0]?.[5] as InstanceType<
+      typeof AgentController
+    >;
+    expect(monitorController).not.toBe(executorController);
+    expect(monitorController.state).toBe("running");
+    expect(executorController.state).toBe("running");
     const monitorWaker = mocks.runMonitorLoop.mock.calls[0]?.[2] as unknown;
     const executorWaker = mocks.runExecutorLoop.mock.calls[0]?.[2] as unknown;
     expect(monitorWaker).toBe(executorWaker);
     expect(store.onChange).toHaveBeenCalledWith(expect.any(Function));
     expect(mocks.mountDashboard).toHaveBeenCalledWith(
-      expect.any(WorkerStatusStore),
-      config,
+      expect.objectContaining({
+        store: expect.any(WorkerStatusStore) as unknown,
+        config,
+        version: expect.any(String) as unknown,
+        controls: {
+          monitor: expect.any(AgentController) as unknown,
+          executor: expect.any(AgentController) as unknown,
+        },
+        tasks: store,
+        waker: expect.any(Waker) as unknown,
+        requestExit: expect.any(Function) as unknown,
+      }),
     );
-    const statusStore = mocks.mountDashboard.mock.calls[0]?.[0] as InstanceType<
-      typeof WorkerStatusStore
-    >;
+    const mountProps = mocks.mountDashboard.mock.calls[0]?.[0] as {
+      store: InstanceType<typeof WorkerStatusStore>;
+      controls: { monitor: unknown; executor: unknown };
+      version: string;
+    };
+    expect(mountProps.controls.monitor).toBe(monitorController);
+    expect(mountProps.controls.executor).toBe(executorController);
+    expect(mountProps.version).not.toBe("unknown");
+    const statusStore = mountProps.store;
     const asRecord = (value: unknown): Record<string, unknown> =>
       value as Record<string, unknown>;
     const monitorReporter = asRecord(mocks.runMonitorLoop.mock.calls[0]?.[3]);
@@ -135,6 +171,38 @@ describe("startWorker", () => {
     expect(mocks.dashboardWaitUntilExit).toHaveBeenCalledTimes(1);
     expect(mocks.memoryStoreClose).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(savedExitCode);
+  });
+
+  it("boots the agents paused in an interactive terminal", async () => {
+    process.stdin.isTTY = true;
+    process.stdout.isTTY = true;
+    mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
+    mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: dir }));
+    mocks.abortOnSignals.mockReturnValue(new AbortController().signal);
+    mocks.taskStoreOpen.mockResolvedValue({
+      pendingCount: () => 0,
+      list: () => [],
+      onChange: vi.fn(),
+    });
+    mocks.runMonitorLoop.mockResolvedValue(undefined);
+    mocks.runExecutorLoop.mockResolvedValue(undefined);
+
+    await runStart();
+
+    const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
+      typeof AgentController
+    >;
+    const executorController = mocks.runExecutorLoop.mock.calls[0]?.[5] as InstanceType<
+      typeof AgentController
+    >;
+    expect(monitorController.state).toBe("paused");
+    expect(executorController.state).toBe("paused");
+    const mountProps = mocks.mountDashboard.mock.calls[0]?.[0] as {
+      store: InstanceType<typeof WorkerStatusStore>;
+    };
+    mountProps.store.flush();
+    expect(mountProps.store.getSnapshot().monitor.control).toBe("paused");
+    expect(mountProps.store.getSnapshot().executor.control).toBe("paused");
   });
 
   it("loop error: unmounts the dashboard, logs and sets exitCode=1", async () => {

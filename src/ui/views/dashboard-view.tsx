@@ -1,0 +1,63 @@
+import { Box } from "ink";
+import type { JSX } from "react";
+import type { WorkerStatus } from "../../status.js";
+import { executorPanelModel, monitorPanelModel } from "../agent-visuals.js";
+import { AgentPanel } from "../agent-panel.js";
+import { TaskTable } from "../task-table.js";
+import { theme } from "../theme.js";
+
+export type PanelId = "monitor" | "executor";
+
+export interface DashboardViewProps {
+  status: WorkerStatus;
+  height: number;
+  now: number;
+  interactive: boolean;
+  focusedPanel: PanelId;
+  scrollOffsets: Record<PanelId, number>;
+}
+
+export function DashboardView({
+  status,
+  height,
+  now,
+  interactive,
+  focusedPanel,
+  scrollOffsets,
+}: DashboardViewProps): JSX.Element {
+  const tableHeight = Math.max(4, Math.floor(height / 3));
+  const panelHeight = Math.max(6, height - tableHeight);
+  const monitor = monitorPanelModel(status.monitor, now);
+  const executor = executorPanelModel(status.executor, now);
+  return (
+    <Box flexDirection="column" height={height} overflow="hidden">
+      <Box>
+        <AgentPanel
+          title="Monitor"
+          color={theme.accent}
+          phaseLabel={monitor.phaseLabel}
+          phaseColor={monitor.phaseColor}
+          tail={monitor.tail}
+          outcomeLabel={monitor.outcomeLabel}
+          outcomeColor={monitor.outcomeColor}
+          height={panelHeight}
+          focused={interactive && focusedPanel === "monitor"}
+          scrollOffset={scrollOffsets.monitor}
+        />
+        <AgentPanel
+          title="Executor"
+          color={theme.accent}
+          phaseLabel={executor.phaseLabel}
+          phaseColor={executor.phaseColor}
+          tail={executor.tail}
+          outcomeLabel={executor.outcomeLabel}
+          outcomeColor={executor.outcomeColor}
+          height={panelHeight}
+          focused={interactive && focusedPanel === "executor"}
+          scrollOffset={scrollOffsets.executor}
+        />
+      </Box>
+      <TaskTable tasks={status.tasks} height={tableHeight} now={now} />
+    </Box>
+  );
+}

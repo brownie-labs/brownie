@@ -69,25 +69,6 @@ describe("runBrownie", () => {
     expect(process.exitCode).toBe(savedExitCode);
   });
 
-  it("configure flag forces the wizard even when configured", async () => {
-    mocks.isConfigured.mockReturnValue(true);
-    mocks.runConfigure.mockResolvedValue(true);
-
-    await runBrownie({ configure: true, interactive: true });
-
-    expect(mocks.runConfigure).toHaveBeenCalledTimes(1);
-    expect(mocks.startWorker).toHaveBeenCalledTimes(1);
-  });
-
-  it("configure flag with a declined overwrite starts with the existing config", async () => {
-    mocks.isConfigured.mockReturnValue(true);
-    mocks.runConfigure.mockResolvedValue(false);
-
-    await runBrownie({ configure: true, interactive: true });
-
-    expect(mocks.startWorker).toHaveBeenCalledTimes(1);
-  });
-
   it("skips the wizard without a TTY and lets preflight report the problem", async () => {
     mocks.isConfigured.mockReturnValue(false);
 
@@ -139,7 +120,7 @@ describe("mainCommand", () => {
     mocks.isConfigured.mockReturnValue(true);
 
     await (mainCommand.run as (ctx: unknown) => Promise<void>)({
-      args: { configure: false, _: [] },
+      args: { _: [] },
     });
 
     expect(mocks.startWorker).toHaveBeenCalledTimes(1);

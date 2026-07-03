@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
+import { AgentController } from "../src/control.js";
 import type { TaskSummarizer } from "../src/memory/summarizer.js";
 import type { SessionSpec } from "../src/runner.js";
 import type { SessionEvent, SessionEventSink } from "../src/session-events.js";
@@ -170,6 +171,10 @@ export interface TaskSummarizerSpy {
 export function createTaskSummarizerSpy(): TaskSummarizerSpy {
   const summarize = vi.fn().mockResolvedValue(undefined);
   return { summarize, summarizer: { summarize } };
+}
+
+export function noopController(): AgentController {
+  return new AgentController(() => undefined);
 }
 
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {

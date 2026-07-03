@@ -5,6 +5,7 @@ import { Waker } from "../src/waker.js";
 import {
   buildConfig,
   createMonitorReporterSpy,
+  noopController,
   type MonitorReporterSpy,
 } from "./helpers.js";
 
@@ -76,6 +77,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -111,6 +113,7 @@ describe("runMonitorLoop", () => {
       store,
       waker,
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -142,6 +145,7 @@ describe("runMonitorLoop", () => {
       store,
       waker,
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -169,6 +173,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -199,6 +204,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -233,6 +239,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -260,6 +267,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -290,6 +298,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
 
@@ -315,6 +324,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -343,6 +353,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -369,6 +380,7 @@ describe("runMonitorLoop", () => {
       store,
       new Waker(),
       spy.reporter,
+      noopController(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -382,5 +394,73 @@ describe("runMonitorLoop", () => {
     controller.abort();
     await vi.advanceTimersByTimeAsync(INTERVAL);
     await promise;
+  });
+
+  it("pause during the interval sleep blocks the next cycle until resume", async () => {
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const abort = new AbortController();
+    const control = noopController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      abort.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    control.pause();
+    await vi.advanceTimersByTimeAsync(3 * INTERVAL);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+    expect(control.state).toBe("paused");
+
+    control.resume();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
+
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("pause during a session lets it finish and abort releases a paused loop", async () => {
+    let finishSession: (result: SessionResult) => void = () => undefined;
+    mocks.runSession.mockImplementation(
+      () =>
+        new Promise<SessionResult>((resolvePromise) => {
+          finishSession = resolvePromise;
+        }),
+    );
+    const { store, addTasks } = fakeStore();
+    const abort = new AbortController();
+    const control = noopController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      abort.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    control.pause();
+    expect(control.state).toBe("pausing");
+
+    finishSession(ok(report("late-1")));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(addTasks).toHaveBeenCalledTimes(1);
+    expect(control.state).toBe("paused");
+
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
   });
 });

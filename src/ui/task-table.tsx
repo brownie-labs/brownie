@@ -8,6 +8,7 @@ const STATUS_ORDER: Record<TaskStatus, number> = {
   pending: 1,
   done: 2,
   failed: 2,
+  cancelled: 2,
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -15,6 +16,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   in_progress: "in progress",
   done: "done",
   failed: "failed",
+  cancelled: "cancelled",
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -22,6 +24,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   in_progress: "cyan",
   done: "green",
   failed: "red",
+  cancelled: "gray",
 };
 
 function sortTasks(tasks: readonly Task[]): Task[] {

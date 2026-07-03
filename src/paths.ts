@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 
 export const BROWNIE_DIR_NAME = ".brownie";
 
@@ -39,6 +41,17 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
 export const packageRootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export const packagePromptsDir = join(packageRootDir, "prompts");
+
+const packageManifestSchema = z.object({ version: z.string() });
+
+export function packageVersion(): string {
+  try {
+    const raw = readFileSync(join(packageRootDir, "package.json"), "utf8");
+    return packageManifestSchema.parse(JSON.parse(raw)).version;
+  } catch {
+    return "unknown";
+  }
+}
 
 export interface SystemPromptFiles {
   monitor: string;

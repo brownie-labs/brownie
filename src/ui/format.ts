@@ -1,4 +1,5 @@
 import { formatResume } from "../active-hours.js";
+import type { AgentControlState } from "../control.js";
 import type {
   ExecutorPhase,
   ExecutorTaskOutcome,
@@ -7,6 +8,7 @@ import type {
   WorkerStats,
 } from "../status.js";
 import { formatDuration } from "../timing.js";
+import type { Task, TaskStatus } from "../types.js";
 
 const STALL_THRESHOLD_MS = 120_000;
 
@@ -70,11 +72,30 @@ export function detectStall(
   return `⚠ no output for ${formatInterval(idleMs)}`;
 }
 
-export function formatStats(stats: WorkerStats, uptimeMs: number): string {
+export function formatControlLabel(
+  control: AgentControlState,
+  phaseKind: string,
+  phaseLabel: string,
+): string | undefined {
+  if (control === "running") return undefined;
+  if (control === "paused") return "⏸ paused";
+  return phaseKind === "session" || phaseKind === "summary"
+    ? `⏸ finishing · ${phaseLabel}`
+    : "⏸ pausing…";
+}
+
+export function formatHeaderStats(
+  stats: WorkerStats,
+  tasks: readonly Task[],
+  uptimeMs: number,
+): string {
+  const count = (status: TaskStatus): number =>
+    tasks.filter((task) => task.status === status).length;
   return (
-    `uptime ${formatInterval(uptimeMs)} · cycles ${stats.cycles}` +
-    ` · tasks ✔${stats.tasksSucceeded} ✖${stats.tasksFailed}` +
-    ` · cost $${stats.totalCostUsd.toFixed(2)}`
+    `↑ ${formatInterval(uptimeMs)} · $${stats.totalCostUsd.toFixed(2)}` +
+    ` · ${stats.cycles} cycles` +
+    ` · tasks ${count("pending")} pending / ${count("in_progress")} running` +
+    ` / ${count("done")} done / ${count("failed")} failed`
   );
 }
 

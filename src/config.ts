@@ -85,10 +85,9 @@ export async function loadSettings(settingsFile: string): Promise<Settings> {
   try {
     raw = await readFile(settingsFile, "utf8");
   } catch (err) {
-    throw new Error(
-      `settings file missing: ${settingsFile} — run "brownie --configure"`,
-      { cause: err },
-    );
+    throw new Error(`settings file missing: ${settingsFile} — run "brownie config"`, {
+      cause: err,
+    });
   }
   let source: unknown;
   try {

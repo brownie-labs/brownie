@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { msUntilActive } from "./active-hours.js";
+import type { AgentController } from "./control.js";
 import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
 import type { MonitorReporter } from "./status.js";
-import { sleep } from "./timing.js";
 import type { TaskStore } from "./tasks.js";
 import type { WorkerConfig } from "./types.js";
 import type { Waker } from "./waker.js";
@@ -13,6 +13,7 @@ export async function runMonitorLoop(
   store: TaskStore,
   waker: Waker,
   reporter: MonitorReporter,
+  controller: AgentController,
   signal: AbortSignal,
 ): Promise<void> {
   const { monitor } = config;
@@ -20,11 +21,14 @@ export async function runMonitorLoop(
 
   let cycle = 0;
   while (!aborted()) {
+    await controller.gate(signal);
+    if (aborted()) break;
+
     const now = new Date();
     const waitForWindow = msUntilActive(monitor.schedule, now);
     if (waitForWindow > 0) {
       reporter.offHours(new Date(now.getTime() + waitForWindow));
-      await sleep(waitForWindow, signal);
+      await controller.sleep(waitForWindow, signal);
       continue;
     }
 
@@ -109,7 +113,7 @@ export async function runMonitorLoop(
     const wait = monitor.intervalMs - (Date.now() - start);
     if (wait > 0) {
       reporter.sleepUntil(new Date(Date.now() + wait));
-      await sleep(wait, signal);
+      await controller.sleep(wait, signal);
     }
   }
 }

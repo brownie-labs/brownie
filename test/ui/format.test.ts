@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   detectStall,
   formatAge,
+  formatControlLabel,
   formatCountdown,
   formatExecutorOutcome,
   formatExecutorPhase,
+  formatHeaderStats,
   formatInterval,
   formatMonitorOutcome,
   formatMonitorPhase,
-  formatStats,
 } from "../../src/ui/format.js";
 import type { Task } from "../../src/types.js";
 
@@ -144,21 +145,55 @@ describe("detectStall", () => {
   });
 });
 
-describe("formatStats", () => {
-  it("formats uptime, counters and the total cost", () => {
-    const label = formatStats(
+describe("formatHeaderStats", () => {
+  it("formats uptime, cost, cycles and per-status task counts", () => {
+    const label = formatHeaderStats(
       { cycles: 3, tasksSucceeded: 2, tasksFailed: 1, totalCostUsd: 1.234 },
+      [
+        task(),
+        { ...task(), id: "t-2", status: "pending" },
+        { ...task(), id: "t-3", status: "done" },
+        { ...task(), id: "t-4", status: "failed" },
+        { ...task(), id: "t-5", status: "cancelled" },
+      ],
       3_660_000,
     );
-    expect(label).toBe("uptime 1 h 1 min · cycles 3 · tasks ✔2 ✖1 · cost $1.23");
+    expect(label).toBe(
+      "↑ 1 h 1 min · $1.23 · 3 cycles · tasks 1 pending / 1 running / 1 done / 1 failed",
+    );
   });
 
   it("formats the zero state", () => {
-    const label = formatStats(
+    const label = formatHeaderStats(
       { cycles: 0, tasksSucceeded: 0, tasksFailed: 0, totalCostUsd: 0 },
+      [],
       0,
     );
-    expect(label).toBe("uptime 0 s · cycles 0 · tasks ✔0 ✖0 · cost $0.00");
+    expect(label).toBe(
+      "↑ 0 s · $0.00 · 0 cycles · tasks 0 pending / 0 running / 0 done / 0 failed",
+    );
+  });
+});
+
+describe("formatControlLabel", () => {
+  it("returns nothing while running", () => {
+    expect(formatControlLabel("running", "session", "▶ cycle #1")).toBeUndefined();
+  });
+
+  it("shows finishing with the phase label while pausing during a session", () => {
+    expect(formatControlLabel("pausing", "session", "▶ cycle #1")).toBe(
+      "⏸ finishing · ▶ cycle #1",
+    );
+    expect(formatControlLabel("pausing", "summary", "✎ summarizing t-1")).toBe(
+      "⏸ finishing · ✎ summarizing t-1",
+    );
+  });
+
+  it("shows pausing and paused outside a session", () => {
+    expect(formatControlLabel("pausing", "sleeping", "⏳ next cycle in 01:00")).toBe(
+      "⏸ pausing…",
+    );
+    expect(formatControlLabel("paused", "sleeping", "whatever")).toBe("⏸ paused");
   });
 });
 

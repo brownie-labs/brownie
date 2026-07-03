@@ -20,7 +20,7 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "start": "tsx src/index.ts",
-    "configure": "tsx src/index.ts --configure",
+    "configure": "tsx src/index.ts config",
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",

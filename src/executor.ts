@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
+import type { AgentController } from "./control.js";
 import type { TaskSummarizer } from "./memory/summarizer.js";
 import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
-import { sleep } from "./timing.js";
 import type { TaskStore } from "./tasks.js";
 import type { SessionResult, Task, WorkerConfig } from "./types.js";
 import type { Waker } from "./waker.js";
@@ -34,16 +34,20 @@ export async function runExecutorLoop(
   waker: Waker,
   reporter: ExecutorReporter,
   summarizer: TaskSummarizer,
+  controller: AgentController,
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
   const aborted = (): boolean => signal.aborted;
 
   while (!aborted()) {
+    await controller.gate(signal);
+    if (aborted()) break;
+
     const task = await store.takeNext();
     if (!task) {
       reporter.waiting();
-      await waker.wait(signal);
+      await Promise.race([waker.wait(signal), controller.pauseRequested(signal)]);
       continue;
     }
 
@@ -114,7 +118,7 @@ export async function runExecutorLoop(
           .catch(() => undefined);
         if (willRetry && executor.retryDelayMs > 0) {
           reporter.retryScheduled(task, new Date(Date.now() + executor.retryDelayMs));
-          await sleep(executor.retryDelayMs, signal);
+          await controller.sleep(executor.retryDelayMs, signal);
         }
       }
     } catch (err) {

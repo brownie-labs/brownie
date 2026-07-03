@@ -422,6 +422,47 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
+  it("exposes the control state per agent and defaults to running", () => {
+    const store = createStore();
+    expect(store.getSnapshot().monitor.control).toBe("running");
+    expect(store.getSnapshot().executor.control).toBe("running");
+
+    store.setControl("monitor", "pausing");
+    store.setControl("executor", "paused");
+    store.flush();
+
+    expect(store.getSnapshot().monitor.control).toBe("pausing");
+    expect(store.getSnapshot().executor.control).toBe("paused");
+    store.dispose();
+  });
+
+  it("keeps recent outcomes newest first and caps them at 20", () => {
+    const store = createStore();
+    for (let cycle = 1; cycle <= 25; cycle += 1) {
+      store.monitor.cycleFinished({
+        cycle,
+        ok: true,
+        durationMs: 10,
+        addedTasks: 0,
+        skippedDuplicates: 0,
+      });
+    }
+    store.executor.taskFinished({
+      taskId: "t-1",
+      title: "Title",
+      ok: true,
+      durationMs: 5,
+    });
+    store.flush();
+
+    const { monitor, executor } = store.getSnapshot();
+    expect(monitor.recentOutcomes).toHaveLength(20);
+    expect(monitor.recentOutcomes[0]?.cycle).toBe(25);
+    expect(monitor.recentOutcomes[19]?.cycle).toBe(6);
+    expect(executor.recentOutcomes.map((outcome) => outcome.taskId)).toEqual(["t-1"]);
+    store.dispose();
+  });
+
   it("dispose cancels the scheduled notification", () => {
     vi.useFakeTimers();
     const store = new WorkerStatusStore({ notifyDelayMs: 50 });

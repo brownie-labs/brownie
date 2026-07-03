@@ -133,6 +133,19 @@ describe("MemoryStore", () => {
     expect(store.search("deployment", 2)).toHaveLength(2);
   });
 
+  it("recent returns the newest records first and respects the limit", () => {
+    const first = store.add(buildRecord({ taskId: "redmine-1" }));
+    const second = store.add(buildRecord({ taskId: "redmine-2" }));
+    const third = store.add(buildRecord({ taskId: "redmine-3" }));
+
+    expect(store.recent().map((r) => r.id)).toEqual([third.id, second.id, first.id]);
+    expect(store.recent(2).map((r) => r.id)).toEqual([third.id, second.id]);
+  });
+
+  it("recent returns an empty list for an empty store", () => {
+    expect(store.recent()).toEqual([]);
+  });
+
   it("search returns an empty list for a query without tokens", () => {
     store.add(buildRecord());
     expect(store.search('"()*')).toEqual([]);

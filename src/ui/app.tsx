@@ -1,0 +1,353 @@
+import { Box, Text, useInput, useStdin } from "ink";
+import type { JSX } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { WorkerStatusStore } from "../status.js";
+import type { WorkerConfig } from "../types.js";
+import type { Waker } from "../waker.js";
+import { executorPanelModel, monitorPanelModel } from "./agent-visuals.js";
+import { CommandInput } from "./command-input.js";
+import {
+  dispatchCommand,
+  suggest,
+  type AgentControls,
+  type CommandContext,
+  type MemoryReader,
+  type NoticeTone,
+  type TaskControls,
+  type View,
+} from "./commands.js";
+import { Header } from "./header.js";
+import { theme } from "./theme.js";
+import { useNow } from "./use-now.js";
+import { useTerminalSize } from "./use-terminal-size.js";
+import { AgentView } from "./views/agent-view.js";
+import { DashboardView, type PanelId } from "./views/dashboard-view.js";
+import { HelpView } from "./views/help-view.js";
+import { MemoryView } from "./views/memory-view.js";
+import { TasksView } from "./views/tasks-view.js";
+
+const HEADER_HEIGHT = 6;
+const INPUT_HEIGHT = 3;
+const SCROLL_PAGE_MARGIN = 6;
+const HISTORY_LIMIT = 50;
+const NOTICE_TIMEOUT_MS = 5_000;
+
+interface InputState {
+  value: string;
+  cursor: number;
+  history: readonly string[];
+  historyIndex: number | null;
+  draft: string;
+}
+
+const EMPTY_INPUT: InputState = {
+  value: "",
+  cursor: 0,
+  history: [],
+  historyIndex: null,
+  draft: "",
+};
+
+interface Notice {
+  text: string;
+  tone: NoticeTone;
+}
+
+function withValue(state: InputState, value: string): InputState {
+  return { ...state, value, cursor: value.length, historyIndex: null, draft: "" };
+}
+
+function insertAtCursor(state: InputState, text: string): InputState {
+  const value =
+    state.value.slice(0, state.cursor) + text + state.value.slice(state.cursor);
+  return { ...state, value, cursor: state.cursor + text.length };
+}
+
+function deleteBeforeCursor(state: InputState): InputState {
+  if (state.cursor === 0) return state;
+  const value = state.value.slice(0, state.cursor - 1) + state.value.slice(state.cursor);
+  return { ...state, value, cursor: state.cursor - 1 };
+}
+
+function historyUp(state: InputState): InputState {
+  if (state.history.length === 0) return state;
+  if (state.historyIndex === null) {
+    const index = state.history.length - 1;
+    const value = state.history[index] ?? "";
+    return {
+      ...state,
+      value,
+      cursor: value.length,
+      historyIndex: index,
+      draft: state.value,
+    };
+  }
+  if (state.historyIndex === 0) return state;
+  const index = state.historyIndex - 1;
+  const value = state.history[index] ?? "";
+  return { ...state, value, cursor: value.length, historyIndex: index };
+}
+
+function historyDown(state: InputState): InputState {
+  if (state.historyIndex === null) return state;
+  if (state.historyIndex >= state.history.length - 1) {
+    return {
+      ...state,
+      value: state.draft,
+      cursor: state.draft.length,
+      historyIndex: null,
+      draft: "",
+    };
+  }
+  const index = state.historyIndex + 1;
+  const value = state.history[index] ?? "";
+  return { ...state, value, cursor: value.length, historyIndex: index };
+}
+
+function submitToHistory(state: InputState, line: string): InputState {
+  const history =
+    state.history[state.history.length - 1] === line
+      ? state.history
+      : [...state.history, line].slice(-HISTORY_LIMIT);
+  return { ...EMPTY_INPUT, history };
+}
+
+export interface AppProps {
+  store: WorkerStatusStore;
+  config: WorkerConfig;
+  version: string;
+  controls: { monitor: AgentControls; executor: AgentControls };
+  tasks: TaskControls;
+  memory: MemoryReader;
+  waker: Pick<Waker, "notify">;
+  requestExit: () => void;
+  noticeTimeoutMs?: number | undefined;
+}
+
+export function App({
+  store,
+  config,
+  version,
+  controls,
+  tasks,
+  memory,
+  waker,
+  requestExit,
+  noticeTimeoutMs = NOTICE_TIMEOUT_MS,
+}: AppProps): JSX.Element {
+  const status = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const { rows } = useTerminalSize();
+  const now = useNow();
+  const { isRawModeSupported } = useStdin();
+  const interactive = (isRawModeSupported as boolean | undefined) === true;
+
+  const [view, setView] = useState<View>({ kind: "dashboard" });
+  const [input, setInput] = useState<InputState>(EMPTY_INPUT);
+  const [notice, setNotice] = useState<Notice | null>(() =>
+    controls.monitor.state === "running" && controls.executor.state === "running"
+      ? null
+      : { text: "agents are paused — run /start to wake them", tone: "info" },
+  );
+  const [focusedPanel, setFocusedPanel] = useState<PanelId>("monitor");
+  const [scrollOffsets, setScrollOffsets] = useState<Record<PanelId, number>>({
+    monitor: 0,
+    executor: 0,
+  });
+
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = setTimeout(() => {
+      setNotice(null);
+    }, noticeTimeoutMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [notice, noticeTimeoutMs]);
+
+  const ctx = useMemo<CommandContext>(
+    () => ({
+      setView,
+      monitorControl: controls.monitor,
+      executorControl: controls.executor,
+      tasks,
+      memory,
+      waker,
+      requestExit,
+      notice: (text, tone = "info") => {
+        setNotice({ text, tone });
+      },
+    }),
+    [controls, tasks, memory, waker, requestExit],
+  );
+
+  const noticeHeight = notice === null ? 0 : 1;
+  const hintHeight = interactive ? 1 : 0;
+  const inputHeight = interactive ? INPUT_HEIGHT : 0;
+  const shutdownHeight = status.shutdownSignal === undefined ? 0 : 1;
+  const contentHeight = Math.max(
+    6,
+    rows - HEADER_HEIGHT - inputHeight - hintHeight - noticeHeight - shutdownHeight,
+  );
+
+  const scrollTarget: PanelId | null =
+    view.kind === "dashboard"
+      ? focusedPanel
+      : view.kind === "monitor" || view.kind === "executor"
+        ? view.kind
+        : null;
+
+  useInput(
+    (rawInput, key) => {
+      if (key.ctrl && rawInput === "c") {
+        process.kill(process.pid, "SIGINT");
+        return;
+      }
+      if (key.return) {
+        const line = input.value.trim();
+        if (!line.startsWith("/")) return;
+        setInput((current) => submitToHistory(current, line));
+        setNotice(null);
+        void dispatchCommand(line, ctx);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setInput(deleteBeforeCursor);
+        return;
+      }
+      if (key.upArrow) {
+        setInput(historyUp);
+        return;
+      }
+      if (key.downArrow) {
+        setInput(historyDown);
+        return;
+      }
+      if (key.leftArrow) {
+        setInput((current) => ({ ...current, cursor: Math.max(0, current.cursor - 1) }));
+        return;
+      }
+      if (key.rightArrow) {
+        setInput((current) => ({
+          ...current,
+          cursor: Math.min(current.value.length, current.cursor + 1),
+        }));
+        return;
+      }
+      if (key.tab) {
+        if (input.value.startsWith("/")) {
+          const completed = suggest(input.value);
+          if (completed !== undefined)
+            setInput((current) => withValue(current, completed));
+          return;
+        }
+        if (view.kind === "dashboard" && input.value === "") {
+          setFocusedPanel((current) => (current === "monitor" ? "executor" : "monitor"));
+        }
+        return;
+      }
+      if (key.pageUp || key.pageDown) {
+        if (scrollTarget === null) return;
+        const step = Math.max(1, contentHeight - SCROLL_PAGE_MARGIN);
+        const direction = key.pageUp ? 1 : -1;
+        const tailLength = status[scrollTarget].tail.length;
+        setScrollOffsets((current) => ({
+          ...current,
+          [scrollTarget]: Math.min(
+            Math.max(0, current[scrollTarget] + direction * step),
+            Math.max(0, tailLength - 1),
+          ),
+        }));
+        return;
+      }
+      if (key.escape) {
+        if (input.value !== "") {
+          setInput((current) => ({ ...current, ...withValue(current, "") }));
+          return;
+        }
+        setScrollOffsets({ monitor: 0, executor: 0 });
+        return;
+      }
+      if (rawInput.length > 0 && !key.ctrl && !key.meta) {
+        setInput((current) => insertAtCursor(current, rawInput));
+      }
+    },
+    { isActive: interactive },
+  );
+
+  const content = ((): JSX.Element => {
+    switch (view.kind) {
+      case "dashboard":
+        return (
+          <DashboardView
+            status={status}
+            height={contentHeight}
+            now={now}
+            interactive={interactive}
+            focusedPanel={focusedPanel}
+            scrollOffsets={scrollOffsets}
+          />
+        );
+      case "monitor":
+        return (
+          <AgentView
+            title="Monitor"
+            model={monitorPanelModel(status.monitor, now)}
+            height={contentHeight}
+            scrollOffset={scrollOffsets.monitor}
+          />
+        );
+      case "executor":
+        return (
+          <AgentView
+            title="Executor"
+            model={executorPanelModel(status.executor, now)}
+            height={contentHeight}
+            scrollOffset={scrollOffsets.executor}
+          />
+        );
+      case "tasks":
+        return <TasksView tasks={status.tasks} height={contentHeight} now={now} />;
+      case "memory":
+        return (
+          <MemoryView
+            entries={view.entries}
+            query={view.query}
+            height={contentHeight}
+            now={now}
+          />
+        );
+      case "help":
+        return <HelpView height={contentHeight} />;
+    }
+  })();
+
+  return (
+    <Box flexDirection="column" height={rows}>
+      <Header config={config} version={version} status={status} now={now} />
+      {content}
+      {notice === null ? null : (
+        <Text
+          color={notice.tone === "error" ? theme.error : theme.muted}
+          wrap="truncate-end"
+        >
+          {notice.text}
+        </Text>
+      )}
+      {interactive ? (
+        <CommandInput
+          value={input.value}
+          cursor={input.cursor}
+          suggestion={suggest(input.value)}
+        />
+      ) : null}
+      {interactive ? (
+        <Text dimColor wrap="truncate-end">
+          {`${view.kind} · /help commands · ↑/↓ history · tab complete · pgup/pgdn scroll · esc clear/follow · ctrl+c quit`}
+        </Text>
+      ) : null}
+      {status.shutdownSignal === undefined ? null : (
+        <Text color={theme.warn}>Received {status.shutdownSignal} — shutting down…</Text>
+      )}
+    </Box>
+  );
+}

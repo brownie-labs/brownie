@@ -170,6 +170,52 @@ describe("TaskStore", () => {
     expect(store.list()[0]?.status).toBe("pending");
   });
 
+  it("retry restores a failed task to pending, resets attempts and clears the error", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+    await store.takeNext();
+    await store.fail("a", "broken");
+
+    expect(await store.retry("a")).toBe(true);
+
+    expect(store.list()[0]).toMatchObject({ id: "a", status: "pending", attempts: 0 });
+    expect(store.list()[0]?.error).toBeUndefined();
+    expect((await store.takeNext())?.attempts).toBe(1);
+  });
+
+  it("retry refuses tasks that are not failed and unknown ids", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+
+    expect(await store.retry("a")).toBe(false);
+    expect(await store.retry("missing")).toBe(false);
+    expect(store.list()[0]?.status).toBe("pending");
+  });
+
+  it("cancel marks a pending task as cancelled and persists it", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+
+    expect(await store.cancel("a")).toBe(true);
+
+    expect(store.list()[0]?.status).toBe("cancelled");
+    expect(store.pendingCount()).toBe(0);
+    expect(await store.takeNext()).toBeUndefined();
+
+    const reopened = await TaskStore.open(path);
+    expect(reopened.list()[0]?.status).toBe("cancelled");
+  });
+
+  it("cancel refuses in_progress tasks and unknown ids", async () => {
+    const store = await TaskStore.open(path);
+    await store.addTasks([newTask("a")]);
+    await store.takeNext();
+
+    expect(await store.cancel("a")).toBe(false);
+    expect(await store.cancel("missing")).toBe(false);
+    expect(store.list()[0]?.status).toBe("in_progress");
+  });
+
   it("loads an old-format store without the attempts field", async () => {
     await TaskStore.open(path);
     await writeFile(

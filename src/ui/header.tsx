@@ -1,54 +1,87 @@
+import { homedir } from "node:os";
 import { Box, Text } from "ink";
 import type { JSX } from "react";
-import { describeSchedule } from "../active-hours.js";
-import type { WorkerStats } from "../status.js";
+import type { WorkerStatus } from "../status.js";
 import type { WorkerConfig } from "../types.js";
-import { formatInterval, formatStats } from "./format.js";
+import { executorPanelModel, monitorPanelModel } from "./agent-visuals.js";
+import { formatHeaderStats, formatInterval } from "./format.js";
+import { theme } from "./theme.js";
 
-const BRAND_COLOR = "#c08457";
+function shortenPath(path: string): string {
+  const home = homedir();
+  return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+}
 
-function timeoutLabel(sessionTimeoutMs: number | undefined): string {
-  return sessionTimeoutMs != null ? ` · timeout=${formatInterval(sessionTimeoutMs)}` : "";
+interface HeaderLineProps {
+  left: JSX.Element;
+  right: string;
+}
+
+function HeaderLine({ left, right }: HeaderLineProps): JSX.Element {
+  return (
+    <Box justifyContent="space-between" gap={2}>
+      <Box flexShrink={1} overflow="hidden">
+        {left}
+      </Box>
+      <Text dimColor wrap="truncate-end">
+        {right}
+      </Text>
+    </Box>
+  );
 }
 
 export interface HeaderProps {
   config: WorkerConfig;
-  stats: WorkerStats;
-  uptimeMs: number;
+  version: string;
+  status: WorkerStatus;
+  now: number;
 }
 
-export function Header({ config, stats, uptimeMs }: HeaderProps): JSX.Element {
+export function Header({ config, version, status, now }: HeaderProps): JSX.Element {
+  const monitor = monitorPanelModel(status.monitor, now);
+  const executor = executorPanelModel(status.executor, now);
   return (
-    <Box borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
-      <Text wrap="truncate-end">
-        <Text color={BRAND_COLOR} bold>
-          🧝 Brownie
-        </Text>
-        <Text dimColor>{"  works while you're not looking"}</Text>
-      </Text>
-      <Text wrap="truncate-end">
-        <Text color="cyan" bold>
-          monitor
-        </Text>
-        {`  model=${config.monitor.model} · effort=${config.monitor.effort}` +
-          ` · interval=${formatInterval(config.monitor.intervalMs)}` +
-          ` · working hours=${describeSchedule(config.monitor.schedule)}` +
-          timeoutLabel(config.monitor.sessionTimeoutMs)}
-      </Text>
-      <Text wrap="truncate-end">
-        <Text color="magenta" bold>
-          executor
-        </Text>
-        {`  model=${config.executor.model} · effort=${config.executor.effort}${timeoutLabel(config.executor.sessionTimeoutMs)}`}
-      </Text>
-      <Text wrap="truncate-end">
-        <Text color="green" bold>
-          stats
-        </Text>
-        {`  ${formatStats(stats, uptimeMs)}`}
-      </Text>
+    <Box
+      borderStyle="round"
+      borderColor={theme.muted}
+      paddingX={1}
+      flexDirection="column"
+    >
+      <HeaderLine
+        left={
+          <Text color={theme.accent} bold wrap="truncate-end">
+            {`🧝 Brownie v${version}`}
+          </Text>
+        }
+        right={shortenPath(config.cwd)}
+      />
+      <HeaderLine
+        left={
+          <Text wrap="truncate-end">
+            <Text color={theme.accent} bold>
+              {"monitor  "}
+            </Text>
+            <Text color={monitor.phaseColor}>{monitor.phaseLabel}</Text>
+          </Text>
+        }
+        right={
+          `${config.monitor.model} · ${config.monitor.effort}` +
+          ` · every ${formatInterval(config.monitor.intervalMs)}`
+        }
+      />
+      <HeaderLine
+        left={
+          <Text wrap="truncate-end">
+            <Text color={theme.accent} bold>
+              {"executor "}
+            </Text>
+            <Text color={executor.phaseColor}>{executor.phaseLabel}</Text>
+          </Text>
+        }
+        right={`${config.executor.model} · ${config.executor.effort}`}
+      />
       <Text dimColor wrap="truncate-end">
-        {`cwd=${config.cwd} · tasks=${config.tasksFilePath} · partial=${config.streamPartial ? "on" : "off"}`}
+        {formatHeaderStats(status.stats, status.tasks, now - status.startedAt)}
       </Text>
     </Box>
   );

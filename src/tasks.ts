@@ -7,7 +7,7 @@ const taskSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   description: z.string(),
-  status: z.enum(["pending", "in_progress", "done", "failed"]),
+  status: z.enum(["pending", "in_progress", "done", "failed", "cancelled"]),
   attempts: z.number().int().nonnegative().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -151,6 +151,30 @@ export class TaskStore {
       task.error = error;
       task.updatedAt = new Date().toISOString();
       await this.persist();
+    });
+  }
+
+  retry(id: string): Promise<boolean> {
+    return this.run(async () => {
+      const task = this.tasks.find((candidate) => candidate.id === id);
+      if (task?.status !== "failed") return false;
+      task.status = "pending";
+      task.attempts = 0;
+      task.error = undefined;
+      task.updatedAt = new Date().toISOString();
+      await this.persist();
+      return true;
+    });
+  }
+
+  cancel(id: string): Promise<boolean> {
+    return this.run(async () => {
+      const task = this.tasks.find((candidate) => candidate.id === id);
+      if (task?.status !== "pending") return false;
+      task.status = "cancelled";
+      task.updatedAt = new Date().toISOString();
+      await this.persist();
+      return true;
     });
   }
 

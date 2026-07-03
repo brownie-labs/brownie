@@ -1,18 +1,13 @@
 import { render } from "ink";
-import type { WorkerStatusStore } from "../status.js";
-import type { WorkerConfig } from "../types.js";
-import { Dashboard } from "./dashboard.js";
+import { App, type AppProps } from "./app.js";
 
 export interface DashboardHandle {
   unmount: () => void;
   waitUntilExit: () => Promise<void>;
 }
 
-export function mountDashboard(
-  store: WorkerStatusStore,
-  config: WorkerConfig,
-): DashboardHandle {
-  const app = render(<Dashboard store={store} config={config} />, {
+export function mountDashboard(props: AppProps): DashboardHandle {
+  const app = render(<App {...props} />, {
     exitOnCtrlC: false,
     patchConsole: true,
   });

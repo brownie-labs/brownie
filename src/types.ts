@@ -63,7 +63,7 @@ export interface SessionSummary {
   resultText?: string | undefined;
 }
 
-export type TaskStatus = "pending" | "in_progress" | "done" | "failed";
+export type TaskStatus = "pending" | "in_progress" | "done" | "failed" | "cancelled";
 
 export interface Task {
   id: string;

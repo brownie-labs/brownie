@@ -56,7 +56,9 @@ Two loops run in parallel and communicate only through the shared task store:
 - 🧠 **Long-term memory** — SQLite + FTS5 exposed to the executor as an MCP server; the sprite learns from its own sessions.
 - ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
 - 🔂 **Smart retries** — distinguishes transient from permanent errors, configurable number of attempts and delay.
-- 📺 **TUI dashboard** — a live view of both loops (Ink/React): session statuses, tasks, events.
+- 📺 **Interactive TUI** — a Claude-Code-style shell (Ink/React): live header, switchable views (dashboard, per-agent, tasks, memory) and a slash-command input.
+- ⏯️ **Deliberate start, graceful pause** — agents boot paused and wait for `/start`; `/pause` pauses them gracefully (the current session finishes first).
+- ✍️ **Manual task control** — `/task` adds work by hand, `/retry` requeues a failed task, `/cancel` drops a pending one.
 - 🗂️ **Persistent session logs** — every session lands in `.brownie/logs/<agent>/<day>/<hour>_<sessionId>.log`.
 - 🎛️ **Per-agent model and effort** — sonnet for the patrol, opus for the work; all configurable.
 - 🧾 **Tasks in JSON** — `.brownie/data/tasks.json` with atomic writes; stalled `in_progress` tasks return to `pending` after a restart.
@@ -74,14 +76,14 @@ Two loops run in parallel and communicate only through the shared task store:
 npm install -g @midaz-studio/brownie
 
 cd your-project
-brownie           # first run: configuration wizard, then both loops + dashboard
+brownie           # first run: configuration wizard, then both loops + the TUI
 ```
 
 Binary usage:
 
 ```bash
-brownie                # first run: configuration wizard, then both loops + dashboard
-brownie --configure    # rerun the configuration wizard (settings + project prompts)
+brownie                # first run: configuration wizard, then both loops + the TUI
+brownie config         # rerun the configuration wizard (settings + project prompts)
 brownie mcp --db …     # memory MCP server (used internally by the executor)
 ```
 
@@ -91,6 +93,26 @@ Working from a clone instead:
 pnpm install
 pnpm start        # or: pnpm dev (watch)
 ```
+
+## The TUI
+
+The screen is a shell in the style of Claude Code: a header with the live status of both agents (state, model, cost, task counters), a view in the middle, and a command input at the bottom (with history, tab completion and pgup/pgdn scrolling). Everything is driven by slash commands:
+
+| Command                      | Effect                                                     |
+| ---------------------------- | ---------------------------------------------------------- |
+| `/dashboard`                 | combined view: both agents + the task table                |
+| `/monitor`, `/executor`      | one agent full-screen with its recent outcomes             |
+| `/tasks`                     | the full task list                                         |
+| `/memory [query]`            | browse long-term memory, optionally filtered by FTS search |
+| `/start [monitor\|executor]` | start paused agents — agents boot paused                   |
+| `/pause [monitor\|executor]` | graceful pause — the current session finishes first        |
+| `/task <description>`        | add a task by hand (the executor picks it up immediately)  |
+| `/retry <task-id>`           | requeue a failed task                                      |
+| `/cancel <task-id>`          | cancel a pending task                                      |
+| `/help`                      | list all commands                                          |
+| `/exit`                      | graceful shutdown (same as ctrl+c)                         |
+
+In an interactive terminal the agents boot **paused** — nothing runs until you type `/start` (all agents) or `/start monitor` / `/start executor`. Without a TTY (CI, piping) there is no way to type commands, so brownie starts the agents immediately and falls back to a read-only dashboard render.
 
 ## The `.brownie/` directory
 
@@ -110,11 +132,11 @@ your-project/
 
 Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are ignored automatically via the wizard-written `.brownie/.gitignore`.
 
-> Migrating from an older version? Configuration moved from `.env` to `.brownie/settings.json` — rerun `brownie --configure`.
+> Migrating from an older version? Configuration moved from `.env` to `.brownie/settings.json` — rerun `brownie config`.
 
 ## Configuration
 
-Everything lives in `.brownie/settings.json` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie --configure`) walks you through all of it, but you can also edit it by hand. Every section is optional — `{}` is a valid file:
+Everything lives in `.brownie/settings.json` (validated with zod — a typo won't get through). The first `brownie` run (or `brownie config`) walks you through all of it, but you can also edit it by hand. Every section is optional — `{}` is a valid file:
 
 | Key                           | Default          | Description                                       |
 | ----------------------------- | ---------------- | ------------------------------------------------- |
