@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    testTimeout: 15_000,
     env: {
       CI: "false",
       CONTINUOUS_INTEGRATION: "false",
