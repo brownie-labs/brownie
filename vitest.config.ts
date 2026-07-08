@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    env: {
+      CI: "false",
+      CONTINUOUS_INTEGRATION: "false",
+    },
     include: ["test/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
