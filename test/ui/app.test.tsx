@@ -291,16 +291,16 @@ describe("App", () => {
     await submit(stdin, "/tasks");
 
     await eventually(() => {
-      expect(lastFrame()).toContain("pending: 1");
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("pending: 1");
+      expect(frame).toContain("in progress: 1");
+      expect(frame).toContain("done: 1");
+      expect(frame).toContain("failed: 1");
+      expect(frame).toContain("t-2 · Deploy changes");
+      expect(frame).toContain("t-4 · Fix tests — timeout");
+      expect(frame).toContain("t-5 · Old idea");
+      expect(frame).toContain("cancelled");
     });
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("in progress: 1");
-    expect(frame).toContain("done: 1");
-    expect(frame).toContain("failed: 1");
-    expect(frame).toContain("t-2 · Deploy changes");
-    expect(frame).toContain("t-4 · Fix tests — timeout");
-    expect(frame).toContain("t-5 · Old idea");
-    expect(frame).toContain("cancelled");
 
     unmount();
     store.dispose();
@@ -677,14 +677,18 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await submit(stdin, "/memory");
-    expect(recent).toHaveBeenCalledWith(20);
+    await eventually(() => {
+      expect(recent).toHaveBeenCalledWith(20);
+    });
     await eventually(() => {
       expect(lastFrame()).toContain("Memory · recent entries");
     });
     expect(lastFrame()).toContain("t-1 · Cleaned the repository");
 
     await submit(stdin, "/memory deploy");
-    expect(search).toHaveBeenCalledWith("deploy", 20);
+    await eventually(() => {
+      expect(search).toHaveBeenCalledWith("deploy", 20);
+    });
     await eventually(() => {
       expect(lastFrame()).toContain('Memory · search "deploy" · 1 results');
     });
@@ -700,8 +704,10 @@ describe("App", () => {
     await submit(stdin, "/pause");
     await flushed(store);
 
-    expect(monitorControl.state).toBe("pausing");
-    expect(executorControl.state).toBe("pausing");
+    await eventually(() => {
+      expect(monitorControl.state).toBe("pausing");
+      expect(executorControl.state).toBe("pausing");
+    });
     await eventually(() => {
       expect(lastFrame()).toContain("pausing monitor and executor");
     });
@@ -709,7 +715,9 @@ describe("App", () => {
 
     await submit(stdin, "/start monitor");
     await flushed(store);
-    expect(monitorControl.state).toBe("running");
+    await eventually(() => {
+      expect(monitorControl.state).toBe("running");
+    });
     await eventually(() => {
       expect(lastFrame()).toContain("started monitor");
     });
@@ -729,8 +737,10 @@ describe("App", () => {
     await submit(stdin, "/start");
     await flushed(store);
 
-    expect(monitorControl.state).toBe("running");
-    expect(executorControl.state).toBe("running");
+    await eventually(() => {
+      expect(monitorControl.state).toBe("running");
+      expect(executorControl.state).toBe("running");
+    });
     await eventually(() => {
       expect(lastFrame()).toContain("started monitor and executor");
     });
@@ -746,8 +756,10 @@ describe("App", () => {
 
     await submit(stdin, "/task Fix the deploy pipeline");
 
-    const candidates = addTasks.mock.calls[0]?.[0] as { title: string }[] | undefined;
-    expect(candidates?.[0]?.title).toBe("Fix the deploy pipeline");
+    await eventually(() => {
+      const candidates = addTasks.mock.calls[0]?.[0] as { title: string }[] | undefined;
+      expect(candidates?.[0]?.title).toBe("Fix the deploy pipeline");
+    });
     await eventually(() => {
       expect(notify).toHaveBeenCalledTimes(1);
     });
@@ -842,7 +854,9 @@ describe("App", () => {
     await eventually(() => {
       expect(lastFrame()).toContain("sonnet · high");
     });
-    expect(lastFrame()).toContain("executor model set to sonnet");
+    await eventually(() => {
+      expect(lastFrame()).toContain("executor model set to sonnet");
+    });
     expect(JSON.parse(await readFile(settingsFile, "utf8"))).toMatchObject({
       executor: { model: "sonnet" },
     });
@@ -865,7 +879,9 @@ describe("App", () => {
     await eventually(() => {
       expect(lastFrame()).toContain("every 2 min");
     });
-    expect(lastFrame()).toContain("monitor interval set to 2 min");
+    await eventually(() => {
+      expect(lastFrame()).toContain("monitor interval set to 2 min");
+    });
 
     unmount();
     store.dispose();

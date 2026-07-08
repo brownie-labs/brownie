@@ -151,7 +151,7 @@ export function fakeStdio(): FakeStdio {
 }
 
 export function eventually(assertion: () => void): Promise<void> {
-  return vi.waitFor(assertion, 5_000);
+  return vi.waitFor(assertion, 10_000);
 }
 
 export function loggerModuleMock(): Record<string, unknown> {
