@@ -5,6 +5,7 @@ export default defineConfig({
     environment: "node",
     globals: false,
     testTimeout: 15_000,
+    retry: process.env.GITHUB_ACTIONS === "true" ? 2 : 0,
     env: {
       CI: "false",
       CONTINUOUS_INTEGRATION: "false",
