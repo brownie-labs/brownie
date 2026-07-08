@@ -4,6 +4,7 @@
   "description": "Autonomous two-agent Claude Code worker: a monitor that finds tasks, an executor that completes them, and long-term memory in between",
   "type": "module",
   "license": "MIT",
+  "author": "Dawid Chłodnicki",
   "repository": "github:brownie-labs/brownie",
   "homepage": "https://github.com/brownie-labs/brownie#readme",
   "bugs": "https://github.com/brownie-labs/brownie/issues",
@@ -30,7 +31,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "packageManager": "pnpm@10.28.0",
   "scripts": {

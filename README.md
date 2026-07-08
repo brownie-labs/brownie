@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img alt="Brownie" src="assets/brownie-logo.png" width="140"><br>
+  <img alt="Brownie" src="https://raw.githubusercontent.com/brownie-labs/brownie/main/assets/brownie-logo.png" width="140"><br>
   Brownie
 </h1>
 
@@ -11,12 +11,12 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@brownie-labs/brownie"><img alt="npm" src="https://img.shields.io/npm/v/%40brownie-labs%2Fbrownie?logo=npm&color=CB3837"></a>
   <a href="https://github.com/brownie-labs/brownie/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/brownie-labs/brownie/ci.yml?branch=main&logo=github&label=CI"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white">
+  <a href="https://github.com/brownie-labs/brownie/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
+  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white">
 </p>
 
 <p align="center">
-  <img alt="Brownie demo" src="assets/demo.gif" width="800">
+  <img alt="Brownie demo" src="https://raw.githubusercontent.com/brownie-labs/brownie/main/assets/demo.gif" width="800">
 </p>
 
 Brownie is a CLI that cyclically runs [Claude Code](https://claude.com/claude-code) sessions in a two-agent setup: the **monitor** watches for tasks, the **executor** completes them, and the **summarizer** writes findings to long-term memory. You sleep — the sprite tidies up.
@@ -63,7 +63,7 @@ The monitor's patrol is just a prompt:
    self-contained change, report a task with id `issue-<number>`.
 ```
 
-Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
+Full examples and prompt-writing tips: [docs/prompts.md](https://github.com/brownie-labs/brownie/blob/main/docs/prompts.md).
 
 ## Highlights
 
@@ -77,7 +77,7 @@ Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
 
 ## Quick start
 
-You need Node.js ≥ 22 and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
+You need Node.js ≥ 22.13 and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
 
 ```bash
 npm install -g @brownie-labs/brownie
@@ -130,7 +130,7 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                   |
 | `brownie resume [monitor\|executor]`                      | resume paused agents                                          |
 
-A second `brownie` in the same project refuses to start while one is already running. The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](docs/deployment.md).
+A second `brownie` in the same project refuses to start while one is already running. The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
 
 ## Configuration
 
@@ -147,7 +147,7 @@ Like Claude Code's `.claude/`, all per-project state lives in `.brownie/` inside
 }
 ```
 
-All settings, the full directory layout, and what to commit: [docs/configuration.md](docs/configuration.md).
+All settings, the full directory layout, and what to commit: [docs/configuration.md](https://github.com/brownie-labs/brownie/blob/main/docs/configuration.md).
 
 ## Security & costs
 
@@ -163,11 +163,11 @@ pnpm check            # typecheck + lint + format:check + test — before every 
 pnpm build            # tsup -> dist/
 ```
 
-Claude sessions are tested against a fake `claude` binary (`test/fixtures/claude`) — no real API calls. Coverage thresholds are enforced. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Claude sessions are tested against a fake `claude` binary (`test/fixtures/claude`) — no real API calls. Coverage thresholds are enforced. See [CONTRIBUTING.md](https://github.com/brownie-labs/brownie/blob/main/CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE) © Brownie Labs
+[MIT](https://github.com/brownie-labs/brownie/blob/main/LICENSE) © Brownie Labs
 
 ## Why "Brownie"? 🧌
 

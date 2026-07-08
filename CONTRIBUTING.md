@@ -4,7 +4,7 @@ Thanks for helping the sprite! Contributions of all kinds are welcome — bug re
 
 ## Setup
 
-- Node.js ≥ 22 and [pnpm](https://pnpm.io) (`corepack enable` is enough)
+- Node.js ≥ 22.13 and [pnpm](https://pnpm.io) (`corepack enable` is enough)
 - `pnpm install`
 - `pnpm dev` starts brownie in watch mode (tsx); `pnpm start` runs it once
 
@@ -38,3 +38,11 @@ pnpm build
 node scripts/demo/setup.mjs
 vhs scripts/demo/demo.tape   # requires https://github.com/charmbracelet/vhs
 ```
+
+## Releasing (maintainers)
+
+1. Bump the version in `package.json` and move the entries in `CHANGELOG.md` from _Unreleased_ to a new dated section.
+2. Commit, then tag and push: `git tag vX.Y.Z && git push origin main --tags`.
+3. The [release workflow](.github/workflows/release.yml) runs `pnpm check`, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no tokens in secrets, provenance attached automatically), and creates the GitHub release with generated notes.
+
+One-time bootstrap for a brand-new package: npm only lets you configure a trusted publisher once the package exists, so publish the first version manually (`npm login && npm publish`), then add the trusted publisher on npmjs.com (package settings → Trusted Publisher → GitHub Actions, repository `brownie-labs/brownie`, workflow `release.yml`). Pushing the tag afterwards is safe — the workflow skips `npm publish` when the version is already in the registry and still creates the GitHub release.

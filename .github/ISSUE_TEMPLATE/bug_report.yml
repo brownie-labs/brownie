@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in brownie does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: Steps to reproduce, relevant `settings.json` values, and the shape of your prompts. Redact anything private.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output — headless line logs, a fragment of a session log from `.brownie/logs/`, or `brownie status --json`. Redact anything private.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Brownie version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node.js version, Claude Code version, TUI or headless
+      placeholder: macOS 15, Node 22.13, Claude Code 2.x, TUI
+    validations:
+      required: true
