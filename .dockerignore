@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.brownie
+.git
+.github
+assets
+*.log

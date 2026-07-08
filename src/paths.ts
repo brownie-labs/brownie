@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -36,6 +38,18 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
     logsDir: join(brownieDir, "logs"),
     gitignoreFile: join(brownieDir, ".gitignore"),
   };
+}
+
+export function controlSocketPath(projectDir: string = process.cwd()): string {
+  const hash = createHash("sha256")
+    .update(resolve(projectDir))
+    .digest("hex")
+    .slice(0, 16);
+  const uid = process.getuid?.() ?? 0;
+  const name = `brownie-${String(uid)}-${hash}`;
+  return process.platform === "win32"
+    ? `\\\\.\\pipe\\${name}`
+    : join(tmpdir(), `${name}.sock`);
 }
 
 export const packageRootDir = dirname(dirname(fileURLToPath(import.meta.url)));

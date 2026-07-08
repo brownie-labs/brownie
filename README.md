@@ -117,7 +117,20 @@ A shell in the style of Claude Code: a header with the live status of both agent
 
 Configuration commands persist to `.brownie/settings.json` and apply live — the next agent session already uses the new value, no restart needed.
 
-Without a TTY (CI, piping) there is no way to type commands, so brownie starts the agents immediately and renders a read-only dashboard.
+## Headless & servers
+
+Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts the agents immediately, and prints structured line logs to stdout — human-readable by default, NDJSON with `--log-format json` for log aggregators. A running worker is controlled from a second shell over a local control socket:
+
+| Command                                                   | Effect                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------- |
+| `brownie`                                                 | start the worker (TUI in a terminal, headless without one)    |
+| `brownie --headless [--log-format json]`                  | force headless mode even in a terminal                        |
+| `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible)       |
+| `brownie status [--json]`                                 | live status of the running worker (doubles as a health check) |
+| `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                   |
+| `brownie resume [monitor\|executor]`                      | resume paused agents                                          |
+
+A second `brownie` in the same project refuses to start while one is already running. The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](docs/deployment.md).
 
 ## Configuration
 

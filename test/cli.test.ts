@@ -80,6 +80,34 @@ function runCli(
   });
 }
 
+interface CommandRun {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+function runCommand(
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  args: string[],
+): Promise<CommandRun> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(tsxBin, [entry, ...args], {
+      cwd,
+      env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+    child.on("error", rejectPromise);
+    child.on("close", (code) => {
+      resolvePromise({ code, stdout, stderr });
+    });
+  });
+}
+
 function readSummaries(dbPath: string, taskId: string): { headline: string }[] {
   try {
     const db = new DatabaseSync(dbPath, { readOnly: true });
@@ -158,9 +186,12 @@ describe("CLI start (smoke E2E)", () => {
 
     expect(readSummaries(memoryDbPath, "e2e-1")).toEqual([{ headline: "e2e summary" }]);
 
-    expect(result.output).toContain("model haiku");
-    expect(result.output).toContain("e2e-1");
-    expect(result.output).toContain("done: 1");
+    expect(result.output).toContain("worker.started");
+    expect(result.output).toContain("model=haiku");
+    expect(result.output).toContain("task.started taskId=e2e-1");
+    expect(result.output).toMatch(/task\.finished taskId=e2e-1 .*ok=true/);
+    expect(result.output).toContain("summary.finished taskId=e2e-1 ok=true");
+    expect(result.output).toContain("worker.stopped signal=SIGINT");
   }, 30_000);
 
   it("exits with code 1 when preflight fails (no .brownie/settings.json)", async () => {
@@ -168,5 +199,78 @@ describe("CLI start (smoke E2E)", () => {
 
     expect(result.code).toBe(1);
     expect(result.output).toMatch(/Preflight failed|file missing/);
+  }, 30_000);
+
+  it("answers brownie status --json and pause over the control socket", async () => {
+    await seedProject(dir, {
+      settings: { monitor: { model: "haiku", intervalMinutes: 1 } },
+    });
+    const env = fakeClaudeCliEnv("ok", {
+      CI: "true",
+      FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({ tasks: [] }),
+    });
+    const outFd = openSync(join(dir, "worker-out.log"), "w");
+    const errFd = openSync(join(dir, "worker-err.log"), "w");
+    const worker = spawn(tsxBin, [entry, "--log-format", "json"], {
+      cwd: dir,
+      env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
+      stdio: ["ignore", outFd, errFd],
+    });
+    const workerClosed = new Promise<void>((resolve) => {
+      worker.on("close", () => {
+        closeSync(outFd);
+        closeSync(errFd);
+        resolve();
+      });
+    });
+
+    interface StatusJson {
+      pid: number;
+      headless: boolean;
+      agents: { monitor: { control: string }; executor: { control: string } };
+    }
+
+    try {
+      let status: StatusJson | null = null;
+      const deadline = Date.now() + INTERRUPT_DEADLINE_MS;
+      while (Date.now() < deadline) {
+        const probe = await runCommand(dir, env, ["status", "--json"]);
+        if (probe.code === 0) {
+          status = JSON.parse(probe.stdout) as StatusJson;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+
+      expect(status).not.toBeNull();
+      expect(status?.headless).toBe(true);
+      expect(typeof status?.pid).toBe("number");
+      expect(status?.agents.monitor.control).toBe("running");
+      expect(status?.agents.executor.control).toBe("running");
+
+      const paused = await runCommand(dir, env, ["pause", "monitor"]);
+      expect(paused.code).toBe(0);
+
+      const after = await runCommand(dir, env, ["status", "--json"]);
+      expect(after.code).toBe(0);
+      const afterStatus = JSON.parse(after.stdout) as StatusJson;
+      expect(["pausing", "paused"]).toContain(afterStatus.agents.monitor.control);
+      expect(afterStatus.agents.executor.control).toBe("running");
+
+      const human = await runCommand(dir, env, ["status"]);
+      expect(human.code).toBe(0);
+      expect(human.stdout).toContain("monitor");
+      expect(human.stdout).toContain("executor");
+    } finally {
+      worker.kill("SIGINT");
+      await workerClosed;
+    }
+  }, 30_000);
+
+  it("brownie status fails cleanly when no worker is running", async () => {
+    const result = await runCommand(dir, fakeClaudeCliEnv("ok"), ["status"]);
+
+    expect(result.code).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).toContain("No brownie worker is running");
   }, 30_000);
 });

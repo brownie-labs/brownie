@@ -1,0 +1,75 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { projectPaths } from "../src/paths.js";
+import { writeProjectScaffold } from "../src/scaffold.js";
+import { createTempDir, removeTempDir, seedProject } from "./helpers.js";
+
+describe("writeProjectScaffold", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await createTempDir();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  it("creates settings, both prompts, and the gitignore in an empty project", async () => {
+    const paths = projectPaths(dir);
+
+    const result = await writeProjectScaffold(paths, {
+      monitorPrompt: "watch issues",
+      executorPrompt: "fix bugs",
+    });
+
+    expect(result.createdSettings).toBe(true);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe("{}\n");
+    expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("watch issues\n");
+    expect(await readFile(paths.executorPromptFile, "utf8")).toBe("fix bugs\n");
+    expect(await readFile(paths.gitignoreFile, "utf8")).toBe("data/\nlogs/\n");
+  });
+
+  it("never touches an existing settings.json or .gitignore", async () => {
+    const paths = projectPaths(dir);
+    await seedProject(dir, { settings: '{"streamPartial": false}\n' });
+    await writeFile(paths.gitignoreFile, "custom\n", "utf8");
+
+    const result = await writeProjectScaffold(paths, {
+      monitorPrompt: "watch",
+      executorPrompt: "execute",
+    });
+
+    expect(result.createdSettings).toBe(false);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{"streamPartial": false}\n');
+    expect(await readFile(paths.gitignoreFile, "utf8")).toBe("custom\n");
+  });
+
+  it("overwrites existing prompt files", async () => {
+    const paths = projectPaths(dir);
+    await seedProject(dir, {
+      monitorPrompt: "old monitor\n",
+      executorPrompt: "old executor\n",
+    });
+
+    await writeProjectScaffold(paths, {
+      monitorPrompt: "new monitor",
+      executorPrompt: "new executor",
+    });
+
+    expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("new monitor\n");
+    expect(await readFile(paths.executorPromptFile, "utf8")).toBe("new executor\n");
+  });
+
+  it("works when only .brownie exists without the prompts directory", async () => {
+    const paths = projectPaths(join(dir, "fresh"));
+
+    await writeProjectScaffold(paths, {
+      monitorPrompt: "watch",
+      executorPrompt: "execute",
+    });
+
+    expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("watch\n");
+  });
+});

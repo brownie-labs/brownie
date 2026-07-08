@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { snapshotEnv } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   isConfigured: vi.fn(),
@@ -89,6 +90,72 @@ describe("runBrownie", () => {
     expect(process.exitCode).toBe(1);
     expect(mocks.runConfigure).not.toHaveBeenCalled();
     expect(mocks.startWorker).not.toHaveBeenCalled();
+  });
+
+  it("passes headless options through to the worker", async () => {
+    mocks.isConfigured.mockReturnValue(true);
+
+    await runBrownie({
+      interactive: true,
+      headless: true,
+      logFormat: "json",
+      verbose: true,
+    });
+
+    expect(mocks.startWorker).toHaveBeenCalledWith({
+      headless: true,
+      logFormat: "json",
+      verbose: true,
+    });
+  });
+
+  it("defaults to the pretty log format", async () => {
+    mocks.isConfigured.mockReturnValue(true);
+
+    await runBrownie({ interactive: true });
+
+    expect(mocks.startWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ headless: false, logFormat: "pretty" }),
+    );
+  });
+
+  it("reads the log format from BROWNIE_LOG_FORMAT when no flag is given", async () => {
+    const restoreEnv = snapshotEnv();
+    process.env.BROWNIE_LOG_FORMAT = "json";
+    mocks.isConfigured.mockReturnValue(true);
+
+    try {
+      await runBrownie({ interactive: true });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(mocks.startWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ logFormat: "json" }),
+    );
+  });
+
+  it("rejects an invalid log format with exit code 1", async () => {
+    mocks.isConfigured.mockReturnValue(true);
+
+    await runBrownie({ interactive: true, logFormat: "logfmt" });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid log format "logfmt"'),
+    );
+    expect(process.exitCode).toBe(1);
+    expect(mocks.startWorker).not.toHaveBeenCalled();
+  });
+
+  it("skips the wizard when headless is forced even on first run", async () => {
+    mocks.isConfigured.mockReturnValue(false);
+
+    await runBrownie({ interactive: true, headless: true });
+
+    expect(mocks.runConfigure).not.toHaveBeenCalled();
+    expect(mocks.startWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ headless: true }),
+    );
   });
 
   it("detects interactivity from the terminal when not overridden", async () => {

@@ -1,11 +1,10 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { render } from "ink";
 import { logger } from "./logger.js";
 import { projectPaths } from "./paths.js";
+import { writeProjectScaffold } from "./scaffold.js";
 import { Wizard, type WizardResult } from "./ui/wizard.js";
-
-const BROWNIE_GITIGNORE = "data/\nlogs/\n";
 
 export interface WizardIo {
   stdin?: NodeJS.ReadStream | undefined;
@@ -76,15 +75,7 @@ export async function runConfigure(
     return false;
   }
 
-  await mkdir(paths.promptsDir, { recursive: true });
-  if (!existsSync(paths.settingsFile)) {
-    await writeFile(paths.settingsFile, "{}\n", "utf8");
-  }
-  await writeFile(paths.monitorPromptFile, `${result.monitorPrompt}\n`, "utf8");
-  await writeFile(paths.executorPromptFile, `${result.executorPrompt}\n`, "utf8");
-  if (!existsSync(paths.gitignoreFile)) {
-    await writeFile(paths.gitignoreFile, BROWNIE_GITIGNORE, "utf8");
-  }
+  await writeProjectScaffold(paths, result);
 
   logger.success(`Saved ${paths.settingsFile}`);
   logger.success(`Saved ${paths.monitorPromptFile}`);

@@ -1,0 +1,11 @@
+services:
+  brownie:
+    build: .
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ./:/workspace
+    environment:
+      TZ: ${TZ:-UTC}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

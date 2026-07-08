@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BROWNIE_DIR_NAME,
+  controlSocketPath,
   packagePromptsDir,
   packageRootDir,
   projectPaths,
@@ -51,5 +52,29 @@ describe("package prompts", () => {
       executor: join("/sys", "executor.system.md"),
       summarizer: join("/sys", "summarizer.system.md"),
     });
+  });
+});
+
+describe("controlSocketPath", () => {
+  it("derives a stable per-project socket path outside the project", () => {
+    const first = controlSocketPath("/proj");
+    const second = controlSocketPath("/proj");
+    expect(first).toBe(second);
+    expect(first).not.toContain("/proj");
+    expect(first).toMatch(/brownie-\d+-[0-9a-f]{16}\.sock$/);
+  });
+
+  it("gives different projects different sockets", () => {
+    expect(controlSocketPath("/proj-a")).not.toBe(controlSocketPath("/proj-b"));
+  });
+
+  it("stays comfortably under the unix socket path limit", () => {
+    expect(controlSocketPath("/a/very/deeply/nested/project/dir").length).toBeLessThan(
+      104,
+    );
+  });
+
+  it("defaults to the current working directory", () => {
+    expect(controlSocketPath()).toBe(controlSocketPath(process.cwd()));
   });
 });
