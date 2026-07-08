@@ -135,6 +135,7 @@ export interface FakeStdio {
   stdout: NodeJS.WriteStream;
   type(data: string): void;
   lastFrame(): string | undefined;
+  inputReady(): Promise<void>;
 }
 
 export function fakeStdio(): FakeStdio {
@@ -147,11 +148,22 @@ export function fakeStdio(): FakeStdio {
       stdin.write(data);
     },
     lastFrame: () => stdout.lastFrame(),
+    inputReady: () => inputReady(stdin),
   };
 }
 
 export function eventually(assertion: () => void): Promise<void> {
   return vi.waitFor(assertion, 10_000);
+}
+
+export function inputReady(stdin: {
+  listenerCount(eventName: string): number;
+}): Promise<void> {
+  return eventually(() => {
+    if (stdin.listenerCount("readable") === 0 && stdin.listenerCount("data") === 0) {
+      throw new Error("input is not attached yet");
+    }
+  });
 }
 
 export function loggerModuleMock(): Record<string, unknown> {

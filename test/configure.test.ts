@@ -19,6 +19,7 @@ async function tick(): Promise<void> {
 }
 
 async function press(io: FakeStdio, data: string): Promise<void> {
+  await io.inputReady();
   io.type(data);
   await tick();
 }

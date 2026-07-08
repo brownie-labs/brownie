@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { PromptEditor, type PromptEditorProps } from "../../src/ui/prompt-editor.js";
-import { eventually } from "../helpers.js";
+import { eventually, inputReady } from "../helpers.js";
 
 const ARROW_UP = "\u001B[A";
 const ARROW_DOWN = "\u001B[B";
@@ -20,7 +20,7 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-function editor(overrides: Partial<PromptEditorProps> = {}) {
+async function editor(overrides: Partial<PromptEditorProps> = {}) {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   const rendered = render(
@@ -32,6 +32,7 @@ function editor(overrides: Partial<PromptEditorProps> = {}) {
       {...overrides}
     />,
   );
+  await inputReady(rendered.stdin);
   const type = async (data: string) => {
     rendered.stdin.write(data);
     await tick();
@@ -40,8 +41,8 @@ function editor(overrides: Partial<PromptEditorProps> = {}) {
 }
 
 describe("PromptEditor", () => {
-  it("shows the title, step, placeholder and hint", () => {
-    const { lastFrame, unmount } = editor({ placeholder: "e.g. GitHub issues" });
+  it("shows the title, step, placeholder and hint", async () => {
+    const { lastFrame, unmount } = await editor({ placeholder: "e.g. GitHub issues" });
     const frame = lastFrame() ?? "";
     expect(frame).toContain("What should the monitor watch?");
     expect(frame).toContain("step 1/2");
@@ -51,7 +52,7 @@ describe("PromptEditor", () => {
   });
 
   it("types text and hides the placeholder", async () => {
-    const { lastFrame, type, unmount } = editor({ placeholder: "gone" });
+    const { lastFrame, type, unmount } = await editor({ placeholder: "gone" });
     await type("watch issues");
     await eventually(() => {
       expect(lastFrame()).toContain("watch issues");
@@ -61,7 +62,7 @@ describe("PromptEditor", () => {
   });
 
   it("wraps long lines instead of truncating them", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor();
+    const { lastFrame, onSubmit, type, unmount } = await editor();
     const long = `${"a".repeat(120)}END`;
     await type(long);
     await eventually(() => {
@@ -76,7 +77,7 @@ describe("PromptEditor", () => {
   });
 
   it("Enter inserts a new line instead of submitting", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor();
+    const { lastFrame, onSubmit, type, unmount } = await editor();
     await type("first");
     await type(ENTER);
     await type("second");
@@ -89,7 +90,7 @@ describe("PromptEditor", () => {
   });
 
   it("a pasted chunk with \\r and \\r\\n becomes multiple lines", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor();
+    const { lastFrame, onSubmit, type, unmount } = await editor();
     await type("# Role\rBe diligent\r\n- rule one");
     await eventually(() => {
       expect(lastFrame()).toContain("- rule one");
@@ -104,7 +105,7 @@ describe("PromptEditor", () => {
   });
 
   it("filters stray bracketed paste markers", async () => {
-    const { lastFrame, type, unmount } = editor();
+    const { lastFrame, type, unmount } = await editor();
     await type("[200~");
     await type("safe");
     await type("[201~");
@@ -117,7 +118,7 @@ describe("PromptEditor", () => {
   });
 
   it("backspace joins lines at the start of a line", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor();
+    const { lastFrame, onSubmit, type, unmount } = await editor();
     await type("ab");
     await type(ENTER);
     await type("cd");
@@ -135,7 +136,7 @@ describe("PromptEditor", () => {
   });
 
   it("moves across line boundaries with arrows and edits mid-text", async () => {
-    const { onSubmit, type, unmount } = editor();
+    const { onSubmit, type, unmount } = await editor();
     await type("one");
     await type(ENTER);
     await type("two");
@@ -155,7 +156,7 @@ describe("PromptEditor", () => {
   });
 
   it("tab inserts two spaces", async () => {
-    const { onSubmit, type, unmount } = editor();
+    const { onSubmit, type, unmount } = await editor();
     await type("a");
     await type(TAB);
     await type("b");
@@ -167,7 +168,7 @@ describe("PromptEditor", () => {
   });
 
   it("keeps the cursor visible in a limited viewport", async () => {
-    const { lastFrame, type, unmount } = editor({ maxVisibleLines: 3 });
+    const { lastFrame, type, unmount } = await editor({ maxVisibleLines: 3 });
     await type("l1\rl2\rl3\rl4\rl5");
     await eventually(() => {
       expect(lastFrame()).toContain("… 2 more lines above");
@@ -183,7 +184,7 @@ describe("PromptEditor", () => {
   });
 
   it("starts from the initial value with the cursor at the end", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor({
+    const { lastFrame, onSubmit, type, unmount } = await editor({
       initialValue: "existing\ncontent",
     });
     expect(lastFrame()).toContain("existing");
@@ -196,7 +197,7 @@ describe("PromptEditor", () => {
   });
 
   it("refuses to submit empty content and shows a warning", async () => {
-    const { lastFrame, onSubmit, type, unmount } = editor();
+    const { lastFrame, onSubmit, type, unmount } = await editor();
     await type(CTRL_D);
     expect(onSubmit).not.toHaveBeenCalled();
     await eventually(() => {
@@ -210,7 +211,7 @@ describe("PromptEditor", () => {
   });
 
   it("trims trailing whitespace on submit", async () => {
-    const { onSubmit, type, unmount } = editor();
+    const { onSubmit, type, unmount } = await editor();
     await type("text");
     await type(ENTER);
     await type(ENTER);
@@ -222,14 +223,14 @@ describe("PromptEditor", () => {
   });
 
   it("cancels on Esc and on Ctrl+C", async () => {
-    const first = editor();
+    const first = await editor();
     await first.type(ESCAPE);
     await eventually(() => {
       expect(first.onCancel).toHaveBeenCalledTimes(1);
     });
     first.unmount();
 
-    const second = editor();
+    const second = await editor();
     await second.type(CTRL_C);
     await eventually(() => {
       expect(second.onCancel).toHaveBeenCalledTimes(1);

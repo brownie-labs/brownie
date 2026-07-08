@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { Wizard, type WizardProps } from "../../src/ui/wizard.js";
-import { eventually } from "../helpers.js";
+import { eventually, inputReady } from "../helpers.js";
 
 const ESCAPE = "\u001B";
 const CTRL_D = "\u0004";
@@ -10,9 +10,10 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-function wizard(overrides: Partial<WizardProps> = {}) {
+async function wizard(overrides: Partial<WizardProps> = {}) {
   const onComplete = vi.fn();
   const rendered = render(<Wizard onComplete={onComplete} {...overrides} />);
+  await inputReady(rendered.stdin);
   const type = async (data: string) => {
     rendered.stdin.write(data);
     await tick();
@@ -22,7 +23,7 @@ function wizard(overrides: Partial<WizardProps> = {}) {
 
 describe("Wizard", () => {
   it("collects both prompts across two steps", async () => {
-    const { lastFrame, onComplete, type, unmount } = wizard();
+    const { lastFrame, onComplete, type, unmount } = await wizard();
 
     expect(lastFrame()).toContain("🧌 Brownie setup");
     expect(lastFrame()).toContain("What should the monitor watch?");
@@ -52,7 +53,7 @@ describe("Wizard", () => {
   });
 
   it("pre-fills both editors from the initial values", async () => {
-    const { lastFrame, onComplete, type, unmount } = wizard({
+    const { lastFrame, onComplete, type, unmount } = await wizard({
       initialMonitorPrompt: "existing monitor prompt",
       initialExecutorPrompt: "existing executor prompt",
     });
@@ -74,7 +75,7 @@ describe("Wizard", () => {
   });
 
   it("cancelling the first step completes with null", async () => {
-    const { onComplete, type, unmount } = wizard();
+    const { onComplete, type, unmount } = await wizard();
     await type(ESCAPE);
     await eventually(() => {
       expect(onComplete).toHaveBeenCalledWith(null);
@@ -83,7 +84,7 @@ describe("Wizard", () => {
   });
 
   it("cancelling the second step completes with null", async () => {
-    const { onComplete, type, unmount } = wizard();
+    const { onComplete, type, unmount } = await wizard();
     await type("monitor prompt");
     await type(CTRL_D);
     await type(ESCAPE);

@@ -8,7 +8,13 @@ import { createSettingsController } from "../../src/settings-controller.js";
 import { WorkerStatusStore } from "../../src/status.js";
 import type { Task } from "../../src/types.js";
 import { App, type AppProps } from "../../src/ui/app.js";
-import { buildConfig, createTempDir, eventually, removeTempDir } from "../helpers.js";
+import {
+  buildConfig,
+  createTempDir,
+  eventually,
+  inputReady,
+  removeTempDir,
+} from "../helpers.js";
 
 const PAGE_UP = "\u001B[5~";
 const PAGE_DOWN = "\u001B[6~";
@@ -142,6 +148,12 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
   };
 }
 
+async function renderApp(props: AppProps) {
+  const rendered = render(<App {...props} />);
+  await inputReady(rendered.stdin);
+  return rendered;
+}
+
 async function type(
   stdin: { write: (data: string) => void },
   text: string,
@@ -163,9 +175,9 @@ describe("App", () => {
     vi.useRealTimers();
   });
 
-  it("shows the brand, version, cwd and agent parameters in the header", () => {
+  it("shows the brand, version, cwd and agent parameters in the header", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("🧌 Brownie v1.2.3");
@@ -181,7 +193,7 @@ describe("App", () => {
 
   it("shows the header stats line with task counts", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     store.monitor.cycleFinished({
       cycle: 1,
@@ -213,9 +225,9 @@ describe("App", () => {
     store.dispose();
   });
 
-  it("shows the phases: monitor starting and executor waiting", () => {
+  it("shows the phases: monitor starting and executor waiting", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("starting…");
@@ -227,7 +239,7 @@ describe("App", () => {
 
   it("after reporter events shows the cycle, session tail and outcome", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     store.monitor.cycleStarted(2);
     store.monitor.session({
@@ -278,7 +290,7 @@ describe("App", () => {
 
   it("shows the task table with counters and the failed task error", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     store.setTasks([
       buildTask(),
@@ -308,7 +320,7 @@ describe("App", () => {
 
   it("shows the shutdown message after a signal", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     store.shutdownRequested("SIGINT");
     await flushed(store);
@@ -355,7 +367,7 @@ describe("App", () => {
 
   it("shows backoff with a scheduled retry after a transient error", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     store.executor.taskFinished({
       taskId: "t-1",
@@ -381,7 +393,7 @@ describe("App", () => {
 
   it("scrolls the focused panel with page-up and returns to follow mode on escape", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     for (let i = 1; i <= 60; i += 1) {
       store.monitor.session({ type: "text", text: `line ${i}` });
@@ -409,7 +421,7 @@ describe("App", () => {
 
   it("caps a long tool result and ctrl+o expands it in place", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     store.monitor.session({
       type: "toolResult",
@@ -447,7 +459,7 @@ describe("App", () => {
 
   it("wraps a long agent message instead of truncating it", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, unmount } = render(<App {...props} />);
+    const { lastFrame, unmount } = await renderApp(props);
 
     store.monitor.session({
       type: "text",
@@ -465,7 +477,7 @@ describe("App", () => {
 
   it("tab with an empty input moves the scroll focus to the executor panel", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     for (let i = 1; i <= 60; i += 1) {
       store.executor.session({ type: "text", text: `exec ${i}` });
@@ -495,7 +507,7 @@ describe("App", () => {
   it("ctrl+c triggers the SIGINT shutdown path", async () => {
     const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
     const { store, props } = buildHarness();
-    const { stdin, unmount } = render(<App {...props} />);
+    const { stdin, unmount } = await renderApp(props);
 
     await type(stdin, CTRL_C);
     await eventually(() => {
@@ -509,7 +521,7 @@ describe("App", () => {
 
   it("edits the command line: typing, backspace, cursor moves", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await type(stdin, "/mo");
     await eventually(() => {
@@ -540,7 +552,7 @@ describe("App", () => {
 
   it("shows the slash-command menu with summaries and navigates it with the arrows", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await type(stdin, "/");
     await eventually(() => {
@@ -568,7 +580,7 @@ describe("App", () => {
 
   it("tab completes the highlighted command prefix", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await type(stdin, "/da");
     await type(stdin, "\t");
@@ -582,7 +594,7 @@ describe("App", () => {
 
   it("enter runs the highlighted command even from a shorter prefix", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await type(stdin, "/exe");
     await type(stdin, ENTER);
@@ -596,7 +608,7 @@ describe("App", () => {
 
   it("enter runs the exact command typed, not the first suggestion sharing its prefix", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await type(stdin, "/task");
     await type(stdin, ENTER);
@@ -611,7 +623,7 @@ describe("App", () => {
 
   it("switches views with slash commands and shows the view name in the hint line", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     expect(lastFrame()).toContain("dashboard · /help");
 
@@ -647,7 +659,7 @@ describe("App", () => {
 
   it("recalls history with the arrow keys", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/tasks");
     await submit(stdin, "/help");
@@ -674,7 +686,7 @@ describe("App", () => {
 
   it("/memory shows recent entries and /memory <query> searches", async () => {
     const { store, props, recent, search } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/memory");
     await eventually(() => {
@@ -699,7 +711,7 @@ describe("App", () => {
 
   it("/pause shows a notice and the pausing state in the header", async () => {
     const { store, props, monitorControl, executorControl } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/pause");
     await flushed(store);
@@ -728,7 +740,7 @@ describe("App", () => {
 
   it("boots paused: shows the hint notice and /start wakes both agents", async () => {
     const { store, props, monitorControl, executorControl } = buildHarness("paused");
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     const frame = lastFrame() ?? "";
     expect(frame).toContain("agents are paused — run /start to wake them");
@@ -752,7 +764,7 @@ describe("App", () => {
 
   it("/task adds a manual task and wakes the executor", async () => {
     const { store, props, addTasks, notify } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/task Fix the deploy pipeline");
 
@@ -773,7 +785,7 @@ describe("App", () => {
 
   it("unknown commands produce an error notice and plain text is ignored", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/nope");
     await eventually(() => {
@@ -791,7 +803,10 @@ describe("App", () => {
 
   it("the notice disappears after the configured timeout", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} noticeTimeoutMs={40} />);
+    const { lastFrame, stdin, unmount } = await renderApp({
+      ...props,
+      noticeTimeoutMs: 40,
+    });
 
     await submit(stdin, "/nope");
     await eventually(() => {
@@ -808,7 +823,7 @@ describe("App", () => {
 
   it("/exit requests a graceful shutdown", async () => {
     const { store, props, requestExit } = buildHarness();
-    const { stdin, unmount } = render(<App {...props} />);
+    const { stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/exit");
     await eventually(() => {
@@ -821,7 +836,7 @@ describe("App", () => {
 
   it("/config shows the current configuration", async () => {
     const { store, props } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/config");
 
@@ -845,7 +860,7 @@ describe("App", () => {
     await writeFile(settingsFile, '{"monitor":{"intervalMinutes":5}}\n', "utf8");
     const { store, props } = buildHarness();
     const settings = createSettingsController({ config: props.config, settingsFile });
-    const { lastFrame, stdin, unmount } = render(<App {...props} settings={settings} />);
+    const { lastFrame, stdin, unmount } = await renderApp({ ...props, settings });
 
     expect(lastFrame()).toContain("opus · high");
 
@@ -872,7 +887,7 @@ describe("App", () => {
     await writeFile(settingsFile, "{}\n", "utf8");
     const { store, props } = buildHarness();
     const settings = createSettingsController({ config: props.config, settingsFile });
-    const { lastFrame, stdin, unmount } = render(<App {...props} settings={settings} />);
+    const { lastFrame, stdin, unmount } = await renderApp({ ...props, settings });
 
     await submit(stdin, "/interval 2");
 
@@ -890,7 +905,7 @@ describe("App", () => {
 
   it("/prompt opens the editor and Ctrl+D saves the file", async () => {
     const { store, props, prompts } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/prompt monitor");
 
@@ -923,7 +938,7 @@ describe("App", () => {
 
   it("/prompt closed with Esc writes nothing", async () => {
     const { store, props, prompts } = buildHarness();
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/prompt executor");
     await type(stdin, "scratch edits");
@@ -941,7 +956,7 @@ describe("App", () => {
   it("/prompt save failures surface as an error notice", async () => {
     const { store, props, prompts } = buildHarness();
     prompts.write.mockRejectedValue(new Error("disk full"));
-    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+    const { lastFrame, stdin, unmount } = await renderApp(props);
 
     await submit(stdin, "/prompt monitor");
     await type(stdin, CTRL_D);
