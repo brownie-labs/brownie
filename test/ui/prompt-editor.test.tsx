@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { PromptEditor, type PromptEditorProps } from "../../src/ui/prompt-editor.js";
-import { eventually, inputReady } from "../helpers.js";
+import { eventually, inputReady, makeStdinLossless } from "../helpers.js";
 
 const ARROW_UP = "\u001B[A";
 const ARROW_DOWN = "\u001B[B";
@@ -32,6 +32,7 @@ async function editor(overrides: Partial<PromptEditorProps> = {}) {
       {...overrides}
     />,
   );
+  makeStdinLossless(rendered.stdin);
   await inputReady(rendered.stdin);
   const type = async (data: string) => {
     rendered.stdin.write(data);

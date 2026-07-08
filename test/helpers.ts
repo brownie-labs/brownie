@@ -96,8 +96,17 @@ class FakeStdin extends EventEmitter {
   isTTY = true;
   private data: string | null = null;
 
+  constructor() {
+    super();
+    this.on("newListener", (eventName: string) => {
+      if (eventName === "readable" && this.data !== null) {
+        queueMicrotask(() => this.emit("readable"));
+      }
+    });
+  }
+
   write(data: string): void {
-    this.data = data;
+    this.data = this.data === null ? data : this.data + data;
     this.emit("readable");
     this.emit("data", data);
   }
@@ -162,6 +171,27 @@ export function inputReady(stdin: {
   return eventually(() => {
     if (stdin.listenerCount("readable") === 0 && stdin.listenerCount("data") === 0) {
       throw new Error("input is not attached yet");
+    }
+  });
+}
+
+interface BufferingStdin {
+  data: string | null;
+  write(data: string): void;
+  emit(eventName: string): boolean;
+  on(eventName: string, listener: (eventName: string) => void): unknown;
+}
+
+export function makeStdinLossless(stdin: object): void {
+  const target = stdin as BufferingStdin;
+  const write = target.write.bind(target);
+  target.write = (data: string) => {
+    const pending = target.data;
+    write(pending == null ? data : pending + data);
+  };
+  target.on("newListener", (eventName) => {
+    if (eventName === "readable" && target.data != null) {
+      queueMicrotask(() => target.emit("readable"));
     }
   });
 }

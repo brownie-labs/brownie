@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { Wizard, type WizardProps } from "../../src/ui/wizard.js";
-import { eventually, inputReady } from "../helpers.js";
+import { eventually, inputReady, makeStdinLossless } from "../helpers.js";
 
 const ESCAPE = "\u001B";
 const CTRL_D = "\u0004";
@@ -13,6 +13,7 @@ async function tick(): Promise<void> {
 async function wizard(overrides: Partial<WizardProps> = {}) {
   const onComplete = vi.fn();
   const rendered = render(<Wizard onComplete={onComplete} {...overrides} />);
+  makeStdinLossless(rendered.stdin);
   await inputReady(rendered.stdin);
   const type = async (data: string) => {
     rendered.stdin.write(data);

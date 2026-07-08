@@ -13,6 +13,7 @@ import {
   createTempDir,
   eventually,
   inputReady,
+  makeStdinLossless,
   removeTempDir,
 } from "../helpers.js";
 
@@ -150,6 +151,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
 
 async function renderApp(props: AppProps) {
   const rendered = render(<App {...props} />);
+  makeStdinLossless(rendered.stdin);
   await inputReady(rendered.stdin);
   return rendered;
 }
