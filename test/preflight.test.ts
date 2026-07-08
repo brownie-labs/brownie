@@ -13,6 +13,17 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
+const sqliteProbe = vi.hoisted(() => ({ error: undefined as Error | undefined }));
+
+vi.mock("node:sqlite", () => ({
+  DatabaseSync: class {
+    exec(): void {
+      if (sqliteProbe.error) throw sqliteProbe.error;
+    }
+    close = (): undefined => undefined;
+  },
+}));
+
 const { ensureReady } = await import("../src/preflight.js");
 
 describe("ensureReady", () => {
@@ -40,6 +51,7 @@ describe("ensureReady", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     restoreEnv();
+    sqliteProbe.error = undefined;
     await removeTempDir(dir);
   });
 
@@ -71,6 +83,13 @@ describe("ensureReady", () => {
   it("throws with a configure hint when a prompt file is missing", async () => {
     await removeTempDir(join(dir, ".brownie", "prompts"));
     await expect(ensureReady(dirs())).rejects.toThrow(/interactive terminal/);
+  });
+
+  it("throws with a Node build hint when SQLite lacks FTS5", async () => {
+    sqliteProbe.error = new Error("no such module: fts5");
+    await expect(ensureReady(dirs())).rejects.toThrow(
+      /Preflight failed[\s\S]*FTS5[\s\S]*nodejs\.org/,
+    );
   });
 
   it("throws when the settings file is missing", async () => {

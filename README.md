@@ -12,7 +12,7 @@
   <a href="https://www.npmjs.com/package/@brownie-labs/brownie"><img alt="npm" src="https://img.shields.io/npm/v/%40brownie-labs%2Fbrownie?logo=npm&color=CB3837"></a>
   <a href="https://github.com/brownie-labs/brownie/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/brownie-labs/brownie/ci.yml?branch=main&logo=github&label=CI"></a>
   <a href="https://github.com/brownie-labs/brownie/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white">
+  <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522.16-339933?logo=node.js&logoColor=white">
 </p>
 
 <p align="center">
@@ -77,7 +77,7 @@ Full examples and prompt-writing tips: [docs/prompts.md](https://github.com/brow
 
 ## Quick start
 
-You need Node.js ≥ 22.13 and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
+You need Node.js ≥ 22.16 (an official build — brownie's long-term memory needs SQLite with FTS5) and the [Claude Code CLI](https://claude.com/claude-code) (`claude`) installed and logged in.
 
 ```bash
 npm install -g @brownie-labs/brownie

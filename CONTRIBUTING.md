@@ -4,7 +4,7 @@ Thanks for helping the sprite! Contributions of all kinds are welcome — bug re
 
 ## Setup
 
-- Node.js ≥ 22.13 and [pnpm](https://pnpm.io) (`corepack enable` is enough)
+- Node.js ≥ 22.16 and [pnpm](https://pnpm.io) (`corepack enable` is enough)
 - `pnpm install`
 - `pnpm dev` starts brownie in watch mode (tsx); `pnpm start` runs it once
 

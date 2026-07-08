@@ -1,6 +1,7 @@
 import { constants } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   COMMAND,
   PROMPT_FILE_LABELS,
@@ -14,6 +15,8 @@ import { projectPaths } from "./paths.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
 const CONFIGURE_HINT = "run brownie in an interactive terminal to complete setup";
+const FTS5_HINT =
+  "this Node.js build ships node:sqlite without the FTS5 extension — use Node.js >= 22.16 from nodejs.org (or any build compiled with SQLITE_ENABLE_FTS5)";
 
 interface Check {
   label: string;
@@ -53,6 +56,21 @@ async function checkClaude(): Promise<Check> {
   );
 }
 
+function checkSqliteFts5(): Check {
+  let ok = true;
+  try {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec("CREATE VIRTUAL TABLE probe USING fts5(content)");
+    } finally {
+      db.close();
+    }
+  } catch {
+    ok = false;
+  }
+  return check("SQLite FTS5 (long-term memory)", ok, FTS5_HINT);
+}
+
 function checkSettingsFile(path: string): Check {
   return check(
     `settings file (${path})`,
@@ -74,6 +92,7 @@ export async function ensureReady(dirs: ConfigDirs = {}): Promise<WorkerPromptPa
 
   const checks = await Promise.all([
     checkClaude(),
+    Promise.resolve(checkSqliteFts5()),
     Promise.resolve(checkSettingsFile(projectPaths(dirs.projectDir).settingsFile)),
     checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
     checkFile(

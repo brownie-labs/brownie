@@ -23,6 +23,12 @@ async function press(io: FakeStdio, data: string): Promise<void> {
   await tick();
 }
 
+async function expectFrame(io: FakeStdio, text: string): Promise<void> {
+  await vi.waitFor(() => {
+    expect(io.lastFrame()).toContain(text);
+  }, 5_000);
+}
+
 describe("runConfigure", () => {
   let dir: string;
   let io: FakeStdio;
@@ -47,13 +53,12 @@ describe("runConfigure", () => {
 
   it("writes default settings, both prompts, and the gitignore", async () => {
     const done = runConfigure(dir, io);
-    await tick();
 
-    expect(io.lastFrame()).toContain("What should the monitor watch?");
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, "watch GitHub issues");
     await press(io, CTRL_D);
 
-    expect(io.lastFrame()).toContain("Who is the executor");
+    await expectFrame(io, "Who is the executor");
     await press(io, "# Role\rBe diligent\r\n- rule one");
     await press(io, CTRL_D);
 
@@ -71,8 +76,9 @@ describe("runConfigure", () => {
     await writeFile(gitignorePath, "custom\n", "utf8");
 
     const done = runConfigure(dir, io);
-    await tick();
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, CTRL_D);
+    await expectFrame(io, "Who is the executor");
     await press(io, CTRL_D);
 
     await expect(done).resolves.toBe(true);
@@ -88,11 +94,10 @@ describe("runConfigure", () => {
     });
 
     const done = runConfigure(dir, io);
-    await tick();
 
-    expect(io.lastFrame()).toContain("existing monitor prompt");
+    await expectFrame(io, "existing monitor prompt");
     await press(io, CTRL_D);
-    expect(io.lastFrame()).toContain("existing executor prompt");
+    await expectFrame(io, "existing executor prompt");
     await press(io, CTRL_D);
 
     await expect(done).resolves.toBe(true);
@@ -102,7 +107,7 @@ describe("runConfigure", () => {
 
   it("cancelling the first step writes no files", async () => {
     const done = runConfigure(dir, io);
-    await tick();
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, "half-typed");
     await press(io, ESCAPE);
     await tick();
@@ -115,9 +120,10 @@ describe("runConfigure", () => {
 
   it("cancelling the second step writes no files", async () => {
     const done = runConfigure(dir, io);
-    await tick();
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, "watch things");
     await press(io, CTRL_D);
+    await expectFrame(io, "Who is the executor");
     await press(io, ESCAPE);
     await tick();
 
@@ -128,10 +134,10 @@ describe("runConfigure", () => {
 
   it("does not submit an empty editor", async () => {
     const done = runConfigure(dir, io);
-    await tick();
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, CTRL_D);
 
-    expect(io.lastFrame()).toContain("enter at least one line");
+    await expectFrame(io, "enter at least one line");
     expect(io.lastFrame()).toContain("What should the monitor watch?");
 
     await press(io, ESCAPE);
@@ -143,9 +149,10 @@ describe("runConfigure", () => {
     vi.spyOn(process, "cwd").mockReturnValue(dir);
 
     const done = runConfigure(undefined, io);
-    await tick();
+    await expectFrame(io, "What should the monitor watch?");
     await press(io, "watch");
     await press(io, CTRL_D);
+    await expectFrame(io, "Who is the executor");
     await press(io, "execute");
     await press(io, CTRL_D);
 
