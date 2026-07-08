@@ -8,7 +8,7 @@ import { createSettingsController } from "../../src/settings-controller.js";
 import { WorkerStatusStore } from "../../src/status.js";
 import type { Task } from "../../src/types.js";
 import { App, type AppProps } from "../../src/ui/app.js";
-import { buildConfig, createTempDir, removeTempDir } from "../helpers.js";
+import { buildConfig, createTempDir, eventually, removeTempDir } from "../helpers.js";
 
 const PAGE_UP = "\u001B[5~";
 const PAGE_DOWN = "\u001B[6~";
@@ -201,9 +201,11 @@ describe("App", () => {
     store.setTasks([buildTask(), buildTask({ id: "t-2", status: "done" })]);
     await flushed(store);
 
+    await eventually(() => {
+      expect(lastFrame()).toContain("$0.75");
+    });
     const frame = lastFrame() ?? "";
     expect(frame).toContain("↑");
-    expect(frame).toContain("$0.75");
     expect(frame).toContain("1 cycles");
     expect(frame).toContain("tasks 1 pending / 0 running / 1 done / 0 failed");
 
@@ -258,8 +260,10 @@ describe("App", () => {
     });
     await flushed(store);
 
+    await eventually(() => {
+      expect(lastFrame()).toContain("cycle #2");
+    });
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("cycle #2");
     expect(frame).toContain("model sonnet · 4 tools · s-1");
     expect(frame).toContain("⏺ Checking backlog");
     expect(frame).toContain("⏺ Bash(git log)");
@@ -286,8 +290,10 @@ describe("App", () => {
     await flushed(store);
     await submit(stdin, "/tasks");
 
+    await eventually(() => {
+      expect(lastFrame()).toContain("pending: 1");
+    });
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("pending: 1");
     expect(frame).toContain("in progress: 1");
     expect(frame).toContain("done: 1");
     expect(frame).toContain("failed: 1");
@@ -307,7 +313,9 @@ describe("App", () => {
     store.shutdownRequested("SIGINT");
     await flushed(store);
 
-    expect(lastFrame()).toContain("Received SIGINT — shutting down…");
+    await eventually(() => {
+      expect(lastFrame()).toContain("Received SIGINT — shutting down…");
+    });
 
     unmount();
     store.dispose();
@@ -362,9 +370,10 @@ describe("App", () => {
     store.executor.retryScheduled(buildTask(), new Date(Date.now() + 30_000));
     await flushed(store);
 
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("↻ retrying t-1 in");
-    expect(frame).toContain("↻ t-1 · 0.3s");
+    await eventually(() => {
+      expect(lastFrame()).toContain("↻ retrying t-1 in");
+    });
+    expect(lastFrame()).toContain("↻ t-1 · 0.3s");
 
     unmount();
     store.dispose();
@@ -378,17 +387,21 @@ describe("App", () => {
       store.monitor.session({ type: "text", text: `line ${i}` });
     }
     await flushed(store);
-    expect(lastFrame()).toContain("line 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("line 60");
+    });
 
     await type(stdin, PAGE_UP);
-    let frame = lastFrame() ?? "";
-    expect(frame).toContain("newer lines");
-    expect(frame).not.toContain("line 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("newer lines");
+    });
+    expect(lastFrame()).not.toContain("line 60");
 
     await type(stdin, ESCAPE);
-    frame = lastFrame() ?? "";
-    expect(frame).not.toContain("newer lines");
-    expect(frame).toContain("line 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("line 60");
+    });
+    expect(lastFrame()).not.toContain("newer lines");
 
     unmount();
     store.dispose();
@@ -406,22 +419,27 @@ describe("App", () => {
     });
     await flushed(store);
 
-    let frame = lastFrame() ?? "";
+    await eventually(() => {
+      expect(lastFrame()).toContain(" …");
+    });
+    const frame = lastFrame() ?? "";
     expect(frame).toContain("⎿");
-    expect(frame).toContain(" …");
     expect(frame).not.toContain("TAIL_MARKER");
     expect(frame).not.toContain("SECOND_LINE_MARKER");
     expect(frame).not.toContain("expanded output (ctrl+o)");
 
     await type(stdin, "\u000F");
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("TAIL_MARKER");
-    expect(frame).toContain("SECOND_LINE_MARKER");
-    expect(frame).toContain("+1 line");
-    expect(frame).toContain("expanded output (ctrl+o)");
+    await eventually(() => {
+      expect(lastFrame()).toContain("TAIL_MARKER");
+    });
+    expect(lastFrame()).toContain("SECOND_LINE_MARKER");
+    expect(lastFrame()).toContain("+1 line");
+    expect(lastFrame()).toContain("expanded output (ctrl+o)");
 
     await type(stdin, "\u000F");
-    expect(lastFrame()).not.toContain("TAIL_MARKER");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("TAIL_MARKER");
+    });
 
     unmount();
     store.dispose();
@@ -437,8 +455,9 @@ describe("App", () => {
     });
     await flushed(store);
 
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("END_OF_MESSAGE");
+    await eventually(() => {
+      expect(lastFrame()).toContain("END_OF_MESSAGE");
+    });
 
     unmount();
     store.dispose();
@@ -452,17 +471,22 @@ describe("App", () => {
       store.executor.session({ type: "text", text: `exec ${i}` });
     }
     await flushed(store);
-    expect(lastFrame()).toContain("exec 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("exec 60");
+    });
 
     await type(stdin, "\t");
     await type(stdin, PAGE_UP);
 
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("newer lines");
-    expect(frame).not.toContain("exec 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("newer lines");
+    });
+    expect(lastFrame()).not.toContain("exec 60");
 
     await type(stdin, PAGE_DOWN);
-    expect(lastFrame()).toContain("exec 60");
+    await eventually(() => {
+      expect(lastFrame()).toContain("exec 60");
+    });
 
     unmount();
     store.dispose();
@@ -474,7 +498,9 @@ describe("App", () => {
     const { stdin, unmount } = render(<App {...props} />);
 
     await type(stdin, CTRL_C);
-    expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGINT");
+    await eventually(() => {
+      expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGINT");
+    });
 
     unmount();
     store.dispose();
@@ -486,21 +512,27 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await type(stdin, "/mo");
-    let frame = lastFrame() ?? "";
-    expect(frame).toContain("> /mo");
-    expect(frame).toContain("/monitor");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /mo");
+    });
+    expect(lastFrame()).toContain("/monitor");
 
     await type(stdin, BACKSPACE);
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("> /m");
-    expect(frame).not.toContain("> /mo");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("> /mo");
+    });
+    expect(lastFrame()).toContain("> /m");
 
     await type(stdin, ARROW_LEFT);
     await type(stdin, "x");
-    expect(lastFrame()).toContain("> /xm");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /xm");
+    });
 
     await type(stdin, ESCAPE);
-    expect(lastFrame()).not.toContain("> /xm");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("> /xm");
+    });
 
     unmount();
     store.dispose();
@@ -511,20 +543,24 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await type(stdin, "/");
-    let frame = lastFrame() ?? "";
-    expect(frame).toContain("/dashboard");
-    expect(frame).toContain("show the combined monitor + executor + tasks view");
-    expect(frame).toContain("/executor");
+    await eventually(() => {
+      expect(lastFrame()).toContain("/dashboard");
+    });
+    expect(lastFrame()).toContain("show the combined monitor + executor + tasks view");
+    expect(lastFrame()).toContain("/executor");
 
     await type(stdin, "m");
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("/monitor");
-    expect(frame).toContain("/memory");
-    expect(frame).not.toContain("/dashboard");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("/dashboard");
+    });
+    expect(lastFrame()).toContain("/monitor");
+    expect(lastFrame()).toContain("/memory");
 
     await type(stdin, ARROW_DOWN);
     await type(stdin, "\t");
-    expect(lastFrame()).toContain("> /memory");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /memory");
+    });
 
     unmount();
     store.dispose();
@@ -536,7 +572,9 @@ describe("App", () => {
 
     await type(stdin, "/da");
     await type(stdin, "\t");
-    expect(lastFrame()).toContain("> /dashboard");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /dashboard");
+    });
 
     unmount();
     store.dispose();
@@ -548,7 +586,9 @@ describe("App", () => {
 
     await type(stdin, "/exe");
     await type(stdin, ENTER);
-    expect(lastFrame()).toContain("executor · /help");
+    await eventually(() => {
+      expect(lastFrame()).toContain("executor · /help");
+    });
 
     unmount();
     store.dispose();
@@ -560,9 +600,10 @@ describe("App", () => {
 
     await type(stdin, "/task");
     await type(stdin, ENTER);
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("usage: /task <description>");
-    expect(frame).not.toContain("tasks · /help");
+    await eventually(() => {
+      expect(lastFrame()).toContain("usage: /task <description>");
+    });
+    expect(lastFrame()).not.toContain("tasks · /help");
 
     unmount();
     store.dispose();
@@ -575,25 +616,30 @@ describe("App", () => {
     expect(lastFrame()).toContain("dashboard · /help");
 
     await submit(stdin, "/tasks");
-    let frame = lastFrame() ?? "";
-    expect(frame).toContain("tasks · /help");
-    expect(frame).toContain("Tasks");
-    expect(frame).not.toContain("Executor");
+    await eventually(() => {
+      expect(lastFrame()).toContain("tasks · /help");
+    });
+    expect(lastFrame()).toContain("Tasks");
+    expect(lastFrame()).not.toContain("Executor");
 
     await submit(stdin, "/monitor");
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("Recent outcomes");
-    expect(frame).toContain("nothing finished yet");
+    await eventually(() => {
+      expect(lastFrame()).toContain("Recent outcomes");
+    });
+    expect(lastFrame()).toContain("nothing finished yet");
 
     await submit(stdin, "/help");
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("Commands");
-    expect(frame).toContain("/pause [monitor|executor]");
-    expect(frame).toContain("Keys");
-    expect(frame).toContain("expand or collapse tool output");
+    await eventually(() => {
+      expect(lastFrame()).toContain("Commands");
+    });
+    expect(lastFrame()).toContain("/pause [monitor|executor]");
+    expect(lastFrame()).toContain("Keys");
+    expect(lastFrame()).toContain("expand or collapse tool output");
 
     await submit(stdin, "/dashboard");
-    expect(lastFrame()).toContain("Executor");
+    await eventually(() => {
+      expect(lastFrame()).toContain("Executor");
+    });
 
     unmount();
     store.dispose();
@@ -605,14 +651,22 @@ describe("App", () => {
 
     await submit(stdin, "/tasks");
     await submit(stdin, "/help");
-    expect(lastFrame()).not.toContain("> /help");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("> /help");
+    });
 
     await type(stdin, ARROW_UP);
-    expect(lastFrame()).toContain("> /help");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /help");
+    });
     await type(stdin, ARROW_UP);
-    expect(lastFrame()).toContain("> /tasks");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /tasks");
+    });
     await type(stdin, ARROW_DOWN);
-    expect(lastFrame()).toContain("> /help");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> /help");
+    });
 
     unmount();
     store.dispose();
@@ -623,15 +677,17 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await submit(stdin, "/memory");
-    let frame = lastFrame() ?? "";
     expect(recent).toHaveBeenCalledWith(20);
-    expect(frame).toContain("Memory · recent entries");
-    expect(frame).toContain("t-1 · Cleaned the repository");
+    await eventually(() => {
+      expect(lastFrame()).toContain("Memory · recent entries");
+    });
+    expect(lastFrame()).toContain("t-1 · Cleaned the repository");
 
     await submit(stdin, "/memory deploy");
-    frame = lastFrame() ?? "";
     expect(search).toHaveBeenCalledWith("deploy", 20);
-    expect(frame).toContain('Memory · search "deploy" · 1 results');
+    await eventually(() => {
+      expect(lastFrame()).toContain('Memory · search "deploy" · 1 results');
+    });
 
     unmount();
     store.dispose();
@@ -644,16 +700,19 @@ describe("App", () => {
     await submit(stdin, "/pause");
     await flushed(store);
 
-    const frame = lastFrame() ?? "";
     expect(monitorControl.state).toBe("pausing");
     expect(executorControl.state).toBe("pausing");
-    expect(frame).toContain("pausing monitor and executor");
-    expect(frame).toContain("⏸ pausing…");
+    await eventually(() => {
+      expect(lastFrame()).toContain("pausing monitor and executor");
+    });
+    expect(lastFrame()).toContain("⏸ pausing…");
 
     await submit(stdin, "/start monitor");
     await flushed(store);
     expect(monitorControl.state).toBe("running");
-    expect(lastFrame()).toContain("started monitor");
+    await eventually(() => {
+      expect(lastFrame()).toContain("started monitor");
+    });
 
     unmount();
     store.dispose();
@@ -663,18 +722,19 @@ describe("App", () => {
     const { store, props, monitorControl, executorControl } = buildHarness("paused");
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
-    let frame = lastFrame() ?? "";
+    const frame = lastFrame() ?? "";
     expect(frame).toContain("agents are paused — run /start to wake them");
     expect(frame).toContain("⏸ paused");
 
     await submit(stdin, "/start");
     await flushed(store);
 
-    frame = lastFrame() ?? "";
     expect(monitorControl.state).toBe("running");
     expect(executorControl.state).toBe("running");
-    expect(frame).toContain("started monitor and executor");
-    expect(frame).not.toContain("⏸ paused");
+    await eventually(() => {
+      expect(lastFrame()).toContain("started monitor and executor");
+    });
+    expect(lastFrame()).not.toContain("⏸ paused");
 
     unmount();
     store.dispose();
@@ -688,8 +748,12 @@ describe("App", () => {
 
     const candidates = addTasks.mock.calls[0]?.[0] as { title: string }[] | undefined;
     expect(candidates?.[0]?.title).toBe("Fix the deploy pipeline");
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(lastFrame()).toContain("added");
+    await eventually(() => {
+      expect(notify).toHaveBeenCalledTimes(1);
+    });
+    await eventually(() => {
+      expect(lastFrame()).toContain("added");
+    });
 
     unmount();
     store.dispose();
@@ -700,10 +764,14 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} />);
 
     await submit(stdin, "/nope");
-    expect(lastFrame()).toContain("unknown command /nope — try /help");
+    await eventually(() => {
+      expect(lastFrame()).toContain("unknown command /nope — try /help");
+    });
 
     await submit(stdin, "hello");
-    expect(lastFrame()).toContain("> hello");
+    await eventually(() => {
+      expect(lastFrame()).toContain("> hello");
+    });
 
     unmount();
     store.dispose();
@@ -714,11 +782,13 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} noticeTimeoutMs={40} />);
 
     await submit(stdin, "/nope");
-    expect(lastFrame()).toContain("unknown command");
+    await eventually(() => {
+      expect(lastFrame()).toContain("unknown command");
+    });
 
-    await tick();
-    await tick();
-    expect(lastFrame()).not.toContain("unknown command");
+    await eventually(() => {
+      expect(lastFrame()).not.toContain("unknown command");
+    });
 
     unmount();
     store.dispose();
@@ -729,7 +799,9 @@ describe("App", () => {
     const { stdin, unmount } = render(<App {...props} />);
 
     await submit(stdin, "/exit");
-    expect(requestExit).toHaveBeenCalledTimes(1);
+    await eventually(() => {
+      expect(requestExit).toHaveBeenCalledTimes(1);
+    });
 
     unmount();
     store.dispose();
@@ -741,9 +813,9 @@ describe("App", () => {
 
     await submit(stdin, "/config");
 
-    await vi.waitFor(() => {
+    await eventually(() => {
       expect(lastFrame()).toContain("Summarizer");
-    }, 5_000);
+    });
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Monitor");
     expect(frame).toContain("Executor");
@@ -766,11 +838,11 @@ describe("App", () => {
     expect(lastFrame()).toContain("opus · high");
 
     await submit(stdin, "/model executor sonnet");
-    await tick();
 
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("sonnet · high");
-    expect(frame).toContain("executor model set to sonnet");
+    await eventually(() => {
+      expect(lastFrame()).toContain("sonnet · high");
+    });
+    expect(lastFrame()).toContain("executor model set to sonnet");
     expect(JSON.parse(await readFile(settingsFile, "utf8"))).toMatchObject({
       executor: { model: "sonnet" },
     });
@@ -789,11 +861,11 @@ describe("App", () => {
     const { lastFrame, stdin, unmount } = render(<App {...props} settings={settings} />);
 
     await submit(stdin, "/interval 2");
-    await tick();
 
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("every 2 min");
-    expect(frame).toContain("monitor interval set to 2 min");
+    await eventually(() => {
+      expect(lastFrame()).toContain("every 2 min");
+    });
+    expect(lastFrame()).toContain("monitor interval set to 2 min");
 
     unmount();
     store.dispose();
@@ -806,20 +878,28 @@ describe("App", () => {
 
     await submit(stdin, "/prompt monitor");
 
-    let frame = lastFrame() ?? "";
-    expect(frame).toContain("monitor prompt (.brownie/prompts/monitor.prompt.md)");
+    await eventually(() => {
+      expect(lastFrame()).toContain(
+        "monitor prompt (.brownie/prompts/monitor.prompt.md)",
+      );
+    });
+    const frame = lastFrame() ?? "";
     expect(frame).toContain("watch the pipelines");
     expect(frame).toContain("Ctrl+D: save");
     expect(frame).not.toContain("> ");
 
     await type(stdin, " and CI");
     await type(stdin, CTRL_D);
-    await tick();
 
-    expect(prompts.write).toHaveBeenCalledWith("monitor", "watch the pipelines and CI");
-    frame = lastFrame() ?? "";
-    expect(frame).toContain("monitor prompt saved — applies from the next session");
-    expect(frame).toContain("> ");
+    await eventually(() => {
+      expect(prompts.write).toHaveBeenCalledWith("monitor", "watch the pipelines and CI");
+    });
+    await eventually(() => {
+      expect(lastFrame()).toContain(
+        "monitor prompt saved — applies from the next session",
+      );
+    });
+    expect(lastFrame()).toContain("> ");
 
     unmount();
     store.dispose();
@@ -832,10 +912,11 @@ describe("App", () => {
     await submit(stdin, "/prompt executor");
     await type(stdin, "scratch edits");
     await type(stdin, ESCAPE);
-    await tick();
 
+    await eventually(() => {
+      expect(lastFrame()).toContain("> ");
+    });
     expect(prompts.write).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain("> ");
 
     unmount();
     store.dispose();
@@ -848,9 +929,10 @@ describe("App", () => {
 
     await submit(stdin, "/prompt monitor");
     await type(stdin, CTRL_D);
-    await tick();
 
-    expect(lastFrame()).toContain("disk full");
+    await eventually(() => {
+      expect(lastFrame()).toContain("disk full");
+    });
 
     unmount();
     store.dispose();

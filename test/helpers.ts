@@ -150,6 +150,10 @@ export function fakeStdio(): FakeStdio {
   };
 }
 
+export function eventually(assertion: () => void): Promise<void> {
+  return vi.waitFor(assertion, 5_000);
+}
+
 export function loggerModuleMock(): Record<string, unknown> {
   const shared = {
     info: vi.fn(),

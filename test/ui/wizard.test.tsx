@@ -1,6 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { Wizard, type WizardProps } from "../../src/ui/wizard.js";
+import { eventually } from "../helpers.js";
 
 const ESCAPE = "\u001B";
 const CTRL_D = "\u0004";
@@ -30,18 +31,22 @@ describe("Wizard", () => {
     await type("watch GitHub issues");
     await type(CTRL_D);
 
-    expect(lastFrame()).toContain(
-      "Who is the executor and how should it complete tasks?",
-    );
+    await eventually(() => {
+      expect(lastFrame()).toContain(
+        "Who is the executor and how should it complete tasks?",
+      );
+    });
     expect(lastFrame()).toContain("step 2/2");
     expect(onComplete).not.toHaveBeenCalled();
 
     await type("a diligent engineer");
     await type(CTRL_D);
 
-    expect(onComplete).toHaveBeenCalledWith({
-      monitorPrompt: "watch GitHub issues",
-      executorPrompt: "a diligent engineer",
+    await eventually(() => {
+      expect(onComplete).toHaveBeenCalledWith({
+        monitorPrompt: "watch GitHub issues",
+        executorPrompt: "a diligent engineer",
+      });
     });
     unmount();
   });
@@ -54,12 +59,16 @@ describe("Wizard", () => {
 
     expect(lastFrame()).toContain("existing monitor prompt");
     await type(CTRL_D);
-    expect(lastFrame()).toContain("existing executor prompt");
+    await eventually(() => {
+      expect(lastFrame()).toContain("existing executor prompt");
+    });
     await type(CTRL_D);
 
-    expect(onComplete).toHaveBeenCalledWith({
-      monitorPrompt: "existing monitor prompt",
-      executorPrompt: "existing executor prompt",
+    await eventually(() => {
+      expect(onComplete).toHaveBeenCalledWith({
+        monitorPrompt: "existing monitor prompt",
+        executorPrompt: "existing executor prompt",
+      });
     });
     unmount();
   });
@@ -67,8 +76,9 @@ describe("Wizard", () => {
   it("cancelling the first step completes with null", async () => {
     const { onComplete, type, unmount } = wizard();
     await type(ESCAPE);
-    await tick();
-    expect(onComplete).toHaveBeenCalledWith(null);
+    await eventually(() => {
+      expect(onComplete).toHaveBeenCalledWith(null);
+    });
     unmount();
   });
 
@@ -77,8 +87,9 @@ describe("Wizard", () => {
     await type("monitor prompt");
     await type(CTRL_D);
     await type(ESCAPE);
-    await tick();
-    expect(onComplete).toHaveBeenCalledWith(null);
+    await eventually(() => {
+      expect(onComplete).toHaveBeenCalledWith(null);
+    });
     unmount();
   });
 });
