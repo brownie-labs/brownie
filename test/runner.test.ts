@@ -137,7 +137,7 @@ describe("runSession (integration with fake claude)", () => {
     expect(args[flagIndex + 1]).toBe("max");
   }, 15_000);
 
-  it("with mcpConfig passes it with --strict-mcp-config so the profile is excluded", async () => {
+  it("with mcpConfig passes it as an additive --mcp-config without --strict-mcp-config", async () => {
     const out = join(dir, "args-mcp.json");
     const mcpConfig = '{"mcpServers":{"memory":{"command":"node","args":[]}}}';
     const spec = buildSessionSpec(collector.sink, {
@@ -150,10 +150,10 @@ describe("runSession (integration with fake claude)", () => {
     const flagIndex = args.indexOf("--mcp-config");
     expect(flagIndex).toBeGreaterThanOrEqual(0);
     expect(args[flagIndex + 1]).toBe(mcpConfig);
-    expect(args).toContain("--strict-mcp-config");
+    expect(args).not.toContain("--strict-mcp-config");
   }, 15_000);
 
-  it("without mcpConfig still isolates MCP with an empty strict config", async () => {
+  it("without mcpConfig passes no MCP flags so the Claude Code configuration is inherited", async () => {
     const out = join(dir, "args-without-mcp.json");
     const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
@@ -161,10 +161,8 @@ describe("runSession (integration with fake claude)", () => {
     await runSession(spec, new AbortController().signal);
 
     const args = JSON.parse(await readFile(out, "utf8")) as string[];
-    const flagIndex = args.indexOf("--mcp-config");
-    expect(flagIndex).toBeGreaterThanOrEqual(0);
-    expect(args[flagIndex + 1]).toBe('{"mcpServers":{}}');
-    expect(args).toContain("--strict-mcp-config");
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("--strict-mcp-config");
     expect(args).not.toContain("--json-schema");
   }, 15_000);
 

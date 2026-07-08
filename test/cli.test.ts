@@ -150,7 +150,7 @@ describe("CLI start (smoke E2E)", () => {
     const mcpFlagIndex = executorArgs.indexOf("--mcp-config");
     expect(mcpFlagIndex).toBeGreaterThanOrEqual(0);
     expect(executorArgs[mcpFlagIndex + 1]).toContain(memoryDbPath);
-    expect(executorArgs).toContain("--strict-mcp-config");
+    expect(executorArgs).not.toContain("--strict-mcp-config");
 
     const summarizerPrompt = await readFile(join(dir, "summary-prompt.txt"), "utf8");
     expect(summarizerPrompt).toContain("ID: e2e-1");

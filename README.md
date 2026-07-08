@@ -69,7 +69,6 @@ Full examples and prompt-writing tips: [docs/prompts.md](docs/prompts.md).
 
 - 🔁 **Autonomous loop** — the monitor finds work, the executor does it; zero manual queuing (though `/task` adds work by hand).
 - 🧠 **Long-term memory** — SQLite + FTS5 exposed to the executor over MCP; the sprite learns from its own sessions.
-- 🔌 **MCP servers** — give the agents any MCP tools (GitHub, Playwright, …) per project with `brownie mcp add`, Claude-Code style.
 - 📺 **Interactive TUI** — a Claude-Code-style shell (Ink/React): live agent status, switchable views, slash commands.
 - ⏰ **Working hours** — a time window and days of the week (`08:00-18:00`, `mon-fri`); outside them the monitor rests.
 - 🔂 **Smart retries** — transient failures are retried, permanent ones fail fast; stalled tasks recover on restart.
@@ -136,16 +135,6 @@ Like Claude Code's `.claude/`, all per-project state lives in `.brownie/` inside
 ```
 
 All settings, the full directory layout, and what to commit: [docs/configuration.md](docs/configuration.md).
-
-## MCP servers
-
-Give the agents extra tools — GitHub, Playwright, an internal API — per project, the same way as `claude mcp add`:
-
-```bash
-brownie mcp add github --env GITHUB_PERSONAL_ACCESS_TOKEN=… -- npx -y @modelcontextprotocol/server-github
-```
-
-The executor also always gets brownie's built-in memory server. Transports, remote servers, how the agents receive them, and handling secrets: [docs/mcp.md](docs/mcp.md).
 
 ## Security & costs
 

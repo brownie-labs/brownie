@@ -61,7 +61,6 @@ export async function runMonitorLoop(
           sessionTimeoutMs: monitor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
           jsonSchema: TASK_REPORT_JSON_SCHEMA,
-          mcpConfig: monitor.mcpConfig,
           cwd: config.cwd,
           events: reporter.session,
         },

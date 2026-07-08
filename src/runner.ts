@@ -6,8 +6,6 @@ import type { EffortLevel, SessionFailureReason, SessionResult } from "./types.j
 
 const KILL_GRACE_MS = 5000;
 
-const EMPTY_MCP_CONFIG = '{"mcpServers":{}}';
-
 type KillReason = "timeout" | "abort";
 
 export interface SessionSpec {
@@ -46,7 +44,7 @@ export async function runSession(
     "bypassPermissions",
   ];
   if (spec.streamPartial) args.push("--include-partial-messages");
-  args.push("--mcp-config", spec.mcpConfig ?? EMPTY_MCP_CONFIG, "--strict-mcp-config");
+  if (spec.mcpConfig) args.push("--mcp-config", spec.mcpConfig);
   if (spec.jsonSchema) args.push("--json-schema", spec.jsonSchema);
 
   const child = spawn(spec.command, args, {

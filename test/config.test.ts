@@ -303,41 +303,11 @@ describe("loadWorkerConfig", () => {
     expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
   });
 
-  it("merges project MCP servers into the executor config and the monitor config", async () => {
-    await seedProject(dir);
-    await writeFile(
-      join(dir, ".brownie", "mcp.json"),
-      JSON.stringify({
-        mcpServers: { redmine: { command: "uvx", args: ["mcp-redmine"] } },
-      }),
-      "utf8",
-    );
-
-    const config = await loadWorkerConfig(dirs());
-
-    const executorMcp = JSON.parse(config.executor.mcpConfig) as {
-      mcpServers: Record<string, unknown>;
-    };
-    expect(Object.keys(executorMcp.mcpServers).sort()).toEqual(["memory", "redmine"]);
-    expect(executorMcp.mcpServers.redmine).toEqual({
-      command: "uvx",
-      args: ["mcp-redmine"],
-    });
-
-    const monitorMcp = JSON.parse(config.monitor.mcpConfig ?? "{}") as {
-      mcpServers: Record<string, unknown>;
-    };
-    expect(monitorMcp.mcpServers).toEqual({
-      redmine: { command: "uvx", args: ["mcp-redmine"] },
-    });
-  });
-
-  it("leaves the monitor without an MCP config when no project servers exist", async () => {
+  it("gives the executor only the memory MCP server", async () => {
     await seedProject(dir);
 
     const config = await loadWorkerConfig(dirs());
 
-    expect(config.monitor.mcpConfig).toBeUndefined();
     const executorMcp = JSON.parse(config.executor.mcpConfig) as {
       mcpServers: Record<string, unknown>;
     };

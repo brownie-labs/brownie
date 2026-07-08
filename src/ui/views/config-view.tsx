@@ -101,7 +101,7 @@ export function ConfigView({ config, height }: ConfigViewProps): JSX.Element {
         ),
       )}
       <Text dimColor wrap="truncate-end">
-        {"change with /model /effort /interval /hours /days · restart-only: mcp.json"}
+        {"change with /model /effort /interval /hours /days"}
       </Text>
     </Box>
   );
