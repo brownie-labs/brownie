@@ -741,10 +741,12 @@ describe("App", () => {
 
     await submit(stdin, "/config");
 
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Summarizer");
+    }, 5_000);
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Monitor");
     expect(frame).toContain("Executor");
-    expect(frame).toContain("Summarizer");
     expect(frame).toContain("every 5 min");
     expect(frame).toContain("max attempts");
     expect(frame).toContain("change with /model /effort /interval /hours /days");
