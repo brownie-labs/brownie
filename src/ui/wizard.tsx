@@ -16,9 +16,8 @@ export interface WizardProps {
 }
 
 const INTRO =
-  "The worker consists of two agents: the monitor cyclically detects work to be done " +
-  "and adds tasks to the list, while the executor completes tasks from the list — each in a separate session. " +
-  "Describe both below; paste markdown freely, every other setting starts with a sensible default.";
+  "the monitor finds tasks, the executor completes them. " +
+  "Describe both below — you can edit these prompts later with /prompt.";
 
 export function Wizard({
   initialMonitorPrompt,
