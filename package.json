@@ -5,7 +5,10 @@
   "type": "module",
   "license": "MIT",
   "author": "Dawid Chłodnicki",
-  "repository": "github:brownie-labs/brownie",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brownie-labs/brownie.git"
+  },
   "homepage": "https://github.com/brownie-labs/brownie#readme",
   "bugs": "https://github.com/brownie-labs/brownie/issues",
   "keywords": [
@@ -21,7 +24,7 @@
     "anthropic"
   ],
   "bin": {
-    "brownie": "./dist/index.js"
+    "brownie": "dist/index.js"
   },
   "files": [
     "dist",
