@@ -131,7 +131,7 @@ describe("brownie mcp", () => {
 
     expect(process.exitCode).toBe(1);
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining('run "brownie config"'),
+      expect.stringContaining("run brownie once to create it"),
     );
   });
 

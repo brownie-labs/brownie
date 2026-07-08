@@ -2,6 +2,10 @@ export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
+export const MODELS = ["haiku", "sonnet", "opus"] as const;
+
+export const MODELS_WITHOUT_EFFORT: ReadonlySet<string> = new Set(["haiku"]);
+
 export interface AgentConfig {
   model: string;
   effort: EffortLevel;
@@ -37,10 +41,10 @@ export interface WorkerConfig {
   summarizer: SummarizerConfig;
   streamPartial: boolean;
   cwd: string;
+  settingsFilePath: string;
   tasksFilePath: string;
   memoryDbPath: string;
   logsDir: string;
-  childEnv: NodeJS.ProcessEnv;
 }
 
 export type SessionFailureReason = "timeout" | "abort" | "isError" | "exit" | "spawn";

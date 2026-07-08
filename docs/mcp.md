@@ -4,7 +4,7 @@ Brownie's agents can use [MCP](https://modelcontextprotocol.io) servers you regi
 
 ## Commands
 
-`brownie mcp add|list|get|remove` operate on `.brownie/mcp.json` in the directory you run them from, so `.brownie/` must already exist — run `brownie config` first if it doesn't.
+`brownie mcp add|list|get|remove` operate on `.brownie/mcp.json` in the directory you run them from, so `.brownie/` must already exist — run `brownie` once to create it if it doesn't.
 
 | Command                     | Effect                             |
 | --------------------------- | ---------------------------------- |
@@ -63,7 +63,7 @@ Brownie hands the registered servers to the spawned Claude Code sessions via `--
 - **executor** — the `memory` server **plus** every server in `mcp.json`.
 - **monitor** — every server in `mcp.json` (no `memory`; it only reports tasks).
 
-Brownie passes `--strict-mcp-config`, so the agents use **only** these servers — the MCP servers configured in the underlying Claude Code profile (the one selected by [`claudeConfigDir`](configuration.md#claudeconfigdir)) are **not** loaded. `.brownie/mcp.json` is the single source of the agents' MCP tools; `claudeConfigDir` controls only which account/subscription is billed, never the toolset.
+Brownie passes `--strict-mcp-config`, so the agents use **only** these servers — the MCP servers configured in your Claude Code profile are **not** loaded. `.brownie/mcp.json` is the single source of the agents' MCP tools.
 
 Note: Claude Code still honours a server that you have explicitly disabled for the project (via `/mcp`), so a name in that project's `disabledMcpServers` stays off even when brownie supplies it here.
 

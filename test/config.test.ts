@@ -1,10 +1,8 @@
 import { writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   COMMAND,
-  expandHome,
   loadSettings,
   loadWorkerConfig,
   resolvePromptPaths,
@@ -16,27 +14,7 @@ import {
   removeTempDir,
   seedProject,
   seedSystemPrompts,
-  snapshotEnv,
 } from "./helpers.js";
-
-describe("expandHome", () => {
-  it("replaces a bare ~ with the home directory", () => {
-    expect(expandHome("~")).toBe(homedir());
-  });
-
-  it("expands ~/subpath", () => {
-    expect(expandHome("~/project")).toBe(resolve(homedir(), "project"));
-  });
-
-  it("leaves a path without ~ unchanged", () => {
-    expect(expandHome("/abs/path")).toBe("/abs/path");
-    expect(expandHome("relative/x")).toBe("relative/x");
-  });
-
-  it("does not expand ~ without a slash", () => {
-    expect(expandHome("~other")).toBe("~other");
-  });
-});
 
 describe("settingsSchema", () => {
   it("applies default values to an empty object", () => {
@@ -54,7 +32,6 @@ describe("settingsSchema", () => {
     expect(settings.summarizer.effort).toBe("medium");
     expect(settings.summarizer.sessionTimeoutMs).toBe(300_000);
     expect(settings.streamPartial).toBe(true);
-    expect(settings.claudeConfigDir).toBeUndefined();
   });
 
   it("rejects a non-positive monitor interval", () => {
@@ -135,7 +112,7 @@ describe("loadSettings", () => {
 
   it("throws with a configure hint when the file is missing", async () => {
     await expect(loadSettings(join(dir, "settings.json"))).rejects.toThrow(
-      /brownie config/,
+      /interactive terminal/,
     );
   });
 
@@ -196,16 +173,13 @@ describe("resolvePromptPaths", () => {
 describe("loadWorkerConfig", () => {
   let dir: string;
   let systemPromptsDir: string;
-  let restoreEnv: () => void;
 
   beforeEach(async () => {
     dir = await createTempDir();
     systemPromptsDir = await seedSystemPrompts(dir);
-    restoreEnv = snapshotEnv();
   });
 
   afterEach(async () => {
-    restoreEnv();
     await removeTempDir(dir);
   });
 
@@ -244,6 +218,7 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.effort).toBe("max");
     expect(config.summarizer.sessionTimeoutMs).toBe(90_000);
     expect(config.cwd).toBe(dir);
+    expect(config.settingsFilePath).toBe(join(dir, ".brownie", "settings.json"));
     expect(config.tasksFilePath).toBe(join(dir, ".brownie", "data", "tasks.json"));
     expect(config.memoryDbPath).toBe(join(dir, ".brownie", "data", "memory.db"));
     expect(config.logsDir).toBe(join(dir, ".brownie", "logs"));
@@ -326,33 +301,6 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.promptPath).toBe(verified.executor.promptPath);
     expect(config.executor.systemPromptPath).toBe(verified.executor.systemPromptPath);
     expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
-  });
-
-  it("expands ~ in claudeConfigDir and puts it into childEnv", async () => {
-    await seedProject(dir, { settings: { claudeConfigDir: "~/claude-profile" } });
-    delete process.env.CLAUDE_CONFIG_DIR;
-
-    const config = await loadWorkerConfig(dirs());
-
-    expect(config.childEnv.CLAUDE_CONFIG_DIR).toBe(resolve(homedir(), "claude-profile"));
-  });
-
-  it("prefers claudeConfigDir from settings over the inherited env var", async () => {
-    await seedProject(dir, { settings: { claudeConfigDir: "~/from-settings" } });
-    process.env.CLAUDE_CONFIG_DIR = "~/from-env";
-
-    const config = await loadWorkerConfig(dirs());
-
-    expect(config.childEnv.CLAUDE_CONFIG_DIR).toBe(resolve(homedir(), "from-settings"));
-  });
-
-  it("expands the inherited CLAUDE_CONFIG_DIR when settings leave it unset", async () => {
-    await seedProject(dir);
-    process.env.CLAUDE_CONFIG_DIR = "~/from-env";
-
-    const config = await loadWorkerConfig(dirs());
-
-    expect(config.childEnv.CLAUDE_CONFIG_DIR).toBe(resolve(homedir(), "from-env"));
   });
 
   it("merges project MCP servers into the executor config and the monitor config", async () => {

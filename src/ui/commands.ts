@@ -1,7 +1,18 @@
 import type { AgentController } from "../control.js";
 import type { TaskSummaryRecord } from "../memory/store.js";
-import type { NewTask, Task } from "../types.js";
+import {
+  PROMPT_AGENTS,
+  type PromptAgent,
+  type PromptFileAccess,
+} from "../prompt-files.js";
+import {
+  CONFIG_AGENTS,
+  parseConfigAgent,
+  type SettingsController,
+} from "../settings-controller.js";
+import { EFFORT_LEVELS, MODELS, type NewTask, type Task } from "../types.js";
 import type { Waker } from "../waker.js";
+import { formatInterval } from "./format.js";
 
 export type View =
   | { kind: "dashboard" }
@@ -9,6 +20,8 @@ export type View =
   | { kind: "executor" }
   | { kind: "tasks" }
   | { kind: "help" }
+  | { kind: "config" }
+  | { kind: "prompt"; agent: PromptAgent; content: string }
   | {
       kind: "memory";
       query?: string | undefined;
@@ -36,6 +49,8 @@ export interface CommandContext {
   executorControl: AgentControls;
   tasks: TaskControls;
   memory: MemoryReader;
+  settings: SettingsController;
+  prompts: Pick<PromptFileAccess, "read">;
   waker: Pick<Waker, "notify">;
   requestExit(): void;
   notice(text: string, tone?: NoticeTone): void;
@@ -63,6 +78,11 @@ function resolveAgents(args: string): AgentName[] | null {
 
 function agentControl(ctx: CommandContext, agent: AgentName): AgentControls {
   return agent === "monitor" ? ctx.monitorControl : ctx.executorControl;
+}
+
+function splitArgs(args: string): string[] {
+  const trimmed = args.trim();
+  return trimmed === "" ? [] : trimmed.split(/\s+/);
 }
 
 function joinNames(agents: readonly AgentName[]): string {
@@ -224,6 +244,127 @@ export const COMMANDS: readonly CommandSpec[] = [
           "error",
         );
       }
+    },
+  },
+  {
+    name: "model",
+    args: "<agent> <model>",
+    summary: "set the model for monitor, executor, or summarizer",
+    run: async (args, ctx) => {
+      const tokens = splitArgs(args);
+      const [agentRaw = "", model = ""] = tokens;
+      if (tokens.length !== 2) {
+        ctx.notice(
+          `usage: /model <${CONFIG_AGENTS.join("|")}> <${MODELS.join("|")}>`,
+          "error",
+        );
+        return;
+      }
+      const agent = parseConfigAgent(agentRaw);
+      await ctx.settings.setModel(agent, model);
+      ctx.notice(`${agent} model set to ${model} — applies from the next session`);
+    },
+  },
+  {
+    name: "effort",
+    args: "<agent> <level>",
+    summary: "set the reasoning effort for monitor, executor, or summarizer",
+    run: async (args, ctx) => {
+      const tokens = splitArgs(args);
+      const [agentRaw = "", effort = ""] = tokens;
+      if (tokens.length !== 2) {
+        ctx.notice(
+          `usage: /effort <${CONFIG_AGENTS.join("|")}> <${EFFORT_LEVELS.join("|")}>`,
+          "error",
+        );
+        return;
+      }
+      const agent = parseConfigAgent(agentRaw);
+      await ctx.settings.setEffort(agent, effort);
+      ctx.notice(`${agent} effort set to ${effort} — applies from the next session`);
+    },
+  },
+  {
+    name: "interval",
+    args: "<minutes>",
+    summary: "set how often the monitor looks for new tasks",
+    run: async (args, ctx) => {
+      const token = args.trim();
+      const minutes = Number(token.replace(",", "."));
+      if (token === "" || !Number.isFinite(minutes) || minutes <= 0) {
+        ctx.notice("usage: /interval <minutes>", "error");
+        return;
+      }
+      await ctx.settings.setIntervalMinutes(minutes);
+      ctx.notice(
+        `monitor interval set to ${formatInterval(minutes * 60_000)} — applies after the current cycle`,
+      );
+    },
+  },
+  {
+    name: "hours",
+    args: "<HH:MM-HH:MM|off>",
+    summary: "set the monitor working hours, or off to run 24/7",
+    run: async (args, ctx) => {
+      const spec = args.trim();
+      if (spec === "") {
+        ctx.notice(
+          "usage: /hours <HH:MM-HH:MM|off> — current values in /config",
+          "error",
+        );
+        return;
+      }
+      if (spec.toLowerCase() === "off") {
+        await ctx.settings.setActiveHours(null);
+        ctx.notice("monitor hours cleared — running 24/7");
+        return;
+      }
+      await ctx.settings.setActiveHours(spec);
+      ctx.notice(`monitor hours set to ${spec}`);
+    },
+  },
+  {
+    name: "days",
+    args: "<days|off>",
+    summary: "set the monitor working days (e.g. mon-fri), or off to run daily",
+    run: async (args, ctx) => {
+      const spec = args.trim();
+      if (spec === "") {
+        ctx.notice(
+          "usage: /days <days|off> (e.g. mon-fri,sun) — current values in /config",
+          "error",
+        );
+        return;
+      }
+      if (spec.toLowerCase() === "off") {
+        await ctx.settings.setActiveDays(null);
+        ctx.notice("monitor days cleared — running daily");
+        return;
+      }
+      await ctx.settings.setActiveDays(spec);
+      ctx.notice(`monitor days set to ${spec}`);
+    },
+  },
+  {
+    name: "prompt",
+    args: "<monitor|executor>",
+    summary: "view and edit an agent prompt — Ctrl+D saves, Esc closes",
+    run: async (args, ctx) => {
+      const raw = args.trim();
+      const agent = PROMPT_AGENTS.find((name) => name === raw);
+      if (agent === undefined) {
+        ctx.notice("usage: /prompt <monitor|executor>", "error");
+        return;
+      }
+      const content = await ctx.prompts.read(agent);
+      ctx.setView({ kind: "prompt", agent, content });
+    },
+  },
+  {
+    name: "config",
+    summary: "show the current configuration",
+    run: (_args, ctx) => {
+      ctx.setView({ kind: "config" });
     },
   },
   {

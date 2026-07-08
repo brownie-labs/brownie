@@ -26,6 +26,20 @@ function buildRecord(id: number): TaskSummaryRecord {
   };
 }
 
+function fakeSettings() {
+  return {
+    setModel: vi.fn().mockResolvedValue(undefined),
+    setEffort: vi.fn().mockResolvedValue(undefined),
+    setIntervalMinutes: vi.fn().mockResolvedValue(undefined),
+    setActiveHours: vi.fn().mockResolvedValue(undefined),
+    setActiveDays: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function fakePrompts() {
+  return { read: vi.fn().mockResolvedValue("prompt content") };
+}
+
 interface FakeContext {
   ctx: CommandContext;
   views: View[];
@@ -37,6 +51,8 @@ interface FakeContext {
   addTasks: ReturnType<typeof vi.fn>;
   recent: ReturnType<typeof vi.fn>;
   search: ReturnType<typeof vi.fn>;
+  settings: ReturnType<typeof fakeSettings>;
+  prompts: ReturnType<typeof fakePrompts>;
   notify: ReturnType<typeof vi.fn>;
   requestExit: ReturnType<typeof vi.fn>;
 }
@@ -53,6 +69,8 @@ function fakeContext(): FakeContext {
     .mockImplementation((tasks: unknown[]) => Promise.resolve(tasks));
   const recent = vi.fn().mockReturnValue([buildRecord(2), buildRecord(1)]);
   const search = vi.fn().mockReturnValue([buildRecord(3)]);
+  const settings = fakeSettings();
+  const prompts = fakePrompts();
   const notify = vi.fn();
   const requestExit = vi.fn();
   return {
@@ -65,6 +83,8 @@ function fakeContext(): FakeContext {
     addTasks,
     recent,
     search,
+    settings,
+    prompts,
     notify,
     requestExit,
     ctx: {
@@ -73,6 +93,8 @@ function fakeContext(): FakeContext {
       executorControl,
       tasks: { retry, cancel, addTasks },
       memory: { recent, search },
+      settings,
+      prompts,
       waker: { notify },
       requestExit,
       notice: (text, tone = "info") => notices.push({ text, tone }),
@@ -98,8 +120,12 @@ describe("parseCommand", () => {
 
 describe("suggestions", () => {
   it("lists every command matching the typed prefix, in registry order", () => {
-    expect(suggestions("/m").map((item) => item.name)).toEqual(["monitor", "memory"]);
-    expect(suggestions("/da").map((item) => item.name)).toEqual(["dashboard"]);
+    expect(suggestions("/m").map((item) => item.name)).toEqual([
+      "monitor",
+      "memory",
+      "model",
+    ]);
+    expect(suggestions("/da").map((item) => item.name)).toEqual(["dashboard", "days"]);
   });
 
   it("lists all commands for a bare slash", () => {
@@ -124,7 +150,8 @@ describe("suggestions", () => {
 describe("dispatchCommand", () => {
   it("switches views for the view commands", async () => {
     const { ctx, views } = fakeContext();
-    for (const line of ["/dashboard", "/monitor", "/executor", "/tasks", "/help"]) {
+    const lines = ["/dashboard", "/monitor", "/executor", "/tasks", "/config", "/help"];
+    for (const line of lines) {
       await dispatchCommand(line, ctx);
     }
     expect(views.map((view) => view.kind)).toEqual([
@@ -132,6 +159,7 @@ describe("dispatchCommand", () => {
       "monitor",
       "executor",
       "tasks",
+      "config",
       "help",
     ]);
   });
@@ -274,6 +302,157 @@ describe("dispatchCommand", () => {
     retry.mockRejectedValue(new Error("store unavailable"));
     await dispatchCommand("/retry t-1", ctx);
     expect(notices[0]).toEqual({ text: "store unavailable", tone: "error" });
+  });
+
+  it("/model sets the model of a single agent", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/model executor sonnet", ctx);
+    expect(settings.setModel).toHaveBeenCalledWith("executor", "sonnet");
+    expect(notices[0]).toEqual({
+      text: "executor model set to sonnet — applies from the next session",
+      tone: "info",
+    });
+  });
+
+  it("/model validates the argument count and the agent name", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/model executor", ctx);
+    await dispatchCommand("/model everything opus", ctx);
+    expect(settings.setModel).not.toHaveBeenCalled();
+    expect(notices[0]).toEqual({
+      text: "usage: /model <monitor|executor|summarizer> <haiku|sonnet|opus>",
+      tone: "error",
+    });
+    expect(notices[1]).toEqual({
+      text: 'unknown agent "everything" — use monitor, executor, summarizer',
+      tone: "error",
+    });
+  });
+
+  it("/model surfaces controller rejections as error notices", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    settings.setModel.mockRejectedValue(new Error('unknown model "gpt"'));
+    await dispatchCommand("/model monitor gpt", ctx);
+    expect(notices[0]).toEqual({ text: 'unknown model "gpt"', tone: "error" });
+  });
+
+  it("/effort sets the effort of a single agent", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/effort monitor high", ctx);
+    expect(settings.setEffort).toHaveBeenCalledWith("monitor", "high");
+    expect(notices[0]).toEqual({
+      text: "monitor effort set to high — applies from the next session",
+      tone: "info",
+    });
+  });
+
+  it("/effort requires an agent and a level", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/effort high", ctx);
+    expect(settings.setEffort).not.toHaveBeenCalled();
+    expect(notices[0]).toEqual({
+      text: "usage: /effort <monitor|executor|summarizer> <low|medium|high|xhigh|max>",
+      tone: "error",
+    });
+  });
+
+  it("/interval sets the monitor interval and accepts a decimal comma", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/interval 2,5", ctx);
+    expect(settings.setIntervalMinutes).toHaveBeenCalledWith(2.5);
+    expect(notices[0]).toEqual({
+      text: "monitor interval set to 2 min 30 s — applies after the current cycle",
+      tone: "info",
+    });
+  });
+
+  it("/interval rejects non-positive or missing values", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/interval", ctx);
+    await dispatchCommand("/interval zero", ctx);
+    await dispatchCommand("/interval -5", ctx);
+    expect(settings.setIntervalMinutes).not.toHaveBeenCalled();
+    for (const notice of notices) {
+      expect(notice).toEqual({ text: "usage: /interval <minutes>", tone: "error" });
+    }
+  });
+
+  it("/hours sets and clears the monitor working hours", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/hours 08:00-18:00", ctx);
+    await dispatchCommand("/hours off", ctx);
+    expect(settings.setActiveHours).toHaveBeenNthCalledWith(1, "08:00-18:00");
+    expect(settings.setActiveHours).toHaveBeenNthCalledWith(2, null);
+    expect(notices.map((notice) => notice.text)).toEqual([
+      "monitor hours set to 08:00-18:00",
+      "monitor hours cleared — running 24/7",
+    ]);
+  });
+
+  it("/hours without arguments shows usage", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/hours", ctx);
+    expect(settings.setActiveHours).not.toHaveBeenCalled();
+    expect(notices[0]).toEqual({
+      text: "usage: /hours <HH:MM-HH:MM|off> — current values in /config",
+      tone: "error",
+    });
+  });
+
+  it("/days sets and clears the monitor working days", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/days mon-fri", ctx);
+    await dispatchCommand("/days off", ctx);
+    expect(settings.setActiveDays).toHaveBeenNthCalledWith(1, "mon-fri");
+    expect(settings.setActiveDays).toHaveBeenNthCalledWith(2, null);
+    expect(notices.map((notice) => notice.text)).toEqual([
+      "monitor days set to mon-fri",
+      "monitor days cleared — running daily",
+    ]);
+  });
+
+  it("/days without arguments shows usage", async () => {
+    const { ctx, notices, settings } = fakeContext();
+    await dispatchCommand("/days", ctx);
+    expect(settings.setActiveDays).not.toHaveBeenCalled();
+    expect(notices[0]).toEqual({
+      text: "usage: /days <days|off> (e.g. mon-fri,sun) — current values in /config",
+      tone: "error",
+    });
+  });
+
+  it("/prompt opens the editor view with the file content", async () => {
+    const { ctx, views, prompts } = fakeContext();
+    await dispatchCommand("/prompt monitor", ctx);
+    expect(prompts.read).toHaveBeenCalledWith("monitor");
+    expect(views[0]).toEqual({
+      kind: "prompt",
+      agent: "monitor",
+      content: "prompt content",
+    });
+  });
+
+  it("/prompt validates the agent name", async () => {
+    const { ctx, notices, prompts } = fakeContext();
+    await dispatchCommand("/prompt", ctx);
+    await dispatchCommand("/prompt summarizer", ctx);
+    expect(prompts.read).not.toHaveBeenCalled();
+    for (const notice of notices) {
+      expect(notice).toEqual({
+        text: "usage: /prompt <monitor|executor>",
+        tone: "error",
+      });
+    }
+  });
+
+  it("/prompt surfaces read failures as error notices", async () => {
+    const { ctx, notices, prompts } = fakeContext();
+    prompts.read.mockRejectedValue(new Error("ENOENT: prompt file missing"));
+    await dispatchCommand("/prompt executor", ctx);
+    expect(notices[0]).toEqual({
+      text: "ENOENT: prompt file missing",
+      tone: "error",
+    });
   });
 });
 

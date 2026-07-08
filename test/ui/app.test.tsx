@@ -1,11 +1,14 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentController } from "../../src/control.js";
 import type { TaskSummaryRecord } from "../../src/memory/store.js";
+import { createSettingsController } from "../../src/settings-controller.js";
 import { WorkerStatusStore } from "../../src/status.js";
 import type { Task } from "../../src/types.js";
 import { App, type AppProps } from "../../src/ui/app.js";
-import { buildConfig } from "../helpers.js";
+import { buildConfig, createTempDir, removeTempDir } from "../helpers.js";
 
 const PAGE_UP = "\u001B[5~";
 const PAGE_DOWN = "\u001B[6~";
@@ -15,6 +18,7 @@ const ARROW_LEFT = "\u001B[D";
 const ESCAPE = "\u001B";
 const BACKSPACE = "\u007F";
 const CTRL_C = "\u0003";
+const CTRL_D = "\u0004";
 const ENTER = "\r";
 
 async function tick(): Promise<void> {
@@ -55,6 +59,23 @@ function buildRecord(overrides: Partial<TaskSummaryRecord> = {}): TaskSummaryRec
   };
 }
 
+function fakeSettingsController() {
+  return {
+    setModel: vi.fn().mockResolvedValue(undefined),
+    setEffort: vi.fn().mockResolvedValue(undefined),
+    setIntervalMinutes: vi.fn().mockResolvedValue(undefined),
+    setActiveHours: vi.fn().mockResolvedValue(undefined),
+    setActiveDays: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function fakePromptAccess() {
+  return {
+    read: vi.fn().mockResolvedValue("watch the pipelines"),
+    write: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 interface Harness {
   store: WorkerStatusStore;
   props: AppProps;
@@ -65,6 +86,8 @@ interface Harness {
   addTasks: ReturnType<typeof vi.fn>;
   recent: ReturnType<typeof vi.fn>;
   search: ReturnType<typeof vi.fn>;
+  settings: ReturnType<typeof fakeSettingsController>;
+  prompts: ReturnType<typeof fakePromptAccess>;
   notify: ReturnType<typeof vi.fn>;
   requestExit: ReturnType<typeof vi.fn>;
 }
@@ -87,6 +110,8 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
     .mockImplementation((tasks: unknown[]) => Promise.resolve(tasks));
   const recent = vi.fn().mockReturnValue([buildRecord()]);
   const search = vi.fn().mockReturnValue([buildRecord({ id: 2, taskId: "t-2" })]);
+  const settings = fakeSettingsController();
+  const prompts = fakePromptAccess();
   const notify = vi.fn();
   const requestExit = vi.fn();
   return {
@@ -98,6 +123,8 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
     addTasks,
     recent,
     search,
+    settings,
+    prompts,
     notify,
     requestExit,
     props: {
@@ -107,6 +134,8 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
       controls: { monitor: monitorControl, executor: executorControl },
       tasks: { retry, cancel, addTasks },
       memory: { recent, search },
+      settings,
+      prompts,
       waker: { notify },
       requestExit,
     },
@@ -701,6 +730,125 @@ describe("App", () => {
 
     await submit(stdin, "/exit");
     expect(requestExit).toHaveBeenCalledTimes(1);
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/config shows the current configuration", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await submit(stdin, "/config");
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("Monitor");
+    expect(frame).toContain("Executor");
+    expect(frame).toContain("Summarizer");
+    expect(frame).toContain("every 5 min");
+    expect(frame).toContain("max attempts");
+    expect(frame).toContain("change with /model /effort /interval /hours /days");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/model applies a live change so the header refreshes", async () => {
+    const dir = await createTempDir();
+    const settingsFile = join(dir, "settings.json");
+    await writeFile(settingsFile, '{"monitor":{"intervalMinutes":5}}\n', "utf8");
+    const { store, props } = buildHarness();
+    const settings = createSettingsController({ config: props.config, settingsFile });
+    const { lastFrame, stdin, unmount } = render(<App {...props} settings={settings} />);
+
+    expect(lastFrame()).toContain("opus · high");
+
+    await submit(stdin, "/model executor sonnet");
+    await tick();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("sonnet · high");
+    expect(frame).toContain("executor model set to sonnet");
+    expect(JSON.parse(await readFile(settingsFile, "utf8"))).toMatchObject({
+      executor: { model: "sonnet" },
+    });
+
+    unmount();
+    store.dispose();
+    await removeTempDir(dir);
+  });
+
+  it("/interval applies a live change to the monitor interval", async () => {
+    const dir = await createTempDir();
+    const settingsFile = join(dir, "settings.json");
+    await writeFile(settingsFile, "{}\n", "utf8");
+    const { store, props } = buildHarness();
+    const settings = createSettingsController({ config: props.config, settingsFile });
+    const { lastFrame, stdin, unmount } = render(<App {...props} settings={settings} />);
+
+    await submit(stdin, "/interval 2");
+    await tick();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("every 2 min");
+    expect(frame).toContain("monitor interval set to 2 min");
+
+    unmount();
+    store.dispose();
+    await removeTempDir(dir);
+  });
+
+  it("/prompt opens the editor and Ctrl+D saves the file", async () => {
+    const { store, props, prompts } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await submit(stdin, "/prompt monitor");
+
+    let frame = lastFrame() ?? "";
+    expect(frame).toContain("monitor prompt (.brownie/prompts/monitor.prompt.md)");
+    expect(frame).toContain("watch the pipelines");
+    expect(frame).toContain("Ctrl+D: save");
+    expect(frame).not.toContain("> ");
+
+    await type(stdin, " and CI");
+    await type(stdin, CTRL_D);
+    await tick();
+
+    expect(prompts.write).toHaveBeenCalledWith("monitor", "watch the pipelines and CI");
+    frame = lastFrame() ?? "";
+    expect(frame).toContain("monitor prompt saved — applies from the next session");
+    expect(frame).toContain("> ");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/prompt closed with Esc writes nothing", async () => {
+    const { store, props, prompts } = buildHarness();
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await submit(stdin, "/prompt executor");
+    await type(stdin, "scratch edits");
+    await type(stdin, ESCAPE);
+    await tick();
+
+    expect(prompts.write).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain("> ");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/prompt save failures surface as an error notice", async () => {
+    const { store, props, prompts } = buildHarness();
+    prompts.write.mockRejectedValue(new Error("disk full"));
+    const { lastFrame, stdin, unmount } = render(<App {...props} />);
+
+    await submit(stdin, "/prompt monitor");
+    await type(stdin, CTRL_D);
+    await tick();
+
+    expect(lastFrame()).toContain("disk full");
 
     unmount();
     store.dispose();

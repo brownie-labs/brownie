@@ -150,6 +150,13 @@ describe("startWorker", () => {
           executor: expect.any(AgentController) as unknown,
         },
         tasks: store,
+        settings: expect.objectContaining({
+          setModel: expect.any(Function) as unknown,
+        }) as unknown,
+        prompts: expect.objectContaining({
+          read: expect.any(Function) as unknown,
+          write: expect.any(Function) as unknown,
+        }) as unknown,
         waker: expect.any(Waker) as unknown,
         requestExit: expect.any(Function) as unknown,
       }),

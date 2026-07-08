@@ -1,12 +1,14 @@
 import { Box, Text, useInput, useStdin } from "ink";
 import type { JSX } from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { PromptAgent, PromptFileAccess } from "../prompt-files.js";
+import type { SettingsController } from "../settings-controller.js";
 import type { WorkerStatusStore } from "../status.js";
 import type { WorkerConfig } from "../types.js";
 import type { Waker } from "../waker.js";
 import { executorPanelModel, monitorPanelModel } from "./agent-visuals.js";
 import { CommandInput } from "./command-input.js";
-import { CommandSuggestions } from "./command-suggestions.js";
+import { CommandSuggestions, SUGGESTION_WINDOW } from "./command-suggestions.js";
 import {
   dispatchCommand,
   suggestions,
@@ -18,10 +20,12 @@ import {
   type View,
 } from "./commands.js";
 import { Header } from "./header.js";
+import { PromptEditor } from "./prompt-editor.js";
 import { theme } from "./theme.js";
 import { useNow } from "./use-now.js";
 import { useTerminalSize } from "./use-terminal-size.js";
 import { AgentView } from "./views/agent-view.js";
+import { ConfigView } from "./views/config-view.js";
 import { DashboardView, type PanelId } from "./views/dashboard-view.js";
 import { HelpView } from "./views/help-view.js";
 import { MemoryView } from "./views/memory-view.js";
@@ -120,6 +124,8 @@ export interface AppProps {
   controls: { monitor: AgentControls; executor: AgentControls };
   tasks: TaskControls;
   memory: MemoryReader;
+  settings: SettingsController;
+  prompts: PromptFileAccess;
   waker: Pick<Waker, "notify">;
   requestExit: () => void;
   noticeTimeoutMs?: number | undefined;
@@ -132,6 +138,8 @@ export function App({
   controls,
   tasks,
   memory,
+  settings,
+  prompts,
   waker,
   requestExit,
   noticeTimeoutMs = NOTICE_TIMEOUT_MS,
@@ -185,19 +193,41 @@ export function App({
       executorControl: controls.executor,
       tasks,
       memory,
+      settings,
+      prompts,
       waker,
       requestExit,
       notice: (text, tone = "info") => {
         setNotice({ text, tone });
       },
     }),
-    [controls, tasks, memory, waker, requestExit],
+    [controls, tasks, memory, settings, prompts, waker, requestExit],
   );
 
+  const editing = view.kind === "prompt";
+
+  const savePrompt = (agent: PromptAgent, value: string): void => {
+    void prompts
+      .write(agent, value)
+      .then(() => {
+        setView({ kind: "dashboard" });
+        setNotice({
+          text: `${agent} prompt saved — applies from the next session`,
+          tone: "info",
+        });
+      })
+      .catch((err: unknown) => {
+        setNotice({
+          text: err instanceof Error ? err.message : String(err),
+          tone: "error",
+        });
+      });
+  };
+
   const noticeHeight = notice === null ? 0 : 1;
-  const hintHeight = interactive ? 1 : 0;
-  const inputHeight = interactive ? INPUT_HEIGHT : 0;
-  const menuHeight = menuOpen ? suggestionList.length : 0;
+  const hintHeight = interactive && !editing ? 1 : 0;
+  const inputHeight = interactive && !editing ? INPUT_HEIGHT : 0;
+  const menuHeight = menuOpen ? Math.min(suggestionList.length, SUGGESTION_WINDOW) : 0;
   const shutdownHeight = status.shutdownSignal === undefined ? 0 : 1;
   const contentHeight = Math.max(
     6,
@@ -309,7 +339,7 @@ export function App({
         setInput((current) => insertAtCursor(current, rawInput));
       }
     },
-    { isActive: interactive },
+    { isActive: interactive && !editing },
   );
 
   const content = ((): JSX.Element => {
@@ -360,6 +390,23 @@ export function App({
             now={now}
           />
         );
+      case "config":
+        return <ConfigView config={config} height={contentHeight} />;
+      case "prompt":
+        return (
+          <PromptEditor
+            title={`${view.agent} prompt (.brownie/prompts/${view.agent}.prompt.md)`}
+            hint="Enter: new line · Ctrl+D: save · Esc: close without saving"
+            initialValue={view.content}
+            maxVisibleLines={Math.max(4, contentHeight - 4)}
+            onSubmit={(value) => {
+              savePrompt(view.agent, value);
+            }}
+            onCancel={() => {
+              setView({ kind: "dashboard" });
+            }}
+          />
+        );
       case "help":
         return <HelpView width={columns} height={contentHeight} />;
     }
@@ -384,8 +431,10 @@ export function App({
           matchLength={matchLength}
         />
       ) : null}
-      {interactive ? <CommandInput value={input.value} cursor={input.cursor} /> : null}
-      {interactive ? (
+      {interactive && !editing ? (
+        <CommandInput value={input.value} cursor={input.cursor} />
+      ) : null}
+      {interactive && !editing ? (
         <Text dimColor wrap="truncate-end">
           {`${view.kind} · /help commands & keys · ctrl+c quit${expanded ? " · expanded output (ctrl+o)" : ""}`}
         </Text>

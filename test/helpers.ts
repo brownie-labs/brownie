@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -88,6 +89,64 @@ export function fakeClaudeCliEnv(
     PATH: `${fixturesDir}${delimiter}${process.env.PATH ?? ""}`,
     FAKE_CLAUDE_MODE: mode,
     ...extra,
+  };
+}
+
+class FakeStdin extends EventEmitter {
+  isTTY = true;
+  private data: string | null = null;
+
+  write(data: string): void {
+    this.data = data;
+    this.emit("readable");
+    this.emit("data", data);
+  }
+
+  read(): string | null {
+    const { data } = this;
+    this.data = null;
+    return data;
+  }
+
+  setEncoding = (): undefined => undefined;
+  setRawMode = (): undefined => undefined;
+  resume = (): undefined => undefined;
+  pause = (): undefined => undefined;
+  ref = (): undefined => undefined;
+  unref = (): undefined => undefined;
+}
+
+class FakeStdout extends EventEmitter {
+  readonly columns = 100;
+
+  frames: string[] = [];
+
+  write = (frame: string): void => {
+    this.frames.push(frame);
+  };
+
+  lastFrame(): string | undefined {
+    return this.frames[this.frames.length - 1];
+  }
+}
+
+export interface FakeStdio {
+  stdin: NodeJS.ReadStream;
+  stdout: NodeJS.WriteStream;
+  type(data: string): void;
+  lastFrame(): string | undefined;
+}
+
+export function fakeStdio(): FakeStdio {
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout();
+  return {
+    stdin: stdin as unknown as NodeJS.ReadStream,
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    type: (data) => {
+      stdin.write(data);
+    },
+    lastFrame: () => stdout.lastFrame(),
   };
 }
 
@@ -235,10 +294,10 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     summarizer: buildSummarizerConfig(),
     streamPartial: false,
     cwd: process.cwd(),
+    settingsFilePath: join(process.cwd(), ".brownie", "settings.json"),
     tasksFilePath: join(process.cwd(), ".brownie", "data", "tasks.json"),
     memoryDbPath: join(process.cwd(), ".brownie", "data", "memory.db"),
     logsDir: join(process.cwd(), ".brownie", "logs"),
-    childEnv: { ...process.env },
     ...overrides,
   };
 }
@@ -256,7 +315,6 @@ export function buildSessionSpec(
     sessionTimeoutMs: undefined,
     streamPartial: false,
     cwd: process.cwd(),
-    childEnv: { ...process.env },
     events,
     ...overrides,
   };

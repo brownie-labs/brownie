@@ -70,13 +70,13 @@ describe("ensureReady", () => {
 
   it("throws with a configure hint when a prompt file is missing", async () => {
     await removeTempDir(join(dir, ".brownie", "prompts"));
-    await expect(ensureReady(dirs())).rejects.toThrow(/brownie config/);
+    await expect(ensureReady(dirs())).rejects.toThrow(/interactive terminal/);
   });
 
   it("throws when the settings file is missing", async () => {
     await removeTempDir(join(dir, ".brownie", "settings.json"));
     await expect(ensureReady(dirs())).rejects.toThrow(
-      /Preflight failed[\s\S]*brownie config/,
+      /Preflight failed[\s\S]*interactive terminal/,
     );
   });
 });

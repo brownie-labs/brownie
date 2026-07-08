@@ -21,7 +21,7 @@ export interface SessionSpec {
   mcpConfig?: string | undefined;
   jsonSchema?: string | undefined;
   cwd: string;
-  childEnv: NodeJS.ProcessEnv;
+  childEnv?: NodeJS.ProcessEnv | undefined;
   events: SessionEventSink;
 }
 

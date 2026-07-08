@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { projectPaths } from "./paths.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
-const CONFIGURE_HINT = 'run "brownie config" to create the configuration';
+const CONFIGURE_HINT = "run brownie in an interactive terminal to complete setup";
 
 interface Check {
   label: string;

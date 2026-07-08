@@ -80,7 +80,6 @@ export async function runExecutorLoop(
           streamPartial: config.streamPartial,
           mcpConfig: executor.mcpConfig,
           cwd: config.cwd,
-          childEnv: config.childEnv,
           events: reporter.session,
         },
         signal,

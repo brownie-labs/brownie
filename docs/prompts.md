@@ -1,6 +1,6 @@
 # Prompts
 
-The sprite's personality is split between the package and your project. **System prompts** define who each agent is and how it behaves — they ship with the npm package and you normally never touch them. **Project prompts** carry your business context: what to watch, where, and how to work on it — they live in `.brownie/prompts/` and are yours to write (the wizard drafts the first version for you).
+The sprite's personality is split between the package and your project. **System prompts** define who each agent is and how it behaves — they ship with the npm package and you normally never touch them. **Project prompts** carry your business context: what to watch, where, and how to work on it — they live in `.brownie/prompts/` and are yours to write (the first-run wizard collects the first version — paste markdown straight into its editor, Enter adds a line, Ctrl+D submits). Later, view and edit them without leaving the dashboard: `/prompt monitor` or `/prompt executor` opens the same editor with the current file content — Ctrl+D saves (the next session already uses it, since the agents re-read the prompt files every cycle), Esc closes without saving.
 
 | File                                  | Lives in     | Role                                                            |
 | ------------------------------------- | ------------ | --------------------------------------------------------------- |

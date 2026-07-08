@@ -31,7 +31,6 @@ export interface SessionSummarizerDeps {
   summarizer: SummarizerConfig;
   streamPartial: boolean;
   cwd: string;
-  childEnv: NodeJS.ProcessEnv;
   store: MemoryStore;
   resolveLogPath(sessionId: string): Promise<string | undefined>;
   reporter: SummaryReporter;
@@ -91,7 +90,6 @@ export class SessionSummarizer implements TaskSummarizer {
           streamPartial: this.deps.streamPartial,
           jsonSchema: SUMMARY_JSON_SCHEMA,
           cwd: this.deps.cwd,
-          childEnv: this.deps.childEnv,
           events: reporter.session,
         },
         signal,

@@ -1,6 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
@@ -8,12 +6,6 @@ import { readMcpServers } from "./mcp-config.js";
 import { buildMcpConfig } from "./memory/mcp.js";
 import { projectPaths, systemPromptFiles } from "./paths.js";
 import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
-
-export function expandHome(value: string): string {
-  if (value === "~") return homedir();
-  if (value.startsWith("~/")) return resolve(homedir(), value.slice(2));
-  return value;
-}
 
 export const COMMAND = "claude";
 
@@ -64,7 +56,6 @@ export const settingsSchema = z
       .strict()
       .default({}),
     streamPartial: z.boolean().default(true),
-    claudeConfigDir: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -86,9 +77,10 @@ export async function loadSettings(settingsFile: string): Promise<Settings> {
   try {
     raw = await readFile(settingsFile, "utf8");
   } catch (err) {
-    throw new Error(`settings file missing: ${settingsFile} — run "brownie config"`, {
-      cause: err,
-    });
+    throw new Error(
+      `settings file missing: ${settingsFile} — run brownie in an interactive terminal to complete setup`,
+      { cause: err },
+    );
   }
   let source: unknown;
   try {
@@ -173,12 +165,6 @@ export async function loadWorkerConfig(
     await assertPromptPathsReadable(paths);
   }
 
-  const childEnv: NodeJS.ProcessEnv = { ...process.env };
-  const configDir = settings.claudeConfigDir ?? childEnv.CLAUDE_CONFIG_DIR;
-  if (configDir) {
-    childEnv.CLAUDE_CONFIG_DIR = expandHome(configDir);
-  }
-
   const projectMcpServers = await readMcpServers(project.mcpFile);
   const hasProjectMcpServers = Object.keys(projectMcpServers).length > 0;
 
@@ -214,9 +200,9 @@ export async function loadWorkerConfig(
     },
     streamPartial: settings.streamPartial,
     cwd: project.projectDir,
+    settingsFilePath: project.settingsFile,
     tasksFilePath: project.tasksFile,
     memoryDbPath: project.memoryDbFile,
     logsDir: project.logsDir,
-    childEnv,
   };
 }

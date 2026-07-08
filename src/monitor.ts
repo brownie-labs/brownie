@@ -63,7 +63,6 @@ export async function runMonitorLoop(
           jsonSchema: TASK_REPORT_JSON_SCHEMA,
           mcpConfig: monitor.mcpConfig,
           cwd: config.cwd,
-          childEnv: config.childEnv,
           events: reporter.session,
         },
         signal,

@@ -20,7 +20,7 @@ function requireMcpFile(): string {
   const paths = projectPaths();
   if (!existsSync(paths.brownieDir)) {
     throw new Error(
-      `No ${BROWNIE_DIR_NAME} directory in ${paths.projectDir} — run "brownie config" first`,
+      `No ${BROWNIE_DIR_NAME} directory in ${paths.projectDir} — run brownie once to create it`,
     );
   }
   return paths.mcpFile;

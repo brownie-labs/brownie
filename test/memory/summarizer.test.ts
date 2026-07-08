@@ -72,7 +72,6 @@ describe("SessionSummarizer", () => {
       summarizer: buildSummarizerConfig({ sessionTimeoutMs: 60_000 }),
       streamPartial: false,
       cwd: "/workspace",
-      childEnv: {},
       store,
       resolveLogPath,
       reporter: spy.reporter,
