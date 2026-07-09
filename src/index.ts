@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { runMain } from "citty";
 import { pauseCommand, resumeCommand, statusCommand } from "./control-commands.js";
 import { initCommand } from "./init-command.js";

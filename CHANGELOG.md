@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Suppress the `ExperimentalWarning: SQLite is an experimental feature` noise that Node prints on every invocation. The CLI shebang and the spawned memory MCP server now pass `--disable-warning=ExperimentalWarning`, and the `start`/`dev` scripts do the same, so `brownie --version`, `brownie update`, and every other command start clean.
+
 ## [0.3.0] - 2026-07-09
 
 ### Added

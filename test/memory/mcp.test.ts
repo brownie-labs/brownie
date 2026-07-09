@@ -29,6 +29,7 @@ describe("buildMcpConfig", () => {
 
     expect(config.mcpServers.memory.command).toBe(process.execPath);
     expect(config.mcpServers.memory.args).toEqual([
+      "--disable-warning=ExperimentalWarning",
       "--import",
       "tsx",
       "/repo/src/index.ts",
@@ -47,6 +48,7 @@ describe("buildMcpConfig", () => {
     };
 
     expect(config.mcpServers.memory.args).toEqual([
+      "--disable-warning=ExperimentalWarning",
       "/repo/dist/index.js",
       "mcp",
       "serve",
@@ -77,7 +79,7 @@ describe("buildMcpConfig", () => {
         mcpServers: { memory: { args: string[] } };
       };
 
-      expect(config.mcpServers.memory.args[0]).toBe(await realpath(realEntry));
+      expect(config.mcpServers.memory.args[1]).toBe(await realpath(realEntry));
     } finally {
       await removeTempDir(dir);
     }
