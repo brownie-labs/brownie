@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-09
+
 ### Changed
 
 - The Docker image now ships Python 3 (with `pip`/`venv`) and the Docker CLI + compose plugin alongside Node, plus a developer baseline (`gh`, `jq`, `ripgrep`, `make`, `build-essential`, `curl`). The agent provisions any other runtimes itself via the host's Docker socket, which `docker-compose.yml` now mounts. Credentials (`gh`/`ssh`/`git`) configured inside the container persist across restart and rebuild in a named `brownie-home` volume; grant socket access on Linux with `DOCKER_GID`.
@@ -28,5 +30,6 @@ Initial release.
 - Non-interactive `brownie init` for provisioning, plus a first-run wizard in the terminal.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
-[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/brownie-labs/brownie/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/brownie-labs/brownie/releases/tag/v0.1.0
