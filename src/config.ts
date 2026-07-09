@@ -19,7 +19,7 @@ const validatedString = (validate: (value: string) => unknown) =>
       try {
         validate(value);
       } catch (err) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: (err as Error).message });
+        ctx.addIssue({ code: "custom", message: (err as Error).message });
       }
     });
 
@@ -35,7 +35,7 @@ export const settingsSchema = z
         sessionTimeoutMs: z.number().int().positive().optional(),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     executor: z
       .object({
         model: z.string().trim().min(1).default("opus"),
@@ -45,7 +45,7 @@ export const settingsSchema = z
         retryDelayMs: z.number().int().nonnegative().default(30_000),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     summarizer: z
       .object({
         model: z.string().trim().min(1).default("sonnet"),
@@ -53,7 +53,7 @@ export const settingsSchema = z
         sessionTimeoutMs: z.number().int().positive().default(300_000),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     streamPartial: z.boolean().default(true),
   })
   .strict();
