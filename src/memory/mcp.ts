@@ -17,9 +17,10 @@ export function buildMcpConfig(
   } catch {
     resolved = entry;
   }
+  const nodeFlags = ["--disable-warning=ExperimentalWarning"];
   const args = resolved.endsWith(".ts")
-    ? ["--import", "tsx", resolved, "mcp", "serve", "--db", dbPath]
-    : [resolved, "mcp", "serve", "--db", dbPath];
+    ? [...nodeFlags, "--import", "tsx", resolved, "mcp", "serve", "--db", dbPath]
+    : [...nodeFlags, resolved, "mcp", "serve", "--db", dbPath];
   return JSON.stringify({
     mcpServers: { memory: { command: process.execPath, args } },
   });
