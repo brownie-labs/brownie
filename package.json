@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "citty": "^0.1.6",
+    "citty": "^0.2.2",
     "consola": "^3.4.0",
     "ink": "^6.8.0",
     "react": "^19.2.7",
