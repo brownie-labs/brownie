@@ -53,7 +53,7 @@ Optional fields are omitted, never `null` — the schema is stable and safe to i
 
 ## Controlling a running worker
 
-The worker exposes a control socket (a unix domain socket in the system temp directory, derived from the project path — nothing to configure). From any shell in the same project directory:
+The worker exposes a local control socket, created automatically — nothing to configure. From any shell in the same project directory:
 
 ```bash
 brownie status           # who's running, phases, task counts, cost
@@ -141,18 +141,59 @@ sudo -u brownie brownie status                # from the project directory
 
 ## Docker
 
-The repo ships a reference `Dockerfile` (multi-stage: build from source, install globally next to the Claude Code CLI, run as a non-root user) and a `docker-compose.yml`:
+The repo ships a reference `Dockerfile` and `docker-compose.yml`. From your project directory:
 
 ```bash
 export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-…
+export DOCKER_GID=$(getent group docker | cut -d: -f3)   # Linux — see "Docker access" below
 docker compose up -d
 docker compose logs -f                        # NDJSON event stream
 docker compose exec brownie brownie status
 ```
 
-The compose file mounts the current directory as `/workspace` — the project, its `.brownie/`, and all runtime state live on the host. The container's health check is `brownie status --json`, so `docker ps` shows `healthy` only while the worker actually answers.
+The current directory is mounted as `/workspace`, so the project, its `.brownie/`, and all runtime state stay on the host. `docker ps` shows `healthy` only while the worker actually answers.
 
-The image contains Node, git, and the two CLIs — nothing project-specific. If your executor needs a toolchain (pnpm, go, a test runner…), build your own image `FROM` this one and add it, exactly like a CI image.
+### What the image gives your agent
+
+The image ships **Node, Python 3 (with `pip`/`venv`), and the Docker CLI + compose plugin**, plus a developer baseline: `git`, `gh`, `jq`, `ripgrep`, `make`, `build-essential`, `curl`. It deliberately does not bundle every language — for anything else (other runtimes, databases, services) the agent starts its own containers via Docker, so you don't rebuild the image to add a toolchain.
+
+### Docker access
+
+The host's Docker socket is mounted into the container so the agent can run `docker`. Because the agent runs as a non-root user, grant it access with `DOCKER_GID`:
+
+- **Linux:** set it to the host's `docker` group id before `docker compose up`:
+
+  ```bash
+  export DOCKER_GID=$(getent group docker | cut -d: -f3)
+  ```
+
+  Leave it unset and the compose default (`999`) is used, which usually won't match — you'll get `permission denied` on the socket.
+
+- **Docker Desktop on macOS:** the socket is bridged through the VM and usually works without setting `DOCKER_GID`. If `docker` inside the container reports `permission denied`, check the socket's group with `docker compose exec brownie ls -ln /var/run/docker.sock` and set `DOCKER_GID` to that number.
+
+### Credentials
+
+Configure `gh`, `ssh`, and `git` **once, inside the container** — they're stored in a named volume (`brownie-home`) and survive restart and rebuild:
+
+```bash
+docker compose exec brownie bash
+gh auth login
+ssh-keygen -t ed25519
+git config --global user.name "…"
+```
+
+Everything under the home directory (`~/.config/gh`, `~/.ssh`, `~/.gitconfig`, …) persists, so `docker compose build && docker compose up -d` keeps your logins.
+
+### Multiple agents, multiple accounts
+
+To run several agents with different credentials, start each as its own compose project:
+
+```bash
+docker compose -p acme up -d
+docker compose -p globex up -d
+```
+
+Each `-p <name>` gets its own home volume, so the `gh`/`ssh`/`git` identity in one never leaks into another.
 
 ## Costs, unattended
 

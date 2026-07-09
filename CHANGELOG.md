@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Docker image now ships Python 3 (with `pip`/`venv`) and the Docker CLI + compose plugin alongside Node, plus a developer baseline (`gh`, `jq`, `ripgrep`, `make`, `build-essential`, `curl`). The agent provisions any other runtimes itself via the host's Docker socket, which `docker-compose.yml` now mounts. Credentials (`gh`/`ssh`/`git`) configured inside the container persist across restart and rebuild in a named `brownie-home` volume; grant socket access on Linux with `DOCKER_GID`.
+
 ## [0.1.0] - 2026-07-08
 
 Initial release.
