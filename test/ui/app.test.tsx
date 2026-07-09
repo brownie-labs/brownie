@@ -172,6 +172,20 @@ async function submit(
   await type(stdin, ENTER);
 }
 
+async function openEditor(
+  rendered: Awaited<ReturnType<typeof renderApp>>,
+  props: AppProps,
+  command: string,
+  titleFragment: string,
+): Promise<void> {
+  await submit(rendered.stdin, command);
+  await eventually(() => {
+    expect(rendered.lastFrame()).toContain(titleFragment);
+  });
+  rendered.rerender(<App {...props} />);
+  await tick();
+}
+
 describe("App", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -907,15 +921,16 @@ describe("App", () => {
 
   it("/prompt opens the editor and Ctrl+D saves the file", async () => {
     const { store, props, prompts } = buildHarness();
-    const { lastFrame, stdin, unmount } = await renderApp(props);
+    const rendered = await renderApp(props);
+    const { lastFrame, stdin, unmount } = rendered;
 
-    await submit(stdin, "/prompt monitor");
+    await openEditor(
+      rendered,
+      props,
+      "/prompt monitor",
+      "monitor prompt (.brownie/prompts/monitor.prompt.md)",
+    );
 
-    await eventually(() => {
-      expect(lastFrame()).toContain(
-        "monitor prompt (.brownie/prompts/monitor.prompt.md)",
-      );
-    });
     const frame = lastFrame() ?? "";
     expect(frame).toContain("watch the pipelines");
     expect(frame).toContain("Ctrl+D: save");
@@ -958,9 +973,15 @@ describe("App", () => {
   it("/prompt save failures surface as an error notice", async () => {
     const { store, props, prompts } = buildHarness();
     prompts.write.mockRejectedValue(new Error("disk full"));
-    const { lastFrame, stdin, unmount } = await renderApp(props);
+    const rendered = await renderApp(props);
+    const { lastFrame, stdin, unmount } = rendered;
 
-    await submit(stdin, "/prompt monitor");
+    await openEditor(
+      rendered,
+      props,
+      "/prompt monitor",
+      "monitor prompt (.brownie/prompts/monitor.prompt.md)",
+    );
     await type(stdin, CTRL_D);
 
     await eventually(() => {

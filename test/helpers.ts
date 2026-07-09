@@ -150,6 +150,8 @@ class FakeStdin extends EventEmitter {
 class FakeStdout extends EventEmitter {
   readonly columns = 100;
 
+  readonly isTTY = true;
+
   frames: string[] = [];
 
   write = (frame: string): void => {
@@ -157,7 +159,11 @@ class FakeStdout extends EventEmitter {
   };
 
   lastFrame(): string | undefined {
-    return this.frames[this.frames.length - 1];
+    for (let index = this.frames.length - 1; index >= 0; index -= 1) {
+      const frame = this.frames[index];
+      if (frame?.includes("\n") === true) return frame;
+    }
+    return undefined;
   }
 }
 
