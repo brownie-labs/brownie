@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Self-update: `brownie update` (with `--check`) compares the installed version against the npm registry and installs the newest release using whichever package manager put it there (npm/pnpm/yarn/bun). A running worker also checks in the background and, when `autoUpdate` is on (the default), installs new versions to apply on the next restart — surfaced in the dashboard header and as `update.available` / `update.installed` headless events. Configure it in the new global `~/.brownie/config.json`, or disable it entirely with `BROWNIE_DISABLE_AUTOUPDATER=1`.
+
 ## [0.2.0] - 2026-07-09
 
 ### Changed

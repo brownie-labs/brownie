@@ -39,6 +39,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 | `worker.started`                                              | `version`, `pid`, `projectDir`                                                                                             |
 | `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
 | `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
+| `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |
 | `cycle.started` / `cycle.finished`                            | `cycle`; finished adds `ok`, `durationMs`, `costUsd`, `addedTasks`, `skippedDuplicates`, `error`                           |
 | `monitor.sleeping` / `monitor.offHours` / `monitor.limitWait` | `nextCycleAt` / `resumeAt`                                                                                                 |
 | `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error` |
@@ -64,6 +65,23 @@ brownie resume           # back to work
 ```
 
 `brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
+
+## Staying up to date
+
+```bash
+brownie update           # check npm and install the newest brownie
+brownie update --check   # only report whether a newer version exists
+```
+
+`brownie update` detects how brownie was installed (npm/pnpm/yarn/bun) and runs the matching global install. A newly installed version takes effect on the next start.
+
+A running worker also checks for updates in the background. Auto-update is controlled by `~/.brownie/config.json`:
+
+```json
+{ "autoUpdate": true }
+```
+
+With `autoUpdate` on (the default) the worker installs new versions in the background — the dashboard header and the `update.installed` log event announce it, and it applies after a restart. With it off, the worker only reports availability (`update.available`) so you can run `brownie update` yourself. Set `BROWNIE_DISABLE_AUTOUPDATER=1` to switch the background checks off entirely.
 
 ## Provisioning without a terminal
 

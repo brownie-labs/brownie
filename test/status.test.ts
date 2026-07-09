@@ -35,6 +35,19 @@ describe("WorkerStatusStore", () => {
     expect(status.monitor.tail).toEqual([]);
     expect(status.tasks).toEqual([]);
     expect(status.shutdownSignal).toBeUndefined();
+    expect(status.update).toBeUndefined();
+    store.dispose();
+  });
+
+  it("exposes an update status once one is set", () => {
+    const store = createStore();
+    store.setUpdateStatus({ state: "installed", from: "0.2.0", to: "0.3.0" });
+    store.flush();
+    expect(store.getSnapshot().update).toEqual({
+      state: "installed",
+      from: "0.2.0",
+      to: "0.3.0",
+    });
     store.dispose();
   });
 

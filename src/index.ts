@@ -4,6 +4,7 @@ import { pauseCommand, resumeCommand, statusCommand } from "./control-commands.j
 import { initCommand } from "./init-command.js";
 import { mainCommand } from "./main.js";
 import { mcpCommand } from "./mcp-command.js";
+import { updateCommand } from "./update-command.js";
 
 const rawArgs = process.argv.slice(2);
 const [first, ...rest] = rawArgs;
@@ -23,6 +24,9 @@ switch (first) {
     break;
   case "resume":
     void runMain(resumeCommand, { rawArgs: rest });
+    break;
+  case "update":
+    void runMain(updateCommand, { rawArgs: rest });
     break;
   default:
     void runMain(mainCommand, { rawArgs });

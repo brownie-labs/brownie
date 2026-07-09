@@ -85,6 +85,13 @@ export interface WorkerStats {
   totalCostUsd: number;
 }
 
+export interface UpdateStatus {
+  state: "available" | "installed";
+  from: string;
+  to: string;
+  installError?: string | undefined;
+}
+
 export interface WorkerStatus {
   startedAt: number;
   shutdownSignal?: string | undefined;
@@ -92,6 +99,7 @@ export interface WorkerStatus {
   executor: AgentPanelStatus<ExecutorPhase, ExecutorTaskOutcome>;
   tasks: readonly Task[];
   stats: WorkerStats;
+  update?: UpdateStatus | undefined;
 }
 
 export interface MonitorReporter {
@@ -162,6 +170,7 @@ export class WorkerStatusStore {
   private readonly listeners = new Set<() => void>();
   private notifyTimer: NodeJS.Timeout | null = null;
   private shutdownSignal: string | undefined;
+  private updateStatus: UpdateStatus | undefined;
   private tasks: readonly Task[] = [];
   private snapshot: WorkerStatus;
 
@@ -301,6 +310,11 @@ export class WorkerStatusStore {
 
   shutdownRequested(signalName: string): void {
     this.shutdownSignal = signalName;
+    this.markDirty();
+  }
+
+  setUpdateStatus(info: UpdateStatus): void {
+    this.updateStatus = info;
     this.markDirty();
   }
 
@@ -481,6 +495,7 @@ export class WorkerStatusStore {
       executor: this.buildPanel(this.executorState),
       tasks: this.tasks,
       stats: { ...this.stats },
+      update: this.updateStatus,
     };
   }
 

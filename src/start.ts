@@ -4,6 +4,7 @@ import { buildControlStatus } from "./control-protocol.js";
 import { startControlServer } from "./control-server.js";
 import { AgentController } from "./control.js";
 import { runExecutorLoop } from "./executor.js";
+import { loadGlobalConfig } from "./global-config.js";
 import { compactFields } from "./headless/events.js";
 import type { HeadlessLogFormat } from "./headless/format.js";
 import { createHeadlessReporters } from "./headless/reporters.js";
@@ -21,6 +22,8 @@ import { createSettingsController } from "./settings-controller.js";
 import { abortOnSignals } from "./shutdown.js";
 import { WorkerStatusStore } from "./status.js";
 import { TaskStore } from "./tasks.js";
+import { runAutoUpdateLoop } from "./update/auto-update.js";
+import { defaultUpdateDeps } from "./update/updater.js";
 import { mountDashboard } from "./ui/mount.js";
 import { UsageLimitGate } from "./usage-limit.js";
 import { Waker } from "./waker.js";
@@ -182,6 +185,8 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     },
   });
 
+  const globalConfig = await loadGlobalConfig();
+
   let loopError: unknown;
   try {
     await Promise.all([
@@ -204,6 +209,13 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         limitGate,
         signal,
       ),
+      runAutoUpdateLoop({
+        globalConfig,
+        deps: defaultUpdateDeps(),
+        setUpdateStatus: (info) => status.setUpdateStatus(info),
+        emit: headlessEmit,
+        signal,
+      }),
     ]);
   } catch (err) {
     loopError = err;
