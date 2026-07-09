@@ -134,7 +134,7 @@ A second `brownie` in the same project refuses to start while one is already run
 
 ## Configuration
 
-Like Claude Code's `.claude/`, all per-project state lives in `.brownie/` inside the directory you run brownie from: `settings.json`, the two project prompts, and runtime data (tasks, memory, logs — gitignored automatically). The settings file is a zod-validated JSON where every section is optional — change it with the slash commands above or by hand:
+Like Claude Code's `.claude/`, all per-project state lives in `.brownie/` inside the directory you run brownie from: `settings.json`, the two project prompts, and runtime data (tasks, memory, logs — gitignored automatically). The settings file is a strictly validated JSON where every section is optional — change it with the slash commands above or by hand:
 
 ```json
 {

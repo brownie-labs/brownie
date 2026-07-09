@@ -1,6 +1,6 @@
 # Configuration
 
-Everything lives in `.brownie/settings.json` — a nested JSON validated with zod (strict at every level, so a typo'd key fails with a named path instead of being silently ignored). The first `brownie` run asks only for the two agent prompts and writes an empty settings file — every setting starts with its default. Change them at runtime with the slash commands below or edit the file by hand (picked up on the next start).
+Everything lives in `.brownie/settings.json` — a nested JSON that's strictly validated, so a typo'd key fails with a named path instead of being silently ignored. The first `brownie` run asks only for the two agent prompts and writes an empty settings file — every setting starts with its default. Change them at runtime with the slash commands below or edit the file by hand (picked up on the next start).
 
 Every section is optional — `{}` is a valid file. A typical setup:
 
@@ -87,4 +87,4 @@ your-project/
 
 Commit `settings.json` and `prompts/` if your team shares them — `data/` and `logs/` are runtime state, ignored automatically via the wizard-written `.brownie/.gitignore`.
 
-Tasks live in `data/tasks.json` with atomic writes (tmp + rename); tasks stuck `in_progress` after a crash are reset to `pending` on the next start. Every session is also written to a persistent log under `logs/`, so you can always read back what an agent actually did.
+Tasks live in `data/tasks.json`; tasks stuck `in_progress` after a crash are reset to `pending` on the next start. Every session is also written to a persistent log under `logs/`, so you can always read back what an agent actually did.
