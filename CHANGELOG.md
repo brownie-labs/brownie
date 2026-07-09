@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-09
+
 ### Added
 
 - Self-update: `brownie update` (with `--check`) compares the installed version against the npm registry and installs the newest release using whichever package manager put it there (npm/pnpm/yarn/bun). A running worker also checks in the background and, when `autoUpdate` is on (the default), installs new versions to apply on the next restart — surfaced in the dashboard header and as `update.available` / `update.installed` headless events. Configure it in the new global `~/.brownie/config.json`, or disable it entirely with `BROWNIE_DISABLE_AUTOUPDATER=1`.
@@ -34,6 +36,7 @@ Initial release.
 - Non-interactive `brownie init` for provisioning, plus a first-run wizard in the terminal.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
-[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/brownie-labs/brownie/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/brownie-labs/brownie/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/brownie-labs/brownie/releases/tag/v0.1.0
