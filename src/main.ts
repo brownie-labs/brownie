@@ -22,7 +22,7 @@ export async function runBrownie(options: RunBrownieOptions = {}): Promise<void>
   if (positional !== undefined) {
     logger.error(
       `Unknown command "${positional}" — available commands: init, status, pause, ` +
-        "resume, mcp; run plain brownie to start the worker.",
+        "resume, update, mcp; run plain brownie to start the worker.",
     );
     process.exitCode = 1;
     return;

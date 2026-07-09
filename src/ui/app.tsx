@@ -229,10 +229,11 @@ export function App({
   const inputHeight = interactive && !editing ? INPUT_HEIGHT : 0;
   const menuHeight = menuOpen ? Math.min(suggestionList.length, SUGGESTION_WINDOW) : 0;
   const shutdownHeight = status.shutdownSignal === undefined ? 0 : 1;
+  const headerHeight = HEADER_HEIGHT + (status.update === undefined ? 0 : 1);
   const contentHeight = Math.max(
     6,
     rows -
-      HEADER_HEIGHT -
+      headerHeight -
       inputHeight -
       menuHeight -
       hintHeight -

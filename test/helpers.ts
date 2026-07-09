@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,6 +71,28 @@ export async function seedSystemPrompts(dir: string): Promise<string> {
   await writeFile(join(systemDir, "executor.system.md"), "executor system\n", "utf8");
   await writeFile(join(systemDir, "summarizer.system.md"), "summarizer system\n", "utf8");
   return systemDir;
+}
+
+export async function writeExecutable(
+  dir: string,
+  name: string,
+  body: string,
+): Promise<string> {
+  const path = join(dir, name);
+  await writeFile(path, `#!/usr/bin/env node\n${body}`, "utf8");
+  await chmod(path, 0o755);
+  return path;
+}
+
+export function pathEnv(
+  binDir: string,
+  extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+    ...extra,
+  };
 }
 
 export function fakeClaudeEnv(

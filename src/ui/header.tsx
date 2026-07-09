@@ -82,6 +82,13 @@ export function Header({ config, version, status, now }: HeaderProps): JSX.Eleme
       <Text dimColor wrap="truncate-end">
         {formatHeaderStats(status.stats, status.tasks, now - status.startedAt)}
       </Text>
+      {status.update === undefined ? null : (
+        <Text color={theme.accent} wrap="truncate-end">
+          {status.update.state === "installed"
+            ? `⬆ updated to v${status.update.to} — restart to apply`
+            : `⬆ update available v${status.update.from} → v${status.update.to} — run "brownie update"`}
+        </Text>
+      )}
     </Box>
   );
 }
