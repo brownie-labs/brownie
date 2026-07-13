@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-13
+
+### Changed
+
+- Upgraded runtime dependencies, notably ink 6 → 7 and zod 3 → 4.
+
 ### Fixed
 
 - Suppress the `ExperimentalWarning: SQLite is an experimental feature` noise that Node prints on every invocation. The CLI shebang and the spawned memory MCP server now pass `--disable-warning=ExperimentalWarning`, and the `start`/`dev` scripts do the same, so `brownie --version`, `brownie update`, and every other command start clean.
@@ -40,7 +46,8 @@ Initial release.
 - Non-interactive `brownie init` for provisioning, plus a first-run wizard in the terminal.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
-[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/brownie-labs/brownie/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/brownie-labs/brownie/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/brownie-labs/brownie/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/brownie-labs/brownie/releases/tag/v0.1.0
