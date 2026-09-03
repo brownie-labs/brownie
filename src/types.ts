@@ -2,7 +2,7 @@ export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
-export const MODELS = ["haiku", "sonnet", "opus"] as const;
+export const MODELS = ["haiku", "sonnet", "opus", "fable"] as const;
 
 export const MODELS_WITHOUT_EFFORT: ReadonlySet<string> = new Set(["haiku"]);
 

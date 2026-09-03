@@ -320,7 +320,7 @@ describe("dispatchCommand", () => {
     await dispatchCommand("/model everything opus", ctx);
     expect(settings.setModel).not.toHaveBeenCalled();
     expect(notices[0]).toEqual({
-      text: "usage: /model <monitor|executor|summarizer> <haiku|sonnet|opus>",
+      text: "usage: /model <monitor|executor|summarizer> <haiku|sonnet|opus|fable>",
       tone: "error",
     });
     expect(notices[1]).toEqual({

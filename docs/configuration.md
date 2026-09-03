@@ -24,18 +24,18 @@ Every section is optional — `{}` is a valid file. A typical setup:
 
 | Key                           | Default          | Description                                             |
 | ----------------------------- | ---------------- | ------------------------------------------------------- |
-| `monitor.model`               | `haiku`          | monitor model                                           |
+| `monitor.model`               | `haiku`          | monitor model: `haiku`, `sonnet`, `opus`, `fable`       |
 | `monitor.effort`              | `medium`         | monitor effort: `low`, `medium`, `high`, `xhigh`, `max` |
 | `monitor.intervalMinutes`     | `15`             | patrol interval (fractions allowed)                     |
 | `monitor.activeHours`         | _(24/7)_         | working window, e.g. `08:00-18:00`                      |
 | `monitor.activeDays`          | _(daily)_        | working days, e.g. `mon-fri` or `mon,wed,sat-sun`       |
 | `monitor.sessionTimeoutMs`    | _(none)_         | monitor session timeout                                 |
-| `executor.model`              | `opus`           | executor model                                          |
+| `executor.model`              | `opus`           | executor model: `haiku`, `sonnet`, `opus`, `fable`      |
 | `executor.effort`             | `high`           | executor effort                                         |
 | `executor.sessionTimeoutMs`   | _(none)_         | executor session timeout                                |
 | `executor.maxTaskAttempts`    | `3`              | max attempts per task (transient failures are retried)  |
 | `executor.retryDelayMs`       | `30000`          | delay between attempts                                  |
-| `summarizer.model`            | `sonnet`         | summarizer model                                        |
+| `summarizer.model`            | `sonnet`         | summarizer model: `haiku`, `sonnet`, `opus`, `fable`    |
 | `summarizer.effort`           | `medium`         | summarizer effort                                       |
 | `summarizer.sessionTimeoutMs` | `300000` (5 min) | summarizer session timeout                              |
 | `streamPartial`               | `true`           | stream partial responses to the dashboard               |
@@ -65,6 +65,7 @@ The monitor patrols only inside the configured window; outside it the loop sleep
 ## Timeouts and retries
 
 - `sessionTimeoutMs` kills a stuck session (SIGTERM, then SIGKILL after 5 s). A timeout counts as a **transient** failure.
+- `fable` sessions on hard tasks routinely run for many minutes. Leave `executor.sessionTimeoutMs` unset or generous when the executor runs on `fable`, and raise the summarizer's 5-minute default before switching it to `fable`.
 - The executor retries transient failures (timeouts, known error patterns in the result) up to `maxTaskAttempts` with `retryDelayMs` between attempts; permanent failures mark the task `failed` right away. Failed tasks can be requeued from the TUI with `/retry <task-id>`.
 
 ## The `.brownie/` directory
