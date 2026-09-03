@@ -105,7 +105,7 @@ A shell in the style of Claude Code: a header with the live status of both agent
 | `/task <description>`         | add a task by hand (the executor picks it up immediately)  |
 | `/retry <task-id>`            | requeue a failed task                                      |
 | `/cancel <task-id>`           | cancel a pending task                                      |
-| `/model <agent> <model>`      | set the model for monitor, executor, or summarizer         |
+| `/model <agent> <model>`      | set the model (`haiku`, `sonnet`, `opus`, `fable`)         |
 | `/effort <agent> <level>`     | set the reasoning effort (`low`…`max`)                     |
 | `/interval <minutes>`         | set how often the monitor looks for new tasks              |
 | `/hours <HH:MM-HH:MM\|off>`   | set the monitor working hours, `off` = 24/7                |
@@ -154,7 +154,7 @@ All settings, the full directory layout, and what to commit: [docs/configuration
 
 > **⚠️ The sprite works directly in your project.** Agent sessions run with `--permission-mode bypassPermissions` and full tool access **in the directory you run `brownie` from** — there is no isolated sandbox. Run it in projects you trust it with: well-considered prompts, no secrets within reach, version control as your safety net. Treat tasks reported by the monitor like any input to an autonomous agent — the prompts define the boundaries.
 
-Brownie spends real tokens: every patrol is a session, every task is a session. Interval × models = your bill, so start conservative — a longer `intervalMinutes`, `sonnet` on the executor — and scale up once you trust the prompts. Working hours keep the sprite from patrolling an empty repo at 3 a.m.
+Brownie spends real tokens: every patrol is a session, every task is a session. Interval × models = your bill, so start conservative — a longer `intervalMinutes`, `sonnet` on the executor — and scale up once you trust the prompts. `fable` is the most capable and the most expensive tier (roughly twice the price of `opus`), so reserve it for the executor on work that earns it. Working hours keep the sprite from patrolling an empty repo at 3 a.m.
 
 ## Development
 

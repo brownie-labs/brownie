@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `fable` joins the model aliases accepted by `/model` and `settings.json` (`monitor.model`, `executor.model`, `summarizer.model`), with the full `low`…`max` effort range. Defaults are unchanged.
+
 ## [0.3.1] - 2026-07-13
 
 ### Changed

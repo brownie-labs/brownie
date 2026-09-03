@@ -205,4 +205,21 @@ describe("runSession (integration with fake claude)", () => {
     expect(result.ok).toBe(true);
     expect(result.resultText).toBe("haiku report");
   }, 15_000);
+
+  it("passes the fable alias through to the --model flag untouched", async () => {
+    const out = join(dir, "args-fable.json");
+    const spec = buildSessionSpec(collector.sink, {
+      model: "fable",
+      childEnv: fakeClaudeEnv("exit_nonzero", {
+        FAKE_CLAUDE_MODE_FABLE: "ok",
+        FAKE_CLAUDE_ARGS_OUT_FABLE: out,
+      }),
+    });
+    const result = await runSession(spec, new AbortController().signal);
+
+    expect(result.ok).toBe(true);
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--model");
+    expect(args[flagIndex + 1]).toBe("fable");
+  }, 15_000);
 });

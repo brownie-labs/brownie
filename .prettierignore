@@ -3,3 +3,4 @@ coverage/
 workspace/
 pnpm-lock.yaml
 test/fixtures/claude
+.playwright-mcp/

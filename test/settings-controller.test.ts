@@ -31,6 +31,7 @@ describe("supportsEffort", () => {
     expect(supportsEffort("haiku")).toBe(false);
     expect(supportsEffort("sonnet")).toBe(true);
     expect(supportsEffort("opus")).toBe(true);
+    expect(supportsEffort("fable")).toBe(true);
   });
 });
 
@@ -121,10 +122,18 @@ describe("createSettingsController", () => {
 
   it("setModel rejects unknown models without touching anything", async () => {
     await expect(controller.setModel("monitor", "gpt")).rejects.toThrow(
-      'unknown model "gpt" — use haiku, sonnet, opus',
+      'unknown model "gpt" — use haiku, sonnet, opus, fable',
     );
     expect(config.monitor.model).toBe("haiku");
     expect(await persisted()).toEqual({});
+  });
+
+  it("setModel accepts fable and keeps its effort levels available", async () => {
+    await controller.setModel("executor", "fable");
+    expect(config.executor.model).toBe("fable");
+    await controller.setEffort("executor", "max");
+    expect(config.executor.effort).toBe("max");
+    expect(await persisted()).toEqual({ executor: { model: "fable", effort: "max" } });
   });
 
   it("setEffort persists and applies", async () => {
