@@ -53,7 +53,7 @@ The dashboard exposes the everyday settings as slash commands — each one valid
 | `/days <days\|off>`         | `monitor.activeDays` (`off` clears it)                   |
 | `/config`                   | shows all current values                                 |
 
-The remaining keys (`streamPartial`, `sessionTimeoutMs`, `maxTaskAttempts`, `retryDelayMs`) are edited by hand and picked up on the next start. The agent prompts are also editable in place — `/prompt <monitor|executor>` opens them in the dashboard editor ([docs/prompts.md](prompts.md)).
+The remaining keys (`streamPartial`, `sessionTimeoutMs`, `maxTaskAttempts`, `retryDelayMs`) are edited by hand and picked up on the next start — or patched live from a shell with `brownie settings patch` ([docs/control.md](control.md)). The agent prompts are also editable in place — `/prompt <monitor|executor>` opens them in the dashboard editor ([docs/prompts.md](prompts.md)).
 
 ## Working hours
 

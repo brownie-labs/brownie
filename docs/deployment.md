@@ -38,7 +38,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 
 | Event                                                         | Fields                                                                                                                     |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `worker.started`                                              | `version`, `pid`, `projectDir`, `paused` (only when the agents boot paused)                                                |
+| `worker.started`                                              | `version`, `pid`, `projectDir`, `paused` (when booted paused)                                                              |
 | `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
 | `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
 | `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |
@@ -47,7 +47,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 | `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error` |
 | `task.retryScheduled`                                         | `taskId`, `resumeAt`                                                                                                       |
 | `executor.waiting` / `executor.limitWait`                     | — / `resumeAt`                                                                                                             |
-| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — Claude rejected the credentials; both agents are paused until `brownie resume` (level `error`)                  |
+| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — credentials rejected; both agents park until `brownie resume`                                                   |
 | `summary.started` / `summary.finished`                        | `taskId`; finished adds `ok`, `durationMs`, `costUsd`, `error`                                                             |
 | `session.init`                                                | `model`, `sessionId`                                                                                                       |
 | `session.stderr` / `session.procError` / `session.killed`     | `line` / `message` / `reason`                                                                                              |
@@ -57,58 +57,17 @@ Optional fields are omitted, never `null` — the schema is stable and safe to i
 
 ## Controlling a running worker
 
-The worker exposes a local control socket. By default it lives outside the project at `<tmpdir>/brownie-<uid>-<hash>.sock`, derived from the project directory, so any shell in the same project directory finds it without configuration:
+The worker exposes a local control socket, created automatically — nothing to configure. From any shell in the same project directory:
 
 ```bash
-brownie status                  # who's running, phases, task counts, cost
-brownie status --json           # the same as machine-readable JSON
-brownie pause                   # both agents finish their session, then park
-brownie pause monitor           # just one agent
-brownie resume                  # back to work (also clears an authBlocked stop)
-
-brownie tasks list [--status failed] [--json]
-brownie tasks add "Rotate the API key" [--id ci-42] [--title "…"]
-brownie tasks retry <id>        # requeue a failed task
-brownie tasks cancel <id>       # drop a pending task
-
-brownie settings get [--json]   # effective settings, defaults filled in
-brownie settings patch '{"monitor":{"intervalMinutes":5,"activeHours":null}}'
-echo '{"streamPartial":false}' | brownie settings patch -
-
-brownie prompt get monitor > monitor.md
-brownie prompt set executor executor.md      # or pipe it: … | brownie prompt set executor
-
-brownie memory search "deploy" [--limit 5] [--json]
-brownie memory recent [--limit 20] [--json]
+brownie status           # who's running, phases, task counts, cost
+brownie status --json    # the same as machine-readable JSON
+brownie pause            # both agents finish their session, then park
+brownie pause monitor    # just one agent
+brownie resume           # back to work
 ```
 
-Every command talks to the running process, so changes apply live: a patched setting takes effect on the next session without a restart, a replaced prompt on the next iteration, an added task as soon as the executor is idle. `settings patch` merges a sparse JSON object into `.brownie/settings.json` — `null` deletes a key (`"activeHours": null` switches the window off, `"model": null` falls back to the default) — and validates the whole file before writing, so a typo is rejected with its path and nothing changes. `--json` prints the raw payload for scripts; `-` reads a body from stdin. Commands exit `1` when the worker rejects the request, when a `retry`/`cancel` finds no matching task, and when no worker is running.
-
-When the worker and the controlling shell do not share a temp directory — the worker in a container, the operator on the host, or a supervisor that manages many agents — point both at the same file with `BROWNIE_CONTROL_SOCKET=/run/brownie/control.sock`. The path must be absolute and shorter than 104 bytes; the worker creates the directory if it is missing, and the socket is `chmod 0600`, so the caller has to run as the same user (a different uid gets `Permission denied`, not `no worker is running`). `brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
-
-### Control protocol
-
-A control plane does not need the CLI — it can speak to the socket directly. Transport: a unix domain socket (a named pipe on Windows); one connection carries exactly one request — a JSON object terminated by `\n` — and receives one JSON line back, then the worker closes the connection. Requests larger than 1 MiB are refused, idle connections are dropped after 5 s.
-
-Responses are `{"ok":true,"data":…}` or `{"ok":false,"error":"…"}`; `data` is omitted when a command returns nothing. Optional fields inside `data` are omitted, never `null`.
-
-| Request                                                                                  | `data`                                                    |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `{"cmd":"status"}`                                                                       | the status document `brownie status --json` prints        |
-| `{"cmd":"pause","agent":"monitor"\|"executor"\|"all"}`                                   | —                                                         |
-| `{"cmd":"resume","agent":…}`                                                             | —                                                         |
-| `{"cmd":"settings.get"}`                                                                 | effective settings (defaults filled in)                   |
-| `{"cmd":"settings.patch","patch":{…}}`                                                   | the resulting settings; `null` in the patch deletes a key |
-| `{"cmd":"tasks.list","status"?:"pending"\|"in_progress"\|"done"\|"failed"\|"cancelled"}` | `Task[]`                                                  |
-| `{"cmd":"tasks.add","description":"…","id"?:"…","title"?:"…"}`                           | the created `Task`; a duplicate id is an error            |
-| `{"cmd":"tasks.retry","id":"…"}`                                                         | `true` when a failed task was requeued, else `false`      |
-| `{"cmd":"tasks.cancel","id":"…"}`                                                        | `true` when a pending task was cancelled, else `false`    |
-| `{"cmd":"memory.search","query":"…","limit"?:1-100}`                                     | task summaries, best match first (default limit 10)       |
-| `{"cmd":"memory.recent","limit"?:1-100}`                                                 | the newest task summaries                                 |
-| `{"cmd":"prompt.get","agent":"monitor"\|"executor"}`                                     | `{"agent":…,"content":"…"}`                               |
-| `{"cmd":"prompt.set","agent":…,"content":"…"}`                                           | —                                                         |
-
-An unknown `cmd` or non-JSON input answers `{"ok":false,"error":"Unrecognized control request."}`; a known command with a bad payload explains the field, e.g. `Invalid tasks.add request: description: Invalid input: expected string, received undefined`. Settings rejected by the schema come back as `Invalid configuration (.brownie/settings.json):` followed by the offending paths.
+`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`. The same socket edits tasks, settings, prompts and memory, reaches out of a container, and has a documented wire protocol — see [docs/control.md](control.md).
 
 ## Staying up to date
 
@@ -125,7 +84,7 @@ A running worker also checks for updates in the background. Auto-update is contr
 { "autoUpdate": true }
 ```
 
-With `autoUpdate` on (the default) the worker installs new versions in the background — the dashboard header and the `update.installed` log event announce it, and it applies after a restart. With it off, the worker only reports availability (`update.available`) so you can run `brownie update` yourself. Set `BROWNIE_DISABLE_AUTOUPDATER=1` to switch the background checks off entirely. The reference Docker image sets it, so a container never changes underneath you: updating brownie there means rebuilding the image.
+With `autoUpdate` on (the default) the worker installs new versions in the background — the dashboard header and the `update.installed` log event announce it, and it applies after a restart. With it off, the worker only reports availability (`update.available`) so you can run `brownie update` yourself. Set `BROWNIE_DISABLE_AUTOUPDATER=1` to switch the background checks off entirely.
 
 ## Provisioning without a terminal
 
@@ -150,9 +109,7 @@ The server needs a logged-in Claude Code. Two options:
 
 Either goes into the systemd unit or the container environment — no browser login on the server.
 
-**Preflight.** At startup brownie runs `claude auth status --json` (no network call) and refuses to start with a clear hint when Claude Code reports no login at all. Older CLIs without `auth status` are tolerated with a warning. A token that is present but revoked or expired passes this check — it is caught at runtime instead.
-
-**Runtime auth gate.** When a session fails because Claude rejected the credentials (`Not logged in`, `401 authentication_failed`, an invalid or expired token), the executor returns its task to the queue without consuming an attempt, both agents move to `paused` with the phase `authBlocked`, and no further sessions start — there is no timed retry, so a dead token never burns cycles. `brownie status` shows the reason and the NDJSON log carries `monitor.authBlocked` / `executor.authBlocked`. Fix the credentials (rotate the variable and restart the container, or log in again), then `brownie resume` (or `/start` in the TUI) wakes the agents; if the credentials are still wrong, the first session blocks them again.
+Brownie checks the login at startup (`claude auth status --json`, no network call) and refuses to start when none is configured. Credentials rejected at runtime — an expired token, a revoked key — park both agents in the `authBlocked` phase instead of burning retries: the task goes back to the queue, `brownie status` shows the reason, and `brownie resume` wakes them once the credentials are fixed.
 
 ## A droplet runbook (systemd)
 
@@ -164,7 +121,7 @@ su - brownie
 
 # Node 22 + the two CLIs
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt-get install -y nodejs git
-sudo npm install -g @anthropic-ai/claude-code@2.1.268 @brownie-labs/brownie   # pin the CLI you tested with
+sudo npm install -g @anthropic-ai/claude-code@2.1.268 @brownie-labs/brownie
 
 # the project brownie will work on (with .brownie/ committed, or run brownie init)
 git clone git@github.com:you/your-project.git ~/your-project
@@ -221,25 +178,11 @@ The current directory is mounted as `/workspace`, so the project, its `.brownie/
 
 ### Pinned Claude Code version
 
-The image installs one exact Claude Code version — the `CLAUDE_CODE_VERSION` build argument, defaulting to the version brownie was tested with — and switches off both auto-updaters (`DISABLE_AUTOUPDATER=1` for Claude Code, `BROWNIE_DISABLE_AUTOUPDATER=1` for brownie). Two agents built a week apart therefore run the same CLI, and a container never picks up a new `stream-json` format or a new `rate_limit_event`/`api_retry` shape on its own. The build fails fast with `claude --version` when npm did not deliver the native binary for the platform. To move to a newer CLI, rebuild deliberately:
+The image installs exactly one Claude Code version (`CLAUDE_CODE_VERSION`, defaulting to the version brownie was tested with) and disables both auto-updaters, so every container runs the CLI you tested. Move deliberately:
 
 ```bash
-CLAUDE_CODE_VERSION=2.1.300 docker compose build --pull
-docker compose up -d
+CLAUDE_CODE_VERSION=2.1.300 docker compose build --pull && docker compose up -d
 ```
-
-### Controlling the worker from the host
-
-The socket is not visible outside the container by default. To drive the worker from the host — or from a control plane in another container — mount a directory for it and set `BROWNIE_CONTROL_SOCKET` in the compose environment:
-
-```yaml
-volumes:
-  - /tmp/brownie-run:/run/brownie
-environment:
-  BROWNIE_CONTROL_SOCKET: /run/brownie/control.sock
-```
-
-Then, from the host, `BROWNIE_CONTROL_SOCKET=/tmp/brownie-run/control.sock brownie status`. Keep the host path short — unix socket paths are limited to 104 bytes — and give each agent its own directory when you run several. The container's `HEALTHCHECK` inherits the variable, so it keeps working. The socket belongs to the container user (`brownie`, uid 1000) with mode `0600`; the host user needs the same uid or root.
 
 ### What the image gives your agent
 

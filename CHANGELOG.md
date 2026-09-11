@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `brownie tasks|settings|prompt|memory` subcommands and a documented wire protocol on the control socket: list, add, retry and cancel tasks, read or patch settings live (a sparse JSON merge where `null` deletes a key, validated before writing), read or replace the project prompts, and query long-term memory — everything the dashboard can do, from a shell or from your own tooling ([docs/control.md](docs/control.md)).
+- `BROWNIE_CONTROL_SOCKET` moves the control socket to a path both a container and its host can see; the worker creates the directory and the CLI reads the same variable.
+- `--paused` (env `BROWNIE_START_PAUSED=1`) boots a headless worker with both agents paused, so a supervisor decides when they start.
+- Credential failures park the agents instead of burning retries: a rejected token (`401`, `Not logged in`) returns the task to the queue without consuming an attempt, pauses both agents in the new `authBlocked` phase — visible in the dashboard, `brownie status` and the `monitor.authBlocked` / `executor.authBlocked` log events — and waits for `brownie resume` or `/start`. Preflight runs `claude auth status --json` and refuses to start when no login is configured.
+
+### Changed
+
+- The Docker image pins the Claude Code version (`CLAUDE_CODE_VERSION`, overridable from `docker-compose.yml`) and disables both auto-updaters, so every container runs the CLI it was built with.
+
 ## [0.4.0] - 2026-09-03
 
 ### Added

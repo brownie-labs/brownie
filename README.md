@@ -94,26 +94,26 @@ Working from a clone instead: `pnpm install && pnpm start`.
 
 A shell in the style of Claude Code: a header with the live status of both agents (state, model, cost, task counters), a view in the middle, and a command input at the bottom (history, tab completion, pgup/pgdn scrolling):
 
-| Command                       | Effect                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------- |
-| `/dashboard`                  | combined view: both agents + the task table                                         |
-| `/monitor`, `/executor`       | one agent full-screen with its recent outcomes                                      |
-| `/tasks`                      | the full task list                                                                  |
-| `/memory [query]`             | browse long-term memory, optionally filtered by FTS search                          |
-| `/start [monitor\|executor]`  | start paused agents — agents boot paused, and park again after a credential failure |
-| `/pause [monitor\|executor]`  | graceful pause — the current session finishes first                                 |
-| `/task <description>`         | add a task by hand (the executor picks it up immediately)                           |
-| `/retry <task-id>`            | requeue a failed task                                                               |
-| `/cancel <task-id>`           | cancel a pending task                                                               |
-| `/model <agent> <model>`      | set the model (`haiku`, `sonnet`, `opus`, `fable`)                                  |
-| `/effort <agent> <level>`     | set the reasoning effort (`low`…`max`)                                              |
-| `/interval <minutes>`         | set how often the monitor looks for new tasks                                       |
-| `/hours <HH:MM-HH:MM\|off>`   | set the monitor working hours, `off` = 24/7                                         |
-| `/days <days\|off>`           | set the monitor working days (`mon-fri`), `off` = daily                             |
-| `/prompt <monitor\|executor>` | view and edit an agent prompt — Ctrl+D saves, Esc closes                            |
-| `/config`                     | show the current configuration                                                      |
-| `/help`                       | list all commands                                                                   |
-| `/exit`                       | graceful shutdown (same as ctrl+c)                                                  |
+| Command                       | Effect                                                     |
+| ----------------------------- | ---------------------------------------------------------- |
+| `/dashboard`                  | combined view: both agents + the task table                |
+| `/monitor`, `/executor`       | one agent full-screen with its recent outcomes             |
+| `/tasks`                      | the full task list                                         |
+| `/memory [query]`             | browse long-term memory, optionally filtered by FTS search |
+| `/start [monitor\|executor]`  | start paused agents — agents boot paused                   |
+| `/pause [monitor\|executor]`  | graceful pause — the current session finishes first        |
+| `/task <description>`         | add a task by hand (the executor picks it up immediately)  |
+| `/retry <task-id>`            | requeue a failed task                                      |
+| `/cancel <task-id>`           | cancel a pending task                                      |
+| `/model <agent> <model>`      | set the model (`haiku`, `sonnet`, `opus`, `fable`)         |
+| `/effort <agent> <level>`     | set the reasoning effort (`low`…`max`)                     |
+| `/interval <minutes>`         | set how often the monitor looks for new tasks              |
+| `/hours <HH:MM-HH:MM\|off>`   | set the monitor working hours, `off` = 24/7                |
+| `/days <days\|off>`           | set the monitor working days (`mon-fri`), `off` = daily    |
+| `/prompt <monitor\|executor>` | view and edit an agent prompt — Ctrl+D saves, Esc closes   |
+| `/config`                     | show the current configuration                             |
+| `/help`                       | list all commands                                          |
+| `/exit`                       | graceful shutdown (same as ctrl+c)                         |
 
 Configuration commands persist to `.brownie/settings.json` and apply live — the next agent session already uses the new value, no restart needed.
 
@@ -130,13 +130,10 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |
 | `brownie resume [monitor\|executor]`                      | resume paused agents                                                        |
-| `brownie tasks list\|add\|retry\|cancel …`                | inspect and edit the task queue of the running worker                       |
-| `brownie settings get\|patch …`                           | read settings or merge a JSON patch that applies live                       |
-| `brownie prompt get\|set <agent> …`                       | read or replace a project prompt; the next session uses it                  |
-| `brownie memory search\|recent …`                         | query the long-term memory                                                  |
+| `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker          |
 | `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too) |
 
-A second `brownie` in the same project refuses to start while one is already running. Set `BROWNIE_CONTROL_SOCKET` when the worker and the shell that controls it do not share a temp directory (containers). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
+A second `brownie` in the same project refuses to start while one is already running. The control socket, its subcommands and wire protocol: [docs/control.md](https://github.com/brownie-labs/brownie/blob/main/docs/control.md). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
 
 ## Configuration
 
