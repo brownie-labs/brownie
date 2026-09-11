@@ -176,6 +176,42 @@ docker compose exec brownie brownie status
 
 The current directory is mounted as `/workspace`, so the project, its `.brownie/`, and all runtime state stay on the host. `docker ps` shows `healthy` only while the worker actually answers.
 
+### Prebuilt images
+
+Every release is also published to GHCR for `linux/amd64` and `linux/arm64`, so a server can pull instead of building:
+
+```bash
+docker pull ghcr.io/brownie-labs/brownie:latest           # the default image
+docker pull ghcr.io/brownie-labs/brownie:latest-browser   # the same plus Chromium for Playwright MCP
+```
+
+| Variant    | Tags                                                             | What's inside                                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| default    | `<version>`, `<major>.<minor>`, `latest`                         | the `runtime` stage of the reference `Dockerfile` — Node, Python, the Docker CLI, the developer baseline (about 1.2 GB on disk)                                   |
+| `-browser` | `<version>-browser`, `<major>.<minor>-browser`, `latest-browser` | the default image plus the full Chromium build (Chrome for Testing, run headless) with its system libraries and a pinned `@playwright/mcp` (about 1.9 GB on disk) |
+
+`<version>` pins one release (`0.5.0`), `<major>.<minor>` follows its patch releases (`0.5`), `latest` follows every release. Both variants ship the Claude Code version brownie was released with (the `ai.brownie.claude-code.version` label says which) — to run a different one, build locally as described below.
+
+To use a prebuilt image, replace the `build:` block in `docker-compose.yml` with `image:` — volumes, `DOCKER_GID`, and the environment stay as they are — and `docker compose pull && docker compose up -d` moves to a newer release:
+
+```yaml
+services:
+  brownie:
+    image: ghcr.io/brownie-labs/brownie:0.5
+```
+
+The `-browser` variant is for agents that need a browser through MCP. `@playwright/mcp` is installed globally as `playwright-mcp`, preconfigured for the bundled Chromium (`PLAYWRIGHT_MCP_BROWSER=chromium`, headless because there is no display), and starts without touching the network, so point MCP at the binary rather than at `npx`. Browsers live in `/opt/playwright` (`PLAYWRIGHT_BROWSERS_PATH`), owned by `brownie`, so a project's own Playwright can add other browsers or versions next to the bundled one. Register the server in the project's `.mcp.json` and approve it for headless sessions in `.claude/settings.json` (agent sessions inherit the project's Claude Code MCP configuration):
+
+```json
+{ "mcpServers": { "playwright": { "command": "playwright-mcp" } } }
+```
+
+```json
+{ "enabledMcpjsonServers": ["playwright"] }
+```
+
+Both variants come from the same `Dockerfile`: the `runtime` stage is its default target, so a plain `docker build .` and `docker compose build` produce the default image, and `docker build --target browser .` produces the `-browser` variant locally.
+
 ### Pinned Claude Code version
 
 The image installs exactly one Claude Code version (`CLAUDE_CODE_VERSION`, defaulting to the version brownie was tested with) and disables both auto-updaters, so every container runs the CLI you tested. Move deliberately:

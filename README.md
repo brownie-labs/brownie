@@ -133,7 +133,7 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker          |
 | `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too) |
 
-A second `brownie` in the same project refuses to start while one is already running. The control socket, its subcommands and wire protocol: [docs/control.md](https://github.com/brownie-labs/brownie/blob/main/docs/control.md). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
+A second `brownie` in the same project refuses to start while one is already running. The control socket, its subcommands and wire protocol: [docs/control.md](https://github.com/brownie-labs/brownie/blob/main/docs/control.md). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, the reference `Dockerfile` + `docker-compose.yml`, and the prebuilt images on GHCR (`ghcr.io/brownie-labs/brownie`, plus a `-browser` variant with Chromium for Playwright MCP): [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
 
 ## Configuration
 

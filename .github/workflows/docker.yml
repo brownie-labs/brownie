@@ -1,0 +1,154 @@
+name: Docker
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Release tag to build (for example v0.5.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ inputs.ref || github.ref_name }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+    outputs:
+      runtime-tags: ${{ steps.runtime.outputs.tags }}
+      runtime-labels: ${{ steps.runtime.outputs.labels }}
+      runtime-annotations: ${{ steps.runtime.outputs.annotations }}
+      browser-tags: ${{ steps.browser.outputs.tags }}
+      browser-labels: ${{ steps.browser.outputs.labels }}
+      browser-annotations: ${{ steps.browser.outputs.annotations }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Resolve tags for the runtime image
+        id: runtime
+        uses: docker/metadata-action@v6
+        with:
+          context: git
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - name: Resolve tags for the browser image
+        id: browser
+        uses: docker/metadata-action@v6
+        with:
+          context: git
+          images: ${{ env.IMAGE }}
+          flavor: suffix=-browser,onlatest=true
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+  build:
+    needs: metadata
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the runtime image by digest
+        id: runtime
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ needs.metadata.outputs.runtime-labels }}
+          annotations: ${{ needs.metadata.outputs.runtime-annotations }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }}
+      - name: Build and push the browser image by digest
+        id: browser
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: browser
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ needs.metadata.outputs.browser-labels }}
+          annotations: ${{ needs.metadata.outputs.browser-annotations }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }},mode=max
+      - name: Record the digests
+        env:
+          RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}
+          BROWSER_DIGEST: ${{ steps.browser.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests/runtime" "$RUNNER_TEMP/digests/browser"
+          touch "$RUNNER_TEMP/digests/runtime/${RUNTIME_DIGEST#sha256:}" "$RUNNER_TEMP/digests/browser/${BROWSER_DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [metadata, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - name: Publish the runtime manifest list
+        working-directory: ${{ runner.temp }}/digests/runtime
+        env:
+          TAGS: ${{ needs.metadata.outputs.runtime-tags }}
+          ANNOTATIONS: ${{ needs.metadata.outputs.runtime-annotations }}
+        run: |
+          readarray -t tags <<<"$TAGS"
+          readarray -t annotations < <(grep '^index:' <<<"$ANNOTATIONS")
+          digests=(*)
+          docker buildx imagetools create "${tags[@]/#/--tag=}" "${annotations[@]/#/--annotation=}" "${digests[@]/#/$IMAGE@sha256:}"
+          docker buildx imagetools inspect "${tags[0]}"
+      - name: Publish the browser manifest list
+        working-directory: ${{ runner.temp }}/digests/browser
+        env:
+          TAGS: ${{ needs.metadata.outputs.browser-tags }}
+          ANNOTATIONS: ${{ needs.metadata.outputs.browser-annotations }}
+        run: |
+          readarray -t tags <<<"$TAGS"
+          readarray -t annotations < <(grep '^index:' <<<"$ANNOTATIONS")
+          digests=(*)
+          docker buildx imagetools create "${tags[@]/#/--tag=}" "${annotations[@]/#/--annotation=}" "${digests[@]/#/$IMAGE@sha256:}"
+          docker buildx imagetools inspect "${tags[0]}"
