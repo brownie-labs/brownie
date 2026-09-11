@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ControlStatus } from "../src/control-protocol.js";
+import { snapshotEnv } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   sendControlRequest: vi.fn(),
@@ -110,6 +111,39 @@ describe("runStatus", () => {
     await runStatus({ write });
 
     expect(logger.error).toHaveBeenCalledWith("broken");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("talks to the socket named by BROWNIE_CONTROL_SOCKET", async () => {
+    const restoreEnv = snapshotEnv();
+    process.env.BROWNIE_CONTROL_SOCKET = "/run/brownie/control.sock";
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: buildStatus() });
+
+    try {
+      await runStatus({ write });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(mocks.sendControlRequest).toHaveBeenCalledWith("/run/brownie/control.sock", {
+      cmd: "status",
+    });
+  });
+
+  it("rejects an invalid BROWNIE_CONTROL_SOCKET before contacting the worker", async () => {
+    const restoreEnv = snapshotEnv();
+    process.env.BROWNIE_CONTROL_SOCKET = "relative/control.sock";
+
+    try {
+      await runStatus({ write });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(mocks.sendControlRequest).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("BROWNIE_CONTROL_SOCKET must be an absolute path"),
+    );
     expect(process.exitCode).toBe(1);
   });
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -42,16 +42,54 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
   };
 }
 
-export function controlSocketPath(projectDir: string = process.cwd()): string {
+export const CONTROL_SOCKET_ENV = "BROWNIE_CONTROL_SOCKET";
+
+export const UNIX_SOCKET_PATH_LIMIT = 104;
+
+export class InvalidControlSocketPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidControlSocketPathError";
+  }
+}
+
+export interface ControlSocketPathOptions {
+  env?: NodeJS.ProcessEnv | undefined;
+  platform?: NodeJS.Platform | undefined;
+}
+
+function validateControlSocketOverride(override: string): string {
+  if (!isAbsolute(override)) {
+    throw new InvalidControlSocketPathError(
+      `${CONTROL_SOCKET_ENV} must be an absolute path, got "${override}".`,
+    );
+  }
+  const bytes = Buffer.byteLength(override, "utf8");
+  if (bytes >= UNIX_SOCKET_PATH_LIMIT) {
+    throw new InvalidControlSocketPathError(
+      `${CONTROL_SOCKET_ENV} is too long (${String(bytes)} bytes) — unix socket paths must be shorter than ${String(UNIX_SOCKET_PATH_LIMIT)} bytes.`,
+    );
+  }
+  return override;
+}
+
+export function controlSocketPath(
+  projectDir: string = process.cwd(),
+  options: ControlSocketPathOptions = {},
+): string {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const override = (env[CONTROL_SOCKET_ENV] ?? "").trim();
+  if (override !== "") {
+    return platform === "win32" ? override : validateControlSocketOverride(override);
+  }
   const hash = createHash("sha256")
     .update(resolve(projectDir))
     .digest("hex")
     .slice(0, 16);
   const uid = process.getuid?.() ?? 0;
   const name = `brownie-${String(uid)}-${hash}`;
-  return process.platform === "win32"
-    ? `\\\\.\\pipe\\${name}`
-    : join(tmpdir(), `${name}.sock`);
+  return platform === "win32" ? `\\\\.\\pipe\\${name}` : join(tmpdir(), `${name}.sock`);
 }
 
 export const packageRootDir = dirname(dirname(fileURLToPath(import.meta.url)));

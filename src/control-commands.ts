@@ -8,12 +8,14 @@ import {
   type ControlTarget,
 } from "./control-protocol.js";
 import { logger } from "./logger.js";
-import { controlSocketPath } from "./paths.js";
+import { CONTROL_SOCKET_ENV, controlSocketPath } from "./paths.js";
 
 export interface ControlCommandIo {
   projectDir?: string | undefined;
   write?: ((line: string) => void) | undefined;
 }
+
+export const SOCKET_ENV_HINT = `Env: ${CONTROL_SOCKET_ENV} overrides the control socket path.`;
 
 function formatUptime(startedAt: string): string {
   const elapsedMs = Math.max(0, Date.now() - Date.parse(startedAt));
@@ -132,7 +134,7 @@ export async function runControlAction(
 export const statusCommand = defineCommand({
   meta: {
     name: "status",
-    description: "Show the status of the brownie worker running in this project.",
+    description: `Show the status of the brownie worker running in this project. ${SOCKET_ENV_HINT}`,
   },
   args: {
     json: { type: "boolean", description: "Print the raw status as JSON" },

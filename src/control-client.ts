@@ -10,6 +10,19 @@ export class WorkerNotRunningError extends Error {
   }
 }
 
+export class ControlSocketAccessError extends Error {
+  constructor(socketPath: string) {
+    super(
+      `Permission denied on the control socket ${socketPath} — it belongs to the user running the worker.`,
+    );
+    this.name = "ControlSocketAccessError";
+  }
+}
+
+function isAccessDenied(error: Error): boolean {
+  return (error as NodeJS.ErrnoException).code === "EACCES";
+}
+
 export interface ControlRequestOptions {
   timeoutMs?: number | undefined;
 }
@@ -39,8 +52,12 @@ export function sendControlRequest(
     socket.setTimeout(timeoutMs, () => {
       fail(new Error("Timed out waiting for the worker to respond."));
     });
-    socket.on("error", () => {
-      fail(new WorkerNotRunningError());
+    socket.on("error", (error) => {
+      fail(
+        isAccessDenied(error)
+          ? new ControlSocketAccessError(socketPath)
+          : new WorkerNotRunningError(),
+      );
     });
     socket.on("close", () => {
       fail(new WorkerNotRunningError());

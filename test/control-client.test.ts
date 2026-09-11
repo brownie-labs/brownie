@@ -1,8 +1,13 @@
+import { chmod } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sendControlRequest, WorkerNotRunningError } from "../src/control-client.js";
+import {
+  ControlSocketAccessError,
+  sendControlRequest,
+  WorkerNotRunningError,
+} from "../src/control-client.js";
 
 let socketCounter = 0;
 
@@ -83,6 +88,21 @@ describe("sendControlRequest", () => {
       WorkerNotRunningError,
     );
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports a permission problem separately from a missing worker",
+    async () => {
+      running = await startServer(socketPath, () => undefined);
+      await chmod(socketPath, 0o000);
+
+      await expect(sendControlRequest(socketPath, { cmd: "status" })).rejects.toThrow(
+        ControlSocketAccessError,
+      );
+      await expect(sendControlRequest(socketPath, { cmd: "status" })).rejects.toThrow(
+        /Permission denied on the control socket/,
+      );
+    },
+  );
 
   it("times out when the worker never responds", async () => {
     running = await startServer(socketPath, () => undefined);

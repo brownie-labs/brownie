@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -134,6 +134,37 @@ describe("startControlServer", () => {
 
     const response = await sendControlRequest(socketPath, { cmd: "status" });
     expect(response.ok).toBe(true);
+  });
+
+  it("creates the socket directory when it is missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "brownie-socket-dir-"));
+    socketPath = join(dir, "nested", "control.sock");
+
+    try {
+      await startServer();
+
+      const response = await sendControlRequest(socketPath, { cmd: "status" });
+      expect(response.ok).toBe(true);
+    } finally {
+      for (const handle of handles) await handle.close();
+      handles = [];
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("explains a socket that cannot be opened", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "brownie-socket-dir-"));
+    const blocker = join(dir, "not-a-directory");
+    await writeFile(blocker, "", "utf8");
+    socketPath = join(blocker, "control.sock");
+
+    try {
+      await expect(startServer()).rejects.toThrow(
+        /Cannot open the control socket .*control\.sock .*BROWNIE_CONTROL_SOCKET/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("refuses to start when another worker owns the socket", async () => {

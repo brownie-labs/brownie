@@ -56,7 +56,7 @@ Optional fields are omitted, never `null` — the schema is stable and safe to i
 
 ## Controlling a running worker
 
-The worker exposes a local control socket, created automatically — nothing to configure. From any shell in the same project directory:
+The worker exposes a local control socket. By default it lives outside the project at `<tmpdir>/brownie-<uid>-<hash>.sock`, derived from the project directory, so any shell in the same project directory finds it without configuration:
 
 ```bash
 brownie status           # who's running, phases, task counts, cost
@@ -66,7 +66,7 @@ brownie pause monitor    # just one agent
 brownie resume           # back to work
 ```
 
-`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
+When the worker and the controlling shell do not share a temp directory — the worker in a container, the operator on the host, or a supervisor that manages many agents — point both at the same file with `BROWNIE_CONTROL_SOCKET=/run/brownie/control.sock`. The path must be absolute and shorter than 104 bytes; the worker creates the directory if it is missing, and the socket is `chmod 0600`, so the caller has to run as the same user (a different uid gets `Permission denied`, not `no worker is running`). `brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
 
 ## Staying up to date
 
@@ -172,6 +172,19 @@ docker compose exec brownie brownie status
 ```
 
 The current directory is mounted as `/workspace`, so the project, its `.brownie/`, and all runtime state stay on the host. `docker ps` shows `healthy` only while the worker actually answers.
+
+### Controlling the worker from the host
+
+The socket is not visible outside the container by default. To drive the worker from the host — or from a control plane in another container — mount a directory for it and set `BROWNIE_CONTROL_SOCKET` in the compose environment:
+
+```yaml
+volumes:
+  - /tmp/brownie-run:/run/brownie
+environment:
+  BROWNIE_CONTROL_SOCKET: /run/brownie/control.sock
+```
+
+Then, from the host, `BROWNIE_CONTROL_SOCKET=/tmp/brownie-run/control.sock brownie status`. Keep the host path short — unix socket paths are limited to 104 bytes — and give each agent its own directory when you run several. The container's `HEALTHCHECK` inherits the variable, so it keeps working. The socket belongs to the container user (`brownie`, uid 1000) with mode `0600`; the host user needs the same uid or root.
 
 ### What the image gives your agent
 

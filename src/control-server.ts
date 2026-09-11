@@ -1,5 +1,6 @@
-import { chmod, unlink } from "node:fs/promises";
+import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Server, type Socket } from "node:net";
+import { dirname } from "node:path";
 import type { AgentController } from "./control.js";
 import {
   parseControlRequest,
@@ -8,6 +9,7 @@ import {
   type ControlStatus,
   type ControlTarget,
 } from "./control-protocol.js";
+import { CONTROL_SOCKET_ENV } from "./paths.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 
@@ -127,6 +129,17 @@ async function removeStaleSocket(socketPath: string): Promise<void> {
   await unlink(socketPath).catch(() => undefined);
 }
 
+async function ensureSocketDirectory(socketPath: string): Promise<void> {
+  if (process.platform === "win32") return;
+  await mkdir(dirname(socketPath), { recursive: true }).catch(() => undefined);
+}
+
+function describeListenError(socketPath: string, error: Error): Error {
+  return new Error(
+    `Cannot open the control socket ${socketPath} (${error.message}) — check that its directory exists and is writable, or point ${CONTROL_SOCKET_ENV} elsewhere.`,
+  );
+}
+
 export async function startControlServer(
   deps: ControlServerDeps,
 ): Promise<ControlServerHandle> {
@@ -138,8 +151,11 @@ export async function startControlServer(
     serveConnection(deps, socket);
   });
 
+  await ensureSocketDirectory(deps.socketPath);
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
+    server.once("error", (error) => {
+      reject(describeListenError(deps.socketPath, error));
+    });
     server.listen(deps.socketPath, () => {
       server.removeListener("error", reject);
       resolve();
