@@ -2,6 +2,7 @@ services:
   brownie:
     build:
       context: .
+      target: runtime
       args:
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.268}
     init: true
