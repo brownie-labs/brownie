@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { constants } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
@@ -17,6 +18,21 @@ const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
 const CONFIGURE_HINT = "run brownie in an interactive terminal to complete setup";
 const FTS5_HINT =
   "this Node.js build ships node:sqlite without the FTS5 extension — use Node.js >= 22.16 from nodejs.org (or any build compiled with SQLITE_ENABLE_FTS5)";
+const LOGIN_HINT =
+  "not logged in — run `claude auth login`, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY";
+const AUTH_UNVERIFIED_LABEL =
+  "Claude Code login (not verified — `claude auth status` unavailable)";
+const AUTH_STATUS_TIMEOUT_MS = 10_000;
+
+export interface ClaudeAuthStatus {
+  loggedIn: boolean;
+  authMethod?: string | undefined;
+  apiKeySource?: string | undefined;
+}
+
+export interface PreflightOptions {
+  authStatusTimeoutMs?: number | undefined;
+}
 
 interface Check {
   label: string;
@@ -47,13 +63,78 @@ async function findOnPath(command: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function checkClaude(): Promise<Check> {
+async function locateClaude(): Promise<{ check: Check; path: string | undefined }> {
   const found = await findOnPath(COMMAND);
-  return check(
-    `Claude Code (${COMMAND})`,
-    found !== undefined,
-    `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`,
-  );
+  return {
+    path: found,
+    check: check(
+      `Claude Code (${COMMAND})`,
+      found !== undefined,
+      `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`,
+    ),
+  };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+export function parseClaudeAuthStatus(output: string): ClaudeAuthStatus | null {
+  const trimmed = output.trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.loggedIn !== "boolean") return null;
+  return {
+    loggedIn: record.loggedIn,
+    authMethod: optionalString(record.authMethod),
+    apiKeySource: optionalString(record.apiKeySource),
+  };
+}
+
+function runForStdout(file: string, args: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      file,
+      args,
+      { timeout: timeoutMs, encoding: "utf8", windowsHide: true },
+      (error, stdout) => {
+        if (stdout.trim() !== "") {
+          resolve(stdout);
+          return;
+        }
+        reject(error ?? new Error(`${file} produced no output`));
+      },
+    );
+  });
+}
+
+async function checkClaudeAuth(claudePath: string, timeoutMs: number): Promise<Check> {
+  const status = await runForStdout(claudePath, ["auth", "status", "--json"], timeoutMs)
+    .then(parseClaudeAuthStatus)
+    .catch(() => null);
+  if (status === null) {
+    logger.warn(
+      "Could not verify the Claude Code login (`claude auth status --json` gave no JSON — older CLI?); continuing",
+    );
+    return { label: AUTH_UNVERIFIED_LABEL, ok: true };
+  }
+  const via = status.apiKeySource ?? status.authMethod ?? "unknown";
+  return check(`Claude Code login (${via})`, status.loggedIn, LOGIN_HINT);
+}
+
+async function checkClaudeAndAuth(timeoutMs: number): Promise<Check[]> {
+  const located = await locateClaude();
+  if (located.path === undefined) return [located.check];
+  return [located.check, await checkClaudeAuth(located.path, timeoutMs)];
 }
 
 function checkSqliteFts5(): Check {
@@ -87,11 +168,14 @@ async function checkFile(path: string, label: string): Promise<Check> {
   );
 }
 
-export async function ensureReady(dirs: ConfigDirs = {}): Promise<WorkerPromptPaths> {
+export async function ensureReady(
+  dirs: ConfigDirs = {},
+  options: PreflightOptions = {},
+): Promise<WorkerPromptPaths> {
   const paths = resolvePromptPaths(dirs);
 
-  const checks = await Promise.all([
-    checkClaude(),
+  const [claudeChecks, ...fileChecks] = await Promise.all([
+    checkClaudeAndAuth(options.authStatusTimeoutMs ?? AUTH_STATUS_TIMEOUT_MS),
     Promise.resolve(checkSqliteFts5()),
     Promise.resolve(checkSettingsFile(projectPaths(dirs.projectDir).settingsFile)),
     checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
@@ -109,6 +193,7 @@ export async function ensureReady(dirs: ConfigDirs = {}): Promise<WorkerPromptPa
       PROMPT_FILE_LABELS.summarizer.systemPromptPath,
     ),
   ]);
+  const checks = [...claudeChecks, ...fileChecks];
 
   for (const result of checks) {
     if (result.ok) logger.success(result.label);

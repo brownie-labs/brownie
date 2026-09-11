@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { msUntilActive } from "./active-hours.js";
+import { detectAuthFailure } from "./auth-gate.js";
 import type { AgentController } from "./control.js";
+import type { LoopGates } from "./gates.js";
 import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
 import type { MonitorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { WorkerConfig } from "./types.js";
-import { detectUsageLimit, type UsageLimitGate } from "./usage-limit.js";
+import { detectUsageLimit } from "./usage-limit.js";
 import type { Waker } from "./waker.js";
 
 export async function runMonitorLoop(
@@ -15,7 +17,7 @@ export async function runMonitorLoop(
   waker: Waker,
   reporter: MonitorReporter,
   controller: AgentController,
-  limitGate: UsageLimitGate,
+  gates: LoopGates,
   signal: AbortSignal,
 ): Promise<void> {
   const { monitor } = config;
@@ -23,6 +25,8 @@ export async function runMonitorLoop(
 
   let cycle = 0;
   while (!aborted()) {
+    const authBlock = gates.auth.blocked;
+    if (authBlock !== null) reporter.authBlocked(authBlock);
     await controller.gate(signal);
     if (aborted()) break;
 
@@ -34,7 +38,7 @@ export async function runMonitorLoop(
       continue;
     }
 
-    const limitWaitMs = limitGate.msRemaining(now.getTime());
+    const limitWaitMs = gates.limit.msRemaining(now.getTime());
     if (limitWaitMs > 0) {
       reporter.usageLimit(new Date(now.getTime() + limitWaitMs));
       await controller.sleep(limitWaitMs, signal);
@@ -70,8 +74,22 @@ export async function runMonitorLoop(
       if (aborted()) break;
 
       if (!result.ok) {
+        const auth = detectAuthFailure(result);
+        if (auth) {
+          gates.auth.engage(auth);
+          reporter.cycleFinished({
+            cycle,
+            ok: false,
+            durationMs: result.durationMs,
+            costUsd: result.costUsd,
+            addedTasks: 0,
+            skippedDuplicates: 0,
+            error: `authentication failed — ${auth.reason}`,
+          });
+          continue;
+        }
         const limit = detectUsageLimit(result);
-        if (limit) limitGate.engage(limit, Date.now());
+        if (limit) gates.limit.engage(limit, Date.now());
         reporter.cycleFinished({
           cycle,
           ok: false,

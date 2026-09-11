@@ -1,3 +1,4 @@
+import type { AuthFailure } from "./auth-gate.js";
 import type { AgentControlState } from "./control.js";
 import {
   describeToolUse,
@@ -20,16 +21,24 @@ export interface TailLine {
   dropped?: number | undefined;
 }
 
+export interface AuthBlockedPhase {
+  kind: "authBlocked";
+  reason: string;
+  since: number;
+}
+
 export type MonitorPhase =
   | { kind: "starting" }
   | { kind: "offHours"; resumeAt: number }
   | { kind: "limitWait"; resumeAt: number }
+  | AuthBlockedPhase
   | { kind: "session"; cycle: number; startedAt: number }
   | { kind: "sleeping"; nextCycleAt: number };
 
 export type ExecutorPhase =
   | { kind: "waiting" }
   | { kind: "limitWait"; resumeAt: number }
+  | AuthBlockedPhase
   | { kind: "session"; task: Task; startedAt: number }
   | { kind: "summary"; task: Task; startedAt: number }
   | { kind: "backoff"; task: Task; resumeAt: number };
@@ -105,6 +114,7 @@ export interface WorkerStatus {
 export interface MonitorReporter {
   offHours(resumeAt: Date): void;
   usageLimit(resumeAt: Date): void;
+  authBlocked(failure: AuthFailure): void;
   cycleStarted(cycle: number): void;
   cycleFinished(outcome: Omit<MonitorCycleOutcome, "finishedAt">): void;
   sleepUntil(nextCycleAt: Date): void;
@@ -116,6 +126,7 @@ export interface ExecutorReporter {
   taskFinished(outcome: Omit<ExecutorTaskOutcome, "finishedAt">): void;
   retryScheduled(task: Task, resumeAt: Date): void;
   usageLimit(resumeAt: Date): void;
+  authBlocked(failure: AuthFailure): void;
   waiting(): void;
   summaryStarted(task: Task): void;
   summaryFinished(outcome: Omit<SummaryOutcome, "finishedAt">): void;
@@ -136,6 +147,10 @@ function summaryTailLine(outcome: SummaryOutcome): TailLine {
     tone: "ok",
     text: `✔ memory saved (${outcome.taskId}) · ${formatDuration(outcome.durationMs)}${cost}`,
   };
+}
+
+function authBlockedPhase(failure: AuthFailure): AuthBlockedPhase {
+  return { kind: "authBlocked", reason: failure.reason, since: Date.now() };
 }
 
 const TAIL_LINE_MAX = 600;
@@ -214,6 +229,10 @@ export class WorkerStatusStore {
       this.monitorState.phase = { kind: "limitWait", resumeAt: resumeAt.getTime() };
       this.markDirty();
     },
+    authBlocked: (failure) => {
+      this.monitorState.phase = authBlockedPhase(failure);
+      this.noteAuthBlocked(this.monitorState, failure);
+    },
     cycleStarted: (cycle) => {
       this.resetForSession(this.monitorState, {
         kind: "session",
@@ -267,6 +286,10 @@ export class WorkerStatusStore {
     usageLimit: (resumeAt) => {
       this.executorState.phase = { kind: "limitWait", resumeAt: resumeAt.getTime() };
       this.markDirty();
+    },
+    authBlocked: (failure) => {
+      this.executorState.phase = authBlockedPhase(failure);
+      this.noteAuthBlocked(this.executorState, failure);
     },
     waiting: () => {
       this.executorState.phase = { kind: "waiting" };
@@ -341,6 +364,18 @@ export class WorkerStatusStore {
       this.notifyTimer = null;
     }
     this.listeners.clear();
+  }
+
+  private noteAuthBlocked<Phase, Outcome>(
+    state: AgentState<Phase, Outcome>,
+    failure: AuthFailure,
+  ): void {
+    this.pushTail(state, {
+      kind: "notice",
+      tone: "error",
+      text: `⛔ authentication failed · ${failure.reason}`,
+    });
+    this.markDirty();
   }
 
   private resetForSession<Phase, Outcome>(

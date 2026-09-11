@@ -75,6 +75,8 @@ export function phaseColor(kind: string): string {
     case "backoff":
     case "limitWait":
       return theme.warn;
+    case "authBlocked":
+      return theme.error;
     default:
       return theme.muted;
   }

@@ -40,6 +40,10 @@ function formatLimitWait(resumeAt: number, now: number): string {
   return `⛔ usage limit reached · resume ${formatResume(new Date(resumeAt))} (in ${formatCountdown(resumeAt - now)})`;
 }
 
+function formatAuthBlocked(reason: string): string {
+  return `⛔ authentication failed · ${reason} · fix credentials, then /start`;
+}
+
 export function formatMonitorPhase(phase: MonitorPhase, now: number): string {
   switch (phase.kind) {
     case "starting":
@@ -48,6 +52,8 @@ export function formatMonitorPhase(phase: MonitorPhase, now: number): string {
       return `⏸ outside working hours · resume ${formatResume(new Date(phase.resumeAt))} (in ${formatCountdown(phase.resumeAt - now)})`;
     case "limitWait":
       return formatLimitWait(phase.resumeAt, now);
+    case "authBlocked":
+      return formatAuthBlocked(phase.reason);
     case "session":
       return `▶ cycle #${phase.cycle} · running ${formatDuration(now - phase.startedAt)}`;
     case "sleeping":
@@ -61,6 +67,8 @@ export function formatExecutorPhase(phase: ExecutorPhase, now: number): string {
       return "⏳ waiting for tasks";
     case "limitWait":
       return formatLimitWait(phase.resumeAt, now);
+    case "authBlocked":
+      return formatAuthBlocked(phase.reason);
     case "session":
       return `▶ ${phase.task.id}: ${phase.task.title} · running ${formatDuration(now - phase.startedAt)}`;
     case "summary":
@@ -85,7 +93,7 @@ export function formatControlLabel(
   phaseKind: string,
   phaseLabel: string,
 ): string | undefined {
-  if (control === "running") return undefined;
+  if (control === "running" || phaseKind === "authBlocked") return undefined;
   if (control === "paused") return "⏸ paused";
   return phaseKind === "session" || phaseKind === "summary"
     ? `⏸ finishing · ${phaseLabel}`

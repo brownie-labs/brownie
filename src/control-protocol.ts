@@ -25,6 +25,7 @@ export interface ControlPhase {
   cycle?: number | undefined;
   taskId?: string | undefined;
   title?: string | undefined;
+  reason?: string | undefined;
 }
 
 export interface ControlAgentStatus<Outcome> {
@@ -86,6 +87,8 @@ function serializeMonitorPhase(phase: MonitorPhase): ControlPhase {
     case "offHours":
     case "limitWait":
       return { kind: phase.kind, until: iso(phase.resumeAt) };
+    case "authBlocked":
+      return { kind: phase.kind, since: iso(phase.since), reason: phase.reason };
     case "session":
       return { kind: phase.kind, since: iso(phase.startedAt), cycle: phase.cycle };
     case "sleeping":
@@ -99,6 +102,8 @@ function serializeExecutorPhase(phase: ExecutorPhase): ControlPhase {
       return { kind: phase.kind };
     case "limitWait":
       return { kind: phase.kind, until: iso(phase.resumeAt) };
+    case "authBlocked":
+      return { kind: phase.kind, since: iso(phase.since), reason: phase.reason };
     case "session":
     case "summary":
       return {

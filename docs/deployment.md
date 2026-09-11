@@ -47,6 +47,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 | `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error` |
 | `task.retryScheduled`                                         | `taskId`, `resumeAt`                                                                                                       |
 | `executor.waiting` / `executor.limitWait`                     | — / `resumeAt`                                                                                                             |
+| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — Claude rejected the credentials; both agents are paused until `brownie resume` (level `error`)                  |
 | `summary.started` / `summary.finished`                        | `taskId`; finished adds `ok`, `durationMs`, `costUsd`, `error`                                                             |
 | `session.init`                                                | `model`, `sessionId`                                                                                                       |
 | `session.stderr` / `session.procError` / `session.killed`     | `line` / `message` / `reason`                                                                                              |
@@ -107,6 +108,10 @@ The server needs a logged-in Claude Code. Two options:
 - **API key** — set `ANTHROPIC_API_KEY` (Anthropic Console billing instead of your subscription).
 
 Either goes into the systemd unit or the container environment — no browser login on the server.
+
+**Preflight.** At startup brownie runs `claude auth status --json` (no network call) and refuses to start with a clear hint when Claude Code reports no login at all. Older CLIs without `auth status` are tolerated with a warning. A token that is present but revoked or expired passes this check — it is caught at runtime instead.
+
+**Runtime auth gate.** When a session fails because Claude rejected the credentials (`Not logged in`, `401 authentication_failed`, an invalid or expired token), the executor returns its task to the queue without consuming an attempt, both agents move to `paused` with the phase `authBlocked`, and no further sessions start — there is no timed retry, so a dead token never burns cycles. `brownie status` shows the reason and the NDJSON log carries `monitor.authBlocked` / `executor.authBlocked`. Fix the credentials (rotate the variable and restart the container, or log in again), then `brownie resume` (or `/start` in the TUI) wakes the agents; if the credentials are still wrong, the first session blocks them again.
 
 ## A droplet runbook (systemd)
 

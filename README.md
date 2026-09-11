@@ -94,26 +94,26 @@ Working from a clone instead: `pnpm install && pnpm start`.
 
 A shell in the style of Claude Code: a header with the live status of both agents (state, model, cost, task counters), a view in the middle, and a command input at the bottom (history, tab completion, pgup/pgdn scrolling):
 
-| Command                       | Effect                                                     |
-| ----------------------------- | ---------------------------------------------------------- |
-| `/dashboard`                  | combined view: both agents + the task table                |
-| `/monitor`, `/executor`       | one agent full-screen with its recent outcomes             |
-| `/tasks`                      | the full task list                                         |
-| `/memory [query]`             | browse long-term memory, optionally filtered by FTS search |
-| `/start [monitor\|executor]`  | start paused agents — agents boot paused                   |
-| `/pause [monitor\|executor]`  | graceful pause — the current session finishes first        |
-| `/task <description>`         | add a task by hand (the executor picks it up immediately)  |
-| `/retry <task-id>`            | requeue a failed task                                      |
-| `/cancel <task-id>`           | cancel a pending task                                      |
-| `/model <agent> <model>`      | set the model (`haiku`, `sonnet`, `opus`, `fable`)         |
-| `/effort <agent> <level>`     | set the reasoning effort (`low`…`max`)                     |
-| `/interval <minutes>`         | set how often the monitor looks for new tasks              |
-| `/hours <HH:MM-HH:MM\|off>`   | set the monitor working hours, `off` = 24/7                |
-| `/days <days\|off>`           | set the monitor working days (`mon-fri`), `off` = daily    |
-| `/prompt <monitor\|executor>` | view and edit an agent prompt — Ctrl+D saves, Esc closes   |
-| `/config`                     | show the current configuration                             |
-| `/help`                       | list all commands                                          |
-| `/exit`                       | graceful shutdown (same as ctrl+c)                         |
+| Command                       | Effect                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `/dashboard`                  | combined view: both agents + the task table                                         |
+| `/monitor`, `/executor`       | one agent full-screen with its recent outcomes                                      |
+| `/tasks`                      | the full task list                                                                  |
+| `/memory [query]`             | browse long-term memory, optionally filtered by FTS search                          |
+| `/start [monitor\|executor]`  | start paused agents — agents boot paused, and park again after a credential failure |
+| `/pause [monitor\|executor]`  | graceful pause — the current session finishes first                                 |
+| `/task <description>`         | add a task by hand (the executor picks it up immediately)                           |
+| `/retry <task-id>`            | requeue a failed task                                                               |
+| `/cancel <task-id>`           | cancel a pending task                                                               |
+| `/model <agent> <model>`      | set the model (`haiku`, `sonnet`, `opus`, `fable`)                                  |
+| `/effort <agent> <level>`     | set the reasoning effort (`low`…`max`)                                              |
+| `/interval <minutes>`         | set how often the monitor looks for new tasks                                       |
+| `/hours <HH:MM-HH:MM\|off>`   | set the monitor working hours, `off` = 24/7                                         |
+| `/days <days\|off>`           | set the monitor working days (`mon-fri`), `off` = daily                             |
+| `/prompt <monitor\|executor>` | view and edit an agent prompt — Ctrl+D saves, Esc closes                            |
+| `/config`                     | show the current configuration                                                      |
+| `/help`                       | list all commands                                                                   |
+| `/exit`                       | graceful shutdown (same as ctrl+c)                                                  |
 
 Configuration commands persist to `.brownie/settings.json` and apply live — the next agent session already uses the new value, no restart needed.
 

@@ -142,6 +142,34 @@ describe("buildControlStatus", () => {
       kind: "limitWait",
       until: "2026-07-08T09:00:00.000Z",
     });
+
+    const authBlocked = buildControlStatus({
+      ...context,
+      snapshot: buildSnapshot({
+        monitor: {
+          phase: { kind: "authBlocked", reason: "Not logged in", since: resumeAt },
+          control: "paused",
+          tail: [],
+          recentOutcomes: [],
+        },
+        executor: {
+          phase: { kind: "authBlocked", reason: "HTTP 401", since: resumeAt },
+          control: "paused",
+          tail: [],
+          recentOutcomes: [],
+        },
+      }),
+    });
+    expect(authBlocked.agents.monitor.phase).toEqual({
+      kind: "authBlocked",
+      since: "2026-07-08T09:00:00.000Z",
+      reason: "Not logged in",
+    });
+    expect(authBlocked.agents.executor.phase).toEqual({
+      kind: "authBlocked",
+      since: "2026-07-08T09:00:00.000Z",
+      reason: "HTTP 401",
+    });
   });
 
   it("serializes executor phases with the task identity", () => {

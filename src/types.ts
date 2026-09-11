@@ -54,6 +54,11 @@ export interface RateLimitInfo {
   rateLimitType?: string | undefined;
 }
 
+export interface ApiErrorInfo {
+  status: number;
+  code?: string | undefined;
+}
+
 export interface SessionResult {
   ok: boolean;
   durationMs: number;
@@ -64,6 +69,8 @@ export interface SessionResult {
   error?: string | undefined;
   failureReason?: SessionFailureReason | undefined;
   rateLimit?: RateLimitInfo | undefined;
+  apiError?: ApiErrorInfo | undefined;
+  terminalReason?: string | undefined;
 }
 
 export interface SessionSummary {
@@ -73,6 +80,8 @@ export interface SessionSummary {
   isError?: boolean | undefined;
   resultText?: string | undefined;
   rateLimit?: RateLimitInfo | undefined;
+  apiError?: ApiErrorInfo | undefined;
+  terminalReason?: string | undefined;
 }
 
 export type TaskStatus = "pending" | "in_progress" | "done" | "failed" | "cancelled";

@@ -42,6 +42,7 @@ const { AgentController } = await import("../src/control.js");
 const { Waker } = await import("../src/waker.js");
 const { WorkerStatusStore } = await import("../src/status.js");
 const { UsageLimitGate } = await import("../src/usage-limit.js");
+const { AuthGate } = await import("../src/auth-gate.js");
 const { SessionSummarizer } = await import("../src/memory/summarizer.js");
 const { logger } = await import("../src/logger.js");
 
@@ -140,7 +141,10 @@ describe("startWorker", () => {
       expect.any(Waker),
       expect.objectContaining({ cycleStarted: expect.any(Function) as unknown }),
       expect.any(AgentController),
-      expect.any(UsageLimitGate),
+      expect.objectContaining({
+        limit: expect.any(UsageLimitGate) as unknown,
+        auth: expect.any(AuthGate) as unknown,
+      }),
       signal,
     );
     expect(mocks.memoryStoreOpen).toHaveBeenCalledWith(config.memoryDbPath);
@@ -151,7 +155,10 @@ describe("startWorker", () => {
       expect.objectContaining({ taskStarted: expect.any(Function) as unknown }),
       expect.any(SessionSummarizer),
       expect.any(AgentController),
-      expect.any(UsageLimitGate),
+      expect.objectContaining({
+        limit: expect.any(UsageLimitGate) as unknown,
+        auth: expect.any(AuthGate) as unknown,
+      }),
       signal,
     );
     const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
@@ -190,6 +197,38 @@ describe("startWorker", () => {
       headless: true,
       taskCounts: expect.objectContaining({ pending: 0 }) as unknown,
     });
+  });
+
+  it("an auth failure pauses both controllers and resume clears the gate", async () => {
+    stubHappyPath(buildConfig({ cwd: dir }));
+    const sink = jsonSink();
+
+    await runStart({ logFormat: "json", stdout: sink });
+
+    const gates = mocks.runMonitorLoop.mock.calls[0]?.[5] as {
+      auth: { engage(failure: { reason: string }): void; blocked: unknown };
+    };
+    const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
+      typeof AgentController
+    >;
+    const executorController = mocks.runExecutorLoop.mock.calls[0]?.[5] as InstanceType<
+      typeof AgentController
+    >;
+
+    gates.auth.engage({ reason: "Not logged in" });
+
+    expect(monitorController.state).toBe("pausing");
+    expect(executorController.state).toBe("pausing");
+    const pausing = sink
+      .events()
+      .filter((event) => event.event === "control.changed" && event.state === "pausing");
+    expect(pausing.map((event) => event.agent).sort()).toEqual(["executor", "monitor"]);
+
+    monitorController.resume();
+
+    expect(gates.auth.blocked).toBeNull();
+    expect(monitorController.state).toBe("running");
+    expect(executorController.state).toBe("pausing");
   });
 
   it("exits with code 1 when another worker already owns the control socket", async () => {

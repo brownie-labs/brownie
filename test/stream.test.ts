@@ -255,6 +255,57 @@ describe("StreamRenderer", () => {
     expect(renderer.getSummary().rateLimit).toBeUndefined();
   });
 
+  it("system/api_retry lands in the summary and survives the result reset", () => {
+    const { events, renderer } = createRenderer();
+    renderer.handleLine(
+      line({
+        type: "system",
+        subtype: "api_retry",
+        attempt: 1,
+        error_status: 401,
+        error: "authentication_failed",
+      }),
+    );
+    renderer.handleLine(
+      line({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Failed to authenticate.",
+        terminal_reason: "api_error",
+      }),
+    );
+    expect(events).toEqual([]);
+    expect(renderer.getSummary()).toMatchObject({
+      isError: true,
+      apiError: { status: 401, code: "authentication_failed" },
+      terminalReason: "api_error",
+    });
+  });
+
+  it("the latest api_retry wins and one without a status is ignored", () => {
+    const { renderer } = createRenderer();
+    renderer.handleLine(
+      line({ type: "system", subtype: "api_retry", error_status: 529 }),
+    );
+    renderer.handleLine(
+      line({ type: "system", subtype: "api_retry", error: "no status" }),
+    );
+    expect(renderer.getSummary().apiError).toEqual({ status: 529, code: undefined });
+    renderer.handleLine(
+      line({
+        type: "system",
+        subtype: "api_retry",
+        error_status: 401,
+        error: "authentication_failed",
+      }),
+    );
+    expect(renderer.getSummary().apiError).toEqual({
+      status: 401,
+      code: "authentication_failed",
+    });
+  });
+
   it("getSummary passes the text from the result field", () => {
     const { renderer } = createRenderer();
     renderer.handleLine(

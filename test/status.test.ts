@@ -282,6 +282,35 @@ describe("WorkerStatusStore", () => {
     store.dispose();
   });
 
+  it("authBlocked sets the phase with the reason and leaves an error notice in the tail", () => {
+    const store = createStore();
+    store.monitor.authBlocked({ reason: "Not logged in · Please run /login" });
+    store.executor.authBlocked({ reason: "HTTP 401 authentication_failed" });
+    store.flush();
+    const snapshot = store.getSnapshot();
+    expect(snapshot.monitor.phase).toEqual({
+      kind: "authBlocked",
+      reason: "Not logged in · Please run /login",
+      since: expect.any(Number) as number,
+    });
+    expect(snapshot.executor.phase).toEqual({
+      kind: "authBlocked",
+      reason: "HTTP 401 authentication_failed",
+      since: expect.any(Number) as number,
+    });
+    expect(snapshot.monitor.tail.at(-1)).toMatchObject({
+      kind: "notice",
+      tone: "error",
+      text: expect.stringContaining("Not logged in") as string,
+    });
+    expect(snapshot.executor.tail.at(-1)).toMatchObject({
+      kind: "notice",
+      tone: "error",
+      text: expect.stringContaining("HTTP 401") as string,
+    });
+    store.dispose();
+  });
+
   it("usageLimit sets the limitWait phase with a resume time", () => {
     const store = createStore();
     const resumeAt = new Date(Date.now() + 3_600_000);

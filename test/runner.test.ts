@@ -56,6 +56,30 @@ describe("runSession (integration with fake claude)", () => {
     expect(result.failureReason).toBe("isError");
   }, 15_000);
 
+  it("surfaces the 401 api_retry and terminal reason of an invalid token", async () => {
+    const spec = buildSessionSpec(collector.sink, {
+      childEnv: fakeClaudeEnv("auth_error"),
+    });
+    const result = await runSession(spec, new AbortController().signal);
+
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toBe("isError");
+    expect(result.apiError).toEqual({ status: 401, code: "authentication_failed" });
+    expect(result.terminalReason).toBe("api_error");
+    expect(result.resultText).toContain("401");
+  }, 15_000);
+
+  it("passes the not-logged-in result text without an api error", async () => {
+    const spec = buildSessionSpec(collector.sink, {
+      childEnv: fakeClaudeEnv("not_logged_in"),
+    });
+    const result = await runSession(spec, new AbortController().signal);
+
+    expect(result.ok).toBe(false);
+    expect(result.apiError).toBeUndefined();
+    expect(result.resultText).toBe("Not logged in · Please run /login");
+  }, 15_000);
+
   it("returns an error with the exit code on a non-zero code", async () => {
     const spec = buildSessionSpec(collector.sink, {
       childEnv: fakeClaudeEnv("exit_nonzero"),

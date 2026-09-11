@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
-import { UsageLimitGate } from "../src/usage-limit.js";
 import { Waker } from "../src/waker.js";
 import {
+  authFailureResult,
+  authGateHarness,
   buildConfig,
+  buildGates,
   createMonitorReporterSpy,
   noopController,
   type MonitorReporterSpy,
@@ -79,7 +81,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -116,7 +118,7 @@ describe("runMonitorLoop", () => {
       waker,
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -149,7 +151,7 @@ describe("runMonitorLoop", () => {
       waker,
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -178,7 +180,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -210,7 +212,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -248,7 +250,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -265,6 +267,89 @@ describe("runMonitorLoop", () => {
 
     controller.abort();
     await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("an auth failure parks the loop until resume and never schedules the next cycle", async () => {
+    mocks.runSession
+      .mockResolvedValueOnce(authFailureResult())
+      .mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const { gates, controller: control } = authGateHarness();
+    const controller = new AbortController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      gates,
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(spy.cycleFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: false,
+        error: "authentication failed — Not logged in · Please run /login",
+      }),
+    );
+    expect(spy.authBlocked).toHaveBeenCalledTimes(1);
+    expect(spy.authBlocked).toHaveBeenCalledWith({
+      reason: "Not logged in · Please run /login",
+    });
+    expect(spy.sleepUntil).not.toHaveBeenCalled();
+    expect(spy.usageLimit).not.toHaveBeenCalled();
+    expect(control.state).toBe("paused");
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL * 3);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    control.resume();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(gates.auth.blocked).toBeNull();
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
+    expect(spy.sleepUntil).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("a 401 with API Error wording is an auth failure, not a usage limit", async () => {
+    mocks.runSession
+      .mockResolvedValueOnce(
+        authFailureResult({
+          resultText:
+            "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+          apiError: { status: 401, code: "authentication_failed" },
+        }),
+      )
+      .mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const { gates, controller: control } = authGateHarness();
+    const controller = new AbortController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      gates,
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(spy.usageLimit).not.toHaveBeenCalled();
+    expect(spy.authBlocked).toHaveBeenCalledWith({
+      reason: "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+    });
+    expect(gates.limit.msRemaining(Date.now())).toBe(0);
+
+    controller.abort();
     await promise;
   });
 
@@ -286,7 +371,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -315,7 +400,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -347,7 +432,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
 
@@ -374,7 +459,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -404,7 +489,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -432,7 +517,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -460,7 +545,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       control,
-      new UsageLimitGate(),
+      buildGates(),
       abort.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -498,7 +583,7 @@ describe("runMonitorLoop", () => {
       new Waker(),
       spy.reporter,
       control,
-      new UsageLimitGate(),
+      buildGates(),
       abort.signal,
     );
     await vi.advanceTimersByTimeAsync(1);

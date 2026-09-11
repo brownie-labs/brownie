@@ -253,6 +253,23 @@ describe("App", () => {
     store.dispose();
   });
 
+  it("shows the auth block with its reason instead of the pause label", async () => {
+    const { store, props } = buildHarness();
+    const { lastFrame, unmount } = await renderApp(props);
+
+    store.executor.authBlocked({ reason: "Not logged in · Please run /login" });
+    store.setControl("executor", "paused");
+    await flushed(store);
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("authentication failed");
+    expect(frame).toContain("Not logged in");
+    expect(frame).not.toContain("⏸ paused");
+
+    unmount();
+    store.dispose();
+  });
+
   it("after reporter events shows the cycle, session tail and outcome", async () => {
     const { store, props } = buildHarness();
     const { lastFrame, unmount } = await renderApp(props);

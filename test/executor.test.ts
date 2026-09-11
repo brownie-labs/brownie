@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
-import { UsageLimitGate } from "../src/usage-limit.js";
 import { Waker } from "../src/waker.js";
 import {
+  authFailureResult,
+  authGateHarness,
   buildConfig,
+  buildGates,
   createExecutorReporterSpy,
   createTaskSummarizerSpy,
   noopController,
@@ -134,7 +136,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -172,7 +174,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
@@ -211,7 +213,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -244,7 +246,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(summarizerSpy.summarize).toHaveBeenCalled());
@@ -272,7 +274,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(2));
@@ -300,7 +302,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -331,7 +333,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("good"));
@@ -358,7 +360,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -384,7 +386,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(takeNext).toHaveBeenCalledTimes(1));
@@ -415,7 +417,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await promise;
@@ -446,7 +448,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() => expect(complete).toHaveBeenCalledWith("flaky"));
@@ -487,7 +489,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -523,7 +525,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.waitFor(() =>
@@ -561,7 +563,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -577,6 +579,78 @@ describe("runExecutorLoop", () => {
 
     controller.abort();
     await promise;
+  });
+
+  it("an auth failure releases the task, skips the summarizer and parks both agents until resume", async () => {
+    vi.useFakeTimers();
+    const takeNext = vi
+      .fn()
+      .mockResolvedValueOnce({ ...task("locked"), attempts: 1 })
+      .mockResolvedValueOnce({ ...task("locked"), attempts: 1 })
+      .mockResolvedValue(undefined);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const complete = vi.fn().mockResolvedValue(undefined);
+    const fail = vi.fn().mockResolvedValue(undefined);
+    const requeue = vi.fn().mockResolvedValue(undefined);
+    const store = { takeNext, release, complete, fail, requeue } as unknown as TaskStore;
+    const controller = new AbortController();
+    const {
+      gates,
+      controller: executorControl,
+      partner: monitorControl,
+    } = authGateHarness();
+    mocks.runSession
+      .mockResolvedValueOnce(
+        authFailureResult({
+          resultText:
+            "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+          apiError: { status: 401, code: "authentication_failed" },
+        }),
+      )
+      .mockResolvedValue(ok());
+
+    const promise = runExecutorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      executorControl,
+      gates,
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(release).toHaveBeenCalledWith("locked", "authentication failed");
+    expect(fail).not.toHaveBeenCalled();
+    expect(requeue).not.toHaveBeenCalled();
+    expect(summarizerSpy.summarize).not.toHaveBeenCalled();
+    expect(spy.taskFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "locked",
+        ok: false,
+        willRetry: true,
+        error: "authentication failed — task requeued",
+      }),
+    );
+    expect(spy.authBlocked).toHaveBeenCalledTimes(1);
+    expect(spy.usageLimit).not.toHaveBeenCalled();
+    expect(executorControl.state).toBe("paused");
+    expect(monitorControl.state).toBe("pausing");
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(takeNext).toHaveBeenCalledTimes(1);
+
+    executorControl.resume();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(gates.auth.blocked).toBeNull();
+    expect(takeNext).toHaveBeenCalledTimes(3);
+    expect(complete).toHaveBeenCalledWith("locked");
+
+    controller.abort();
+    await promise;
+    vi.useRealTimers();
   });
 
   it("a usage-limit failure releases the task and parks the loop until the reset", async () => {
@@ -616,7 +690,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       noopController(),
-      new UsageLimitGate(),
+      buildGates(),
       controller.signal,
     );
     await vi.advanceTimersByTimeAsync(1);
@@ -670,7 +744,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       control,
-      new UsageLimitGate(),
+      buildGates(),
       abort.signal,
     );
     await vi.waitFor(() => expect(spy.waiting).toHaveBeenCalled());
@@ -715,7 +789,7 @@ describe("runExecutorLoop", () => {
       spy.reporter,
       summarizerSpy.summarizer,
       control,
-      new UsageLimitGate(),
+      buildGates(),
       abort.signal,
     );
     await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalledTimes(1));

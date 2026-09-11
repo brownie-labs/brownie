@@ -84,6 +84,32 @@ describe("runStatus", () => {
     );
   });
 
+  it("shows the auth block reason next to the phase", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: buildStatus({
+        agents: {
+          monitor: {
+            phase: { kind: "authBlocked", since: "x", reason: "Not logged in" },
+            control: "paused",
+            recentOutcomes: [],
+          },
+          executor: {
+            phase: { kind: "authBlocked", since: "x", reason: "HTTP 401" },
+            control: "paused",
+            recentOutcomes: [],
+          },
+        },
+      }),
+    });
+
+    await runStatus({ write });
+
+    const output = lines.join("\n");
+    expect(output).toContain("monitor   paused   authBlocked · Not logged in");
+    expect(output).toContain("executor  paused   authBlocked · HTTP 401");
+  });
+
   it("prints raw JSON with --json", async () => {
     const status = buildStatus();
     mocks.sendControlRequest.mockResolvedValue({ ok: true, data: status });

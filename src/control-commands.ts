@@ -34,6 +34,7 @@ function describePhase(phase: ControlPhase): string {
   if (phase.until !== undefined) {
     parts.push(`until ${new Date(phase.until).toLocaleTimeString()}`);
   }
+  if (phase.reason !== undefined) parts.push(phase.reason);
   return parts.join(" · ");
 }
 
