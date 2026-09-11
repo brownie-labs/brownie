@@ -10,9 +10,14 @@ import {
   parseConfigAgent,
   type SettingsController,
 } from "../settings-controller.js";
-import { EFFORT_LEVELS, MODELS, type NewTask, type Task } from "../types.js";
+import { buildManualTask } from "../tasks.js";
+import { EFFORT_LEVELS, MODELS } from "../types.js";
 import type { Waker } from "../waker.js";
+import type { MemoryReader, TaskControls } from "../worker-controls.js";
 import { formatInterval } from "./format.js";
+
+export { buildManualTask } from "../tasks.js";
+export type { MemoryReader, TaskControls } from "../worker-controls.js";
 
 export type View =
   | { kind: "dashboard" }
@@ -31,17 +36,6 @@ export type View =
 export type NoticeTone = "info" | "error";
 
 export type AgentControls = Pick<AgentController, "pause" | "resume" | "state">;
-
-export interface TaskControls {
-  retry(id: string): Promise<boolean>;
-  cancel(id: string): Promise<boolean>;
-  addTasks(tasks: NewTask[]): Promise<Task[]>;
-}
-
-export interface MemoryReader {
-  recent(limit: number): TaskSummaryRecord[];
-  search(query: string, limit: number): TaskSummaryRecord[];
-}
 
 export interface CommandContext {
   setView(view: View): void;
@@ -64,7 +58,6 @@ export interface CommandSpec {
 }
 
 const MEMORY_VIEW_LIMIT = 20;
-const TASK_TITLE_MAX = 60;
 
 const AGENT_NAMES = ["monitor", "executor"] as const;
 type AgentName = (typeof AGENT_NAMES)[number];
@@ -87,19 +80,6 @@ function splitArgs(args: string): string[] {
 
 function joinNames(agents: readonly AgentName[]): string {
   return agents.join(" and ");
-}
-
-let manualTaskCounter = 0;
-
-export function buildManualTask(description: string): NewTask {
-  manualTaskCounter += 1;
-  const id = `manual-${Date.now().toString(36)}-${manualTaskCounter.toString(36)}`;
-  const firstLine = description.split("\n", 1)[0] ?? description;
-  const title =
-    firstLine.length > TASK_TITLE_MAX
-      ? `${firstLine.slice(0, TASK_TITLE_MAX - 1)}…`
-      : firstLine;
-  return { id, title, description };
 }
 
 export const COMMANDS: readonly CommandSpec[] = [

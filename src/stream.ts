@@ -1,5 +1,5 @@
 import { truncate, type SessionEventSink } from "./session-events.js";
-import type { RateLimitInfo, SessionSummary } from "./types.js";
+import type { ApiErrorInfo, RateLimitInfo, SessionSummary } from "./types.js";
 
 interface ContentBlock {
   type: string;
@@ -47,10 +47,21 @@ interface StreamEvent {
   num_turns?: number;
   total_cost_usd?: number;
   result?: string;
+  terminal_reason?: string;
+  error_status?: number;
+  error?: string;
   rate_limit_info?: {
     status?: string;
     resetsAt?: number;
     rateLimitType?: string;
+  };
+}
+
+function parseApiError(event: StreamEvent): ApiErrorInfo | undefined {
+  if (typeof event.error_status !== "number") return undefined;
+  return {
+    status: event.error_status,
+    code: typeof event.error === "string" ? event.error : undefined,
   };
 }
 
@@ -97,6 +108,8 @@ export class StreamRenderer {
             sessionId: event.session_id ?? "?",
             toolCount: event.tools?.length ?? 0,
           });
+        } else if (event.subtype === "api_retry") {
+          this.summary.apiError = parseApiError(event) ?? this.summary.apiError;
         }
         break;
 
@@ -154,11 +167,13 @@ export class StreamRenderer {
       case "result":
         this.summary = {
           rateLimit: this.summary.rateLimit,
+          apiError: this.summary.apiError,
           isError: event.is_error,
           costUsd: event.total_cost_usd,
           numTurns: event.num_turns,
           sessionId: event.session_id,
           resultText: event.result,
+          terminalReason: event.terminal_reason,
         };
         break;
     }

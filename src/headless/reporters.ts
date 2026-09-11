@@ -113,6 +113,14 @@ export function createHeadlessReporters(
         fields: { resumeAt: resumeAt.toISOString() },
       });
     },
+    authBlocked: (failure) => {
+      emit({
+        level: "error",
+        agent: "monitor",
+        event: "monitor.authBlocked",
+        fields: { reason: failure.reason },
+      });
+    },
     cycleStarted: (cycle) => {
       emit({
         level: "info",
@@ -190,6 +198,14 @@ export function createHeadlessReporters(
         agent: "executor",
         event: "executor.limitWait",
         fields: { resumeAt: resumeAt.toISOString() },
+      });
+    },
+    authBlocked: (failure) => {
+      emit({
+        level: "error",
+        agent: "executor",
+        event: "executor.authBlocked",
+        fields: { reason: failure.reason },
       });
     },
     waiting: () => {

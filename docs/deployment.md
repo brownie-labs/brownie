@@ -6,12 +6,14 @@ Brownie runs unattended just as happily as it runs in a terminal. Without a TTY 
 
 Headless activates automatically when stdin or stdout is not a TTY. Force it in a terminal with `--headless`.
 
-| Flag / env                    | Default  | Effect                                                |
-| ----------------------------- | -------- | ----------------------------------------------------- |
-| `--headless`                  | auto     | skip the dashboard even in a terminal, agents start   |
-| `--log-format <pretty\|json>` | `pretty` | line format on stdout                                 |
-| `BROWNIE_LOG_FORMAT`          | —        | fallback for `--log-format` when the flag is absent   |
-| `--verbose`                   | off      | also log session text, tool calls, and failed results |
+| Flag / env                    | Default  | Effect                                                                                |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `--headless`                  | auto     | skip the dashboard even in a terminal, agents start                                   |
+| `--log-format <pretty\|json>` | `pretty` | line format on stdout                                                                 |
+| `BROWNIE_LOG_FORMAT`          | —        | fallback for `--log-format` when the flag is absent                                   |
+| `--verbose`                   | off      | also log session text, tool calls, and failed results                                 |
+| `--paused`                    | off      | boot both agents paused — wake them with `brownie resume` (a TTY always boots paused) |
+| `BROWNIE_START_PAUSED`        | —        | fallback for `--paused` (`1` or `true`)                                               |
 
 `pretty` is made for `journalctl -f` and human eyes; `json` (NDJSON — one JSON object per line) is made for log aggregators (Loki, Datadog, CloudWatch). Session transcripts are always written to `.brownie/logs/` in both modes, so stdout stays a timeline, not a firehose.
 
@@ -36,7 +38,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 
 | Event                                                         | Fields                                                                                                                     |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `worker.started`                                              | `version`, `pid`, `projectDir`                                                                                             |
+| `worker.started`                                              | `version`, `pid`, `projectDir`, `paused` (when booted paused)                                                              |
 | `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
 | `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
 | `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |
@@ -45,6 +47,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 | `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error` |
 | `task.retryScheduled`                                         | `taskId`, `resumeAt`                                                                                                       |
 | `executor.waiting` / `executor.limitWait`                     | — / `resumeAt`                                                                                                             |
+| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — credentials rejected; both agents park until `brownie resume`                                                   |
 | `summary.started` / `summary.finished`                        | `taskId`; finished adds `ok`, `durationMs`, `costUsd`, `error`                                                             |
 | `session.init`                                                | `model`, `sessionId`                                                                                                       |
 | `session.stderr` / `session.procError` / `session.killed`     | `line` / `message` / `reason`                                                                                              |
@@ -64,7 +67,7 @@ brownie pause monitor    # just one agent
 brownie resume           # back to work
 ```
 
-`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
+`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`. The same socket edits tasks, settings, prompts and memory, reaches out of a container, and has a documented wire protocol — see [docs/control.md](control.md).
 
 ## Staying up to date
 
@@ -106,6 +109,8 @@ The server needs a logged-in Claude Code. Two options:
 
 Either goes into the systemd unit or the container environment — no browser login on the server.
 
+Brownie checks the login at startup (`claude auth status --json`, no network call) and refuses to start when none is configured. Credentials rejected at runtime — an expired token, a revoked key — park both agents in the `authBlocked` phase instead of burning retries: the task goes back to the queue, `brownie status` shows the reason, and `brownie resume` wakes them once the credentials are fixed.
+
 ## A droplet runbook (systemd)
 
 One thing before anything else: **run brownie as a regular user, not root.** Agent sessions use `--permission-mode bypassPermissions`, which Claude Code refuses to run as root — and a fresh droplet logs you in as root.
@@ -116,7 +121,7 @@ su - brownie
 
 # Node 22 + the two CLIs
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt-get install -y nodejs git
-sudo npm install -g @anthropic-ai/claude-code @brownie-labs/brownie
+sudo npm install -g @anthropic-ai/claude-code@2.1.268 @brownie-labs/brownie
 
 # the project brownie will work on (with .brownie/ committed, or run brownie init)
 git clone git@github.com:you/your-project.git ~/your-project
@@ -170,6 +175,14 @@ docker compose exec brownie brownie status
 ```
 
 The current directory is mounted as `/workspace`, so the project, its `.brownie/`, and all runtime state stay on the host. `docker ps` shows `healthy` only while the worker actually answers.
+
+### Pinned Claude Code version
+
+The image installs exactly one Claude Code version (`CLAUDE_CODE_VERSION`, defaulting to the version brownie was tested with) and disables both auto-updaters, so every container runs the CLI you tested. Move deliberately:
+
+```bash
+CLAUDE_CODE_VERSION=2.1.300 docker compose build --pull && docker compose up -d
+```
 
 ### What the image gives your agent
 

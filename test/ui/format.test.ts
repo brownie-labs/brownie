@@ -92,6 +92,16 @@ describe("formatMonitorPhase", () => {
     expect(label).toContain("usage limit reached");
     expect(label).toContain("01:30");
   });
+
+  it("auth block with the reason and the way out", () => {
+    const label = formatMonitorPhase(
+      { kind: "authBlocked", reason: "Not logged in", since: now },
+      now,
+    );
+    expect(label).toContain("authentication failed");
+    expect(label).toContain("Not logged in");
+    expect(label).toContain("/start");
+  });
 });
 
 describe("formatExecutorPhase", () => {
@@ -132,6 +142,16 @@ describe("formatExecutorPhase", () => {
     const label = formatExecutorPhase({ kind: "limitWait", resumeAt: now + 90_000 }, now);
     expect(label).toContain("usage limit reached");
     expect(label).toContain("01:30");
+  });
+
+  it("auth block with the reason and the way out", () => {
+    const label = formatExecutorPhase(
+      { kind: "authBlocked", reason: "HTTP 401 authentication_failed", since: now },
+      now,
+    );
+    expect(label).toContain("authentication failed");
+    expect(label).toContain("HTTP 401");
+    expect(label).toContain("/start");
   });
 });
 
@@ -206,6 +226,15 @@ describe("formatControlLabel", () => {
       "⏸ pausing…",
     );
     expect(formatControlLabel("paused", "sleeping", "whatever")).toBe("⏸ paused");
+  });
+
+  it("lets the auth block label win over the pause label", () => {
+    expect(formatControlLabel("paused", "authBlocked", "⛔ authentication failed")).toBe(
+      undefined,
+    );
+    expect(formatControlLabel("pausing", "authBlocked", "⛔ authentication failed")).toBe(
+      undefined,
+    );
   });
 });
 

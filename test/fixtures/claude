@@ -21,6 +21,59 @@ function emit(event) {
   process.stdout.write(`${JSON.stringify(event)}\n`);
 }
 
+if (process.argv[2] === "auth" && process.argv[3] === "status") {
+  const auth = process.env.FAKE_CLAUDE_AUTH ?? "logged_in";
+  if (auth === "unsupported") {
+    process.stderr.write("error: unknown command 'auth'\n");
+    process.exit(1);
+  } else if (auth === "hang") {
+    setInterval(() => {}, 1000);
+  } else {
+    const loggedIn = auth === "logged_in";
+    emit({
+      loggedIn,
+      authMethod: loggedIn ? "claude.ai" : "none",
+      apiProvider: "firstParty",
+    });
+    process.exit(loggedIn ? 0 : 1);
+  }
+}
+
+function emitAuthFailure(text, withRetries) {
+  emit({
+    type: "system",
+    subtype: "init",
+    model: model ?? "haiku",
+    session_id: "sess-1",
+    tools: ["Read", "Bash"],
+  });
+  if (withRetries) {
+    for (const attempt of [1, 2]) {
+      emit({
+        type: "system",
+        subtype: "api_retry",
+        attempt,
+        max_retries: 10,
+        retry_delay_ms: 531,
+        error_status: 401,
+        error: "authentication_failed",
+        session_id: "sess-1",
+      });
+    }
+  }
+  emit({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  emit({
+    type: "result",
+    subtype: "success",
+    is_error: true,
+    result: text,
+    terminal_reason: "api_error",
+    num_turns: 1,
+    total_cost_usd: 0,
+    session_id: "sess-1",
+  });
+}
+
 function emitOk(isError) {
   emit({
     type: "system",
@@ -66,6 +119,17 @@ function run() {
     case "exit_nonzero":
       process.stderr.write("something went wrong\n");
       process.exit(2);
+      break;
+    case "auth_error":
+      emitAuthFailure(
+        "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+        true,
+      );
+      process.exit(1);
+      break;
+    case "not_logged_in":
+      emitAuthFailure("Not logged in · Please run /login", false);
+      process.exit(1);
       break;
     case "hang":
       process.on("SIGTERM", () => process.exit(143));

@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { detectAuthFailure } from "../auth-gate.js";
+import type { LoopGates } from "../gates.js";
 import { runSession } from "../runner.js";
 import type { SessionEventSink } from "../session-events.js";
 import type { SummaryOutcome } from "../status.js";
 import type { SessionResult, SummarizerConfig, Task } from "../types.js";
-import { detectUsageLimit, type UsageLimitGate } from "../usage-limit.js";
+import { detectUsageLimit } from "../usage-limit.js";
 import type { MemoryStore } from "./store.js";
 import { composeSummaryPrompt, parseSummary, SUMMARY_JSON_SCHEMA } from "./summary.js";
 
@@ -34,7 +36,7 @@ export interface SessionSummarizerDeps {
   store: MemoryStore;
   resolveLogPath(sessionId: string): Promise<string | undefined>;
   reporter: SummaryReporter;
-  limitGate: UsageLimitGate;
+  gates: LoopGates;
 }
 
 export class SessionSummarizer implements TaskSummarizer {
@@ -97,8 +99,18 @@ export class SessionSummarizer implements TaskSummarizer {
       if (aborted()) return;
 
       if (!sessionResult.ok) {
+        const auth = detectAuthFailure(sessionResult);
+        if (auth) {
+          this.deps.gates.auth.engage(auth);
+          finished(
+            false,
+            `authentication failed — ${auth.reason}`,
+            sessionResult.costUsd,
+          );
+          return;
+        }
         const limit = detectUsageLimit(sessionResult);
-        if (limit) this.deps.limitGate.engage(limit, Date.now());
+        if (limit) this.deps.gates.limit.engage(limit, Date.now());
         finished(
           false,
           limit

@@ -125,13 +125,15 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | --------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `brownie`                                                 | start the worker (TUI in a terminal, headless without one)                  |
 | `brownie --headless [--log-format json]`                  | force headless mode even in a terminal                                      |
+| `brownie --paused`                                        | boot with both agents paused; `brownie resume` starts them                  |
 | `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible)                     |
 | `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |
 | `brownie resume [monitor\|executor]`                      | resume paused agents                                                        |
+| `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker          |
 | `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too) |
 
-A second `brownie` in the same project refuses to start while one is already running. The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
+A second `brownie` in the same project refuses to start while one is already running. The control socket, its subcommands and wire protocol: [docs/control.md](https://github.com/brownie-labs/brownie/blob/main/docs/control.md). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
 
 ## Configuration
 

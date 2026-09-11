@@ -1,5 +1,6 @@
-import { chmod, unlink } from "node:fs/promises";
+import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Server, type Socket } from "node:net";
+import { dirname } from "node:path";
 import type { AgentController } from "./control.js";
 import {
   parseControlRequest,
@@ -8,8 +9,17 @@ import {
   type ControlStatus,
   type ControlTarget,
 } from "./control-protocol.js";
+import { CONTROL_SOCKET_ENV } from "./paths.js";
+import type { PromptAgent, PromptFileAccess } from "./prompt-files.js";
+import type { SettingsController } from "./settings-controller.js";
+import { buildManualTask } from "./tasks.js";
+import type { NewTask } from "./types.js";
+import type { Waker } from "./waker.js";
+import type { MemoryReader, TaskControls } from "./worker-controls.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
+const MAX_REQUEST_BYTES = 1_048_576;
+const REQUEST_TOO_LARGE = "Control request too large.";
 
 export class AlreadyRunningError extends Error {
   constructor(pid: number | undefined) {
@@ -29,6 +39,11 @@ export interface ControlServerDeps {
     monitor: Pick<AgentController, "pause" | "resume">;
     executor: Pick<AgentController, "pause" | "resume">;
   };
+  tasks: TaskControls;
+  memory: MemoryReader;
+  settings: Pick<SettingsController, "current" | "patch">;
+  prompts: PromptFileAccess;
+  waker: Pick<Waker, "notify">;
   signal: AbortSignal;
 }
 
@@ -68,8 +83,10 @@ function probeExistingWorker(socketPath: string): Promise<WorkerProbe> {
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
       try {
-        const response = JSON.parse(buffer.slice(0, newline)) as ControlResponse;
-        finish(response.data?.pid);
+        const response = JSON.parse(
+          buffer.slice(0, newline),
+        ) as ControlResponse<"status">;
+        finish(response.ok ? response.data.pid : undefined);
       } catch {
         finish();
       }
@@ -87,22 +104,106 @@ function applyControl(
   for (const agent of agents) deps.controls[agent][action]();
 }
 
-function handleRequest(
+function isMissingFile(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+async function readPrompt(deps: ControlServerDeps, agent: PromptAgent): Promise<string> {
+  try {
+    return await deps.prompts.read(agent);
+  } catch (error) {
+    if (isMissingFile(error)) {
+      throw new Error(`Prompt file for ${agent} is missing — run brownie init.`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+async function addTask(
+  deps: ControlServerDeps,
+  request: Extract<ControlRequest, { cmd: "tasks.add" }>,
+): Promise<ControlResponse<"tasks.add">> {
+  const base = buildManualTask(request.description);
+  const candidate: NewTask = {
+    id: request.id ?? base.id,
+    title: request.title ?? base.title,
+    description: request.description,
+  };
+  const [added] = await deps.tasks.addTasks([candidate]);
+  if (added === undefined) {
+    return { ok: false, error: `Task "${candidate.id}" already exists.` };
+  }
+  deps.waker.notify();
+  return { ok: true, data: added };
+}
+
+async function handleRequest(
   deps: ControlServerDeps,
   request: ControlRequest,
-): ControlResponse {
+): Promise<ControlResponse> {
   switch (request.cmd) {
     case "status":
       return { ok: true, data: deps.buildStatus() };
     case "pause":
     case "resume":
       applyControl(deps, request.cmd, request.agent);
-      return { ok: true };
+      return { ok: true, data: undefined };
+    case "settings.get":
+      return { ok: true, data: await deps.settings.current() };
+    case "settings.patch":
+      return { ok: true, data: await deps.settings.patch(request.patch) };
+    case "tasks.list": {
+      const tasks = deps.tasks.list();
+      const { status } = request;
+      return {
+        ok: true,
+        data:
+          status === undefined ? tasks : tasks.filter((task) => task.status === status),
+      };
+    }
+    case "tasks.add":
+      return addTask(deps, request);
+    case "tasks.retry": {
+      const retried = await deps.tasks.retry(request.id);
+      if (retried) deps.waker.notify();
+      return { ok: true, data: retried };
+    }
+    case "tasks.cancel":
+      return { ok: true, data: await deps.tasks.cancel(request.id) };
+    case "memory.search":
+      return { ok: true, data: deps.memory.search(request.query, request.limit) };
+    case "memory.recent":
+      return { ok: true, data: deps.memory.recent(request.limit) };
+    case "prompt.get":
+      return {
+        ok: true,
+        data: { agent: request.agent, content: await readPrompt(deps, request.agent) },
+      };
+    case "prompt.set":
+      await deps.prompts.write(request.agent, request.content);
+      return { ok: true, data: undefined };
+  }
+}
+
+async function respond(deps: ControlServerDeps, line: string): Promise<ControlResponse> {
+  const parsed = parseControlRequest(line);
+  if (!parsed.ok) return parsed;
+  try {
+    return await handleRequest(deps, parsed.request);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
 function serveConnection(deps: ControlServerDeps, socket: Socket): void {
   let buffer = "";
+  let handled = false;
+  const reply = (response: ControlResponse): void => {
+    if (socket.destroyed) return;
+    socket.end(`${JSON.stringify(response)}\n`);
+  };
   socket.setTimeout(CONNECTION_TIMEOUT_MS, () => {
     socket.destroy();
   });
@@ -110,21 +211,34 @@ function serveConnection(deps: ControlServerDeps, socket: Socket): void {
     socket.destroy();
   });
   socket.on("data", (chunk) => {
+    if (handled) return;
     buffer += chunk.toString("utf8");
+    if (Buffer.byteLength(buffer, "utf8") > MAX_REQUEST_BYTES) {
+      handled = true;
+      reply({ ok: false, error: REQUEST_TOO_LARGE });
+      return;
+    }
     const newline = buffer.indexOf("\n");
     if (newline === -1) return;
-    const request = parseControlRequest(buffer.slice(0, newline));
-    const response: ControlResponse =
-      request === null
-        ? { ok: false, error: "Unrecognized control request." }
-        : handleRequest(deps, request);
-    socket.end(`${JSON.stringify(response)}\n`);
+    handled = true;
+    void respond(deps, buffer.slice(0, newline)).then(reply);
   });
 }
 
 async function removeStaleSocket(socketPath: string): Promise<void> {
   if (process.platform === "win32") return;
   await unlink(socketPath).catch(() => undefined);
+}
+
+async function ensureSocketDirectory(socketPath: string): Promise<void> {
+  if (process.platform === "win32") return;
+  await mkdir(dirname(socketPath), { recursive: true }).catch(() => undefined);
+}
+
+function describeListenError(socketPath: string, error: Error): Error {
+  return new Error(
+    `Cannot open the control socket ${socketPath} (${error.message}) — check that its directory exists and is writable, or point ${CONTROL_SOCKET_ENV} elsewhere.`,
+  );
 }
 
 export async function startControlServer(
@@ -138,8 +252,11 @@ export async function startControlServer(
     serveConnection(deps, socket);
   });
 
+  await ensureSocketDirectory(deps.socketPath);
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
+    server.once("error", (error) => {
+      reject(describeListenError(deps.socketPath, error));
+    });
     server.listen(deps.socketPath, () => {
       server.removeListener("error", reject);
       resolve();

@@ -1,6 +1,9 @@
 services:
   brownie:
-    build: .
+    build:
+      context: .
+      args:
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.268}
     init: true
     restart: unless-stopped
     group_add:
@@ -13,6 +16,7 @@ services:
       TZ: ${TZ:-UTC}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      BROWNIE_CONTROL_SOCKET: ${BROWNIE_CONTROL_SOCKET:-}
 
 volumes:
   brownie-home:

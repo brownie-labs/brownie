@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { detectAuthFailure } from "./auth-gate.js";
 import type { AgentController } from "./control.js";
+import type { LoopGates } from "./gates.js";
 import type { TaskSummarizer } from "./memory/summarizer.js";
 import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { SessionResult, Task, WorkerConfig } from "./types.js";
-import { detectUsageLimit, type UsageLimitGate } from "./usage-limit.js";
+import { detectUsageLimit } from "./usage-limit.js";
 import type { Waker } from "./waker.js";
 
 const TRANSIENT_RESULT_PATTERN =
@@ -36,17 +38,19 @@ export async function runExecutorLoop(
   reporter: ExecutorReporter,
   summarizer: TaskSummarizer,
   controller: AgentController,
-  limitGate: UsageLimitGate,
+  gates: LoopGates,
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
   const aborted = (): boolean => signal.aborted;
 
   while (!aborted()) {
+    const authBlock = gates.auth.blocked;
+    if (authBlock !== null) reporter.authBlocked(authBlock);
     await controller.gate(signal);
     if (aborted()) break;
 
-    const limitWaitMs = limitGate.msRemaining(Date.now());
+    const limitWaitMs = gates.limit.msRemaining(Date.now());
     if (limitWaitMs > 0) {
       reporter.usageLimit(new Date(Date.now() + limitWaitMs));
       await controller.sleep(limitWaitMs, signal);
@@ -102,9 +106,25 @@ export async function runExecutorLoop(
           .catch(() => undefined);
       } else {
         const error = result.error ?? "unknown error";
+        const auth = detectAuthFailure(result);
+        if (auth) {
+          gates.auth.engage(auth);
+          await store.release(task.id, "authentication failed");
+          reporter.taskFinished({
+            taskId: task.id,
+            title: task.title,
+            ok: false,
+            durationMs: result.durationMs,
+            costUsd: result.costUsd,
+            numTurns: result.numTurns,
+            error: "authentication failed — task requeued",
+            willRetry: true,
+          });
+          continue;
+        }
         const limit = detectUsageLimit(result);
         if (limit) {
-          limitGate.engage(limit, Date.now());
+          gates.limit.engage(limit, Date.now());
           await store.release(task.id, "usage limit reached");
           reporter.taskFinished({
             taskId: task.id,

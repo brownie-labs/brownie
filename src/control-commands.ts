@@ -1,18 +1,71 @@
 import { defineCommand } from "citty";
-import { sendControlRequest, WorkerNotRunningError } from "./control-client.js";
+import { sendControlRequest } from "./control-client.js";
 import {
   CONTROL_TARGETS,
   type ControlAgentStatus,
   type ControlPhase,
+  type ControlRequestInput,
   type ControlStatus,
+  type ControlSuccess,
   type ControlTarget,
 } from "./control-protocol.js";
 import { logger } from "./logger.js";
-import { controlSocketPath } from "./paths.js";
+import { CONTROL_SOCKET_ENV, controlSocketPath } from "./paths.js";
 
 export interface ControlCommandIo {
   projectDir?: string | undefined;
   write?: ((line: string) => void) | undefined;
+  readStdin?: (() => Promise<string>) | undefined;
+}
+
+export const SOCKET_ENV_HINT = `Env: ${CONTROL_SOCKET_ENV} overrides the control socket path.`;
+
+export function writerFor(io: ControlCommandIo): (line: string) => void {
+  return (
+    io.write ??
+    ((line: string) => {
+      process.stdout.write(`${line}\n`);
+    })
+  );
+}
+
+export function fail(message: string): void {
+  logger.error(message);
+  process.exitCode = 1;
+}
+
+export function readStdinText(): Promise<string> {
+  if (process.stdin.isTTY) {
+    return Promise.reject(new Error("Pass a file path or pipe the content on stdin."));
+  }
+  return new Promise((resolve, reject) => {
+    let content = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk: string) => {
+      content += chunk;
+    });
+    process.stdin.once("end", () => {
+      resolve(content);
+    });
+    process.stdin.once("error", reject);
+  });
+}
+
+export async function requestControl<R extends ControlRequestInput>(
+  request: R,
+  io: ControlCommandIo,
+): Promise<ControlSuccess<R["cmd"]> | null> {
+  try {
+    const response = await sendControlRequest(controlSocketPath(io.projectDir), request);
+    if (!response.ok) {
+      fail(response.error);
+      return null;
+    }
+    return response;
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 function formatUptime(startedAt: string): string {
@@ -32,6 +85,7 @@ function describePhase(phase: ControlPhase): string {
   if (phase.until !== undefined) {
     parts.push(`until ${new Date(phase.until).toLocaleTimeString()}`);
   }
+  if (phase.reason !== undefined) parts.push(phase.reason);
   return parts.join(" · ");
 }
 
@@ -52,43 +106,17 @@ function renderStatus(status: ControlStatus): string[] {
   ];
 }
 
-function reportFailure(error: unknown): void {
-  if (error instanceof WorkerNotRunningError) {
-    logger.error(error.message);
-  } else {
-    logger.error(error instanceof Error ? error.message : String(error));
-  }
-  process.exitCode = 1;
-}
-
 export async function runStatus(
   options: { json?: boolean | undefined } & ControlCommandIo = {},
 ): Promise<void> {
-  const write =
-    options.write ??
-    ((line: string) => {
-      process.stdout.write(`${line}\n`);
-    });
-  let status: ControlStatus;
-  try {
-    const response = await sendControlRequest(controlSocketPath(options.projectDir), {
-      cmd: "status",
-    });
-    if (!response.ok || response.data === undefined) {
-      logger.error(response.error ?? "The worker returned an invalid status.");
-      process.exitCode = 1;
-      return;
-    }
-    status = response.data;
-  } catch (err) {
-    reportFailure(err);
-    return;
-  }
+  const write = writerFor(options);
+  const response = await requestControl({ cmd: "status" }, options);
+  if (response === null) return;
   if (options.json === true) {
-    write(JSON.stringify(status, null, 2));
+    write(JSON.stringify(response.data, null, 2));
     return;
   }
-  for (const line of renderStatus(status)) write(line);
+  for (const line of renderStatus(response.data)) write(line);
 }
 
 function parseTarget(value: string | undefined): ControlTarget | null {
@@ -105,26 +133,13 @@ export async function runControlAction(
 ): Promise<void> {
   const target = parseTarget(agentArg);
   if (target === null) {
-    logger.error(
+    fail(
       `Unknown agent "${agentArg ?? ""}" — use monitor or executor, or omit it for both.`,
     );
-    process.exitCode = 1;
     return;
   }
-  try {
-    const response = await sendControlRequest(controlSocketPath(options.projectDir), {
-      cmd: action,
-      agent: target,
-    });
-    if (!response.ok) {
-      logger.error(response.error ?? "The worker rejected the request.");
-      process.exitCode = 1;
-      return;
-    }
-  } catch (err) {
-    reportFailure(err);
-    return;
-  }
+  const response = await requestControl({ cmd: action, agent: target }, options);
+  if (response === null) return;
   const label = target === "all" ? "monitor and executor" : target;
   logger.success(action === "pause" ? `Pausing ${label}.` : `Resumed ${label}.`);
 }
@@ -132,7 +147,7 @@ export async function runControlAction(
 export const statusCommand = defineCommand({
   meta: {
     name: "status",
-    description: "Show the status of the brownie worker running in this project.",
+    description: `Show the status of the brownie worker running in this project. ${SOCKET_ENV_HINT}`,
   },
   args: {
     json: { type: "boolean", description: "Print the raw status as JSON" },

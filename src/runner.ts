@@ -124,6 +124,8 @@ export async function runSession(
       error: ok ? undefined : describeFailure(failureReason, code, exitSignal),
       failureReason,
       rateLimit: summary.rateLimit,
+      apiError: summary.apiError,
+      terminalReason: summary.terminalReason,
     };
   } finally {
     if (timeout) clearTimeout(timeout);

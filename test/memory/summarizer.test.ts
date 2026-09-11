@@ -1,8 +1,10 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LoopGates } from "../../src/gates.js";
 import type { SessionResult, Task } from "../../src/types.js";
-import { UsageLimitGate } from "../../src/usage-limit.js";
 import {
+  authFailureResult,
+  buildGates,
   buildSummarizerConfig,
   createExecutorReporterSpy,
   createTempDir,
@@ -64,7 +66,7 @@ describe("SessionSummarizer", () => {
   let spy: ExecutorReporterSpy;
   const logPath = "/logs/executor/2026-07-02/10-00-00-executor-session.log";
   const resolveLogPath = vi.fn();
-  let limitGate: UsageLimitGate;
+  let gates: LoopGates;
 
   function buildSummarizer() {
     return new SessionSummarizer({
@@ -75,7 +77,7 @@ describe("SessionSummarizer", () => {
       store,
       resolveLogPath,
       reporter: spy.reporter,
-      limitGate,
+      gates,
     });
   }
 
@@ -83,7 +85,7 @@ describe("SessionSummarizer", () => {
     dir = await createTempDir();
     store = MemoryStore.open(join(dir, "memory.db"));
     spy = createExecutorReporterSpy();
-    limitGate = new UsageLimitGate();
+    gates = buildGates();
     resolveLogPath.mockReset().mockResolvedValue(logPath);
     mocks.readFile.mockReset().mockResolvedValue("summarizer system\n");
     mocks.runSession.mockReset().mockResolvedValue(summarySessionResult());
@@ -245,10 +247,31 @@ describe("SessionSummarizer", () => {
       new AbortController().signal,
     );
 
-    expect(limitGate.msRemaining(Date.now())).toBeGreaterThan(0);
+    expect(gates.limit.msRemaining(Date.now())).toBeGreaterThan(0);
     expect(spy.summaryFinished).toHaveBeenCalledWith(
       expect.objectContaining({ ok: false, error: "usage limit reached" }),
     );
+  });
+
+  it("an auth failure engages the shared auth gate and saves nothing", async () => {
+    mocks.runSession.mockResolvedValue(authFailureResult());
+
+    await buildSummarizer().summarize(
+      task(),
+      executorResult(),
+      { willRetry: false },
+      new AbortController().signal,
+    );
+
+    expect(gates.auth.blocked).toEqual({ reason: "Not logged in · Please run /login" });
+    expect(gates.limit.msRemaining(Date.now())).toBe(0);
+    expect(spy.summaryFinished).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: false,
+        error: "authentication failed — Not logged in · Please run /login",
+      }),
+    );
+    expect(store.get("redmine-1")).toHaveLength(0);
   });
 
   it("does not propagate exceptions — reports them via the reporter", async () => {

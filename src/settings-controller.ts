@@ -1,6 +1,11 @@
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
-import type { Settings } from "./config.js";
-import { patchSettings, settingsSection } from "./settings-file.js";
+import { loadSettings, type Settings } from "./config.js";
+import {
+  mergeSettingsPatch,
+  patchSettings,
+  settingsSection,
+  type SettingsPatch,
+} from "./settings-file.js";
 import {
   EFFORT_LEVELS,
   MODELS,
@@ -45,6 +50,8 @@ export function applySettings(config: WorkerConfig, settings: Settings): void {
 }
 
 export interface SettingsController {
+  current(): Promise<Settings>;
+  patch(patch: SettingsPatch): Promise<Settings>;
   setModel(agent: ConfigAgent, model: string): Promise<void>;
   setEffort(agent: ConfigAgent, effort: string): Promise<void>;
   setIntervalMinutes(minutes: number): Promise<void>;
@@ -61,12 +68,20 @@ export function createSettingsController({
   config,
   settingsFile,
 }: SettingsControllerOptions): SettingsController {
-  const persist = async (mutate: (raw: Record<string, unknown>) => void) => {
+  const persist = async (
+    mutate: (raw: Record<string, unknown>) => void,
+  ): Promise<Settings> => {
     const settings = await patchSettings(settingsFile, mutate);
     applySettings(config, settings);
+    return settings;
   };
 
   return {
+    current: () => loadSettings(settingsFile),
+    patch: (patch) =>
+      persist((raw) => {
+        mergeSettingsPatch(raw, patch);
+      }),
     async setModel(agent, model) {
       if (!(MODELS as readonly string[]).includes(model)) {
         throw new Error(`unknown model "${model}" — use ${MODELS.join(", ")}`);

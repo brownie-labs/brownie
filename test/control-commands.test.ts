@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ControlStatus } from "../src/control-protocol.js";
+import { snapshotEnv } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   sendControlRequest: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
-const { runControlAction, runStatus, statusCommand } =
+const { readStdinText, requestControl, runControlAction, runStatus, statusCommand } =
   await import("../src/control-commands.js");
 const { WorkerNotRunningError } = await import("../src/control-client.js");
 const { logger } = await import("../src/logger.js");
@@ -83,6 +84,32 @@ describe("runStatus", () => {
     );
   });
 
+  it("shows the auth block reason next to the phase", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: buildStatus({
+        agents: {
+          monitor: {
+            phase: { kind: "authBlocked", since: "x", reason: "Not logged in" },
+            control: "paused",
+            recentOutcomes: [],
+          },
+          executor: {
+            phase: { kind: "authBlocked", since: "x", reason: "HTTP 401" },
+            control: "paused",
+            recentOutcomes: [],
+          },
+        },
+      }),
+    });
+
+    await runStatus({ write });
+
+    const output = lines.join("\n");
+    expect(output).toContain("monitor   paused   authBlocked · Not logged in");
+    expect(output).toContain("executor  paused   authBlocked · HTTP 401");
+  });
+
   it("prints raw JSON with --json", async () => {
     const status = buildStatus();
     mocks.sendControlRequest.mockResolvedValue({ ok: true, data: status });
@@ -113,6 +140,39 @@ describe("runStatus", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("talks to the socket named by BROWNIE_CONTROL_SOCKET", async () => {
+    const restoreEnv = snapshotEnv();
+    process.env.BROWNIE_CONTROL_SOCKET = "/run/brownie/control.sock";
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: buildStatus() });
+
+    try {
+      await runStatus({ write });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(mocks.sendControlRequest).toHaveBeenCalledWith("/run/brownie/control.sock", {
+      cmd: "status",
+    });
+  });
+
+  it("rejects an invalid BROWNIE_CONTROL_SOCKET before contacting the worker", async () => {
+    const restoreEnv = snapshotEnv();
+    process.env.BROWNIE_CONTROL_SOCKET = "relative/control.sock";
+
+    try {
+      await runStatus({ write });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(mocks.sendControlRequest).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("BROWNIE_CONTROL_SOCKET must be an absolute path"),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
   it("statusCommand.run forwards the json flag", async () => {
     mocks.sendControlRequest.mockResolvedValue({ ok: true, data: buildStatus() });
     const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -128,6 +188,57 @@ describe("runStatus", () => {
     expect(mocks.sendControlRequest).toHaveBeenCalledWith(expect.any(String), {
       cmd: "status",
     });
+  });
+});
+
+describe("requestControl", () => {
+  let savedExitCode: typeof process.exitCode;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savedExitCode = process.exitCode;
+  });
+
+  afterEach(() => {
+    process.exitCode = savedExitCode;
+  });
+
+  it("returns the success response", async () => {
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: true });
+
+    await expect(requestControl({ cmd: "tasks.retry", id: "t" }, {})).resolves.toEqual({
+      ok: true,
+      data: true,
+    });
+    expect(process.exitCode).toBe(savedExitCode);
+  });
+
+  it("logs a rejected request and returns null", async () => {
+    mocks.sendControlRequest.mockResolvedValue({ ok: false, error: "nope" });
+
+    await expect(requestControl({ cmd: "status" }, {})).resolves.toBeNull();
+    expect(logger.error).toHaveBeenCalledWith("nope");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("logs a transport failure and returns null", async () => {
+    mocks.sendControlRequest.mockRejectedValue(new Error("Timed out"));
+
+    await expect(requestControl({ cmd: "status" }, {})).resolves.toBeNull();
+    expect(logger.error).toHaveBeenCalledWith("Timed out");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("readStdinText refuses to wait on an interactive terminal", async () => {
+    const wasTty = process.stdin.isTTY;
+    process.stdin.isTTY = true;
+    try {
+      await expect(readStdinText()).rejects.toThrow(
+        "Pass a file path or pipe the content",
+      );
+    } finally {
+      process.stdin.isTTY = wasTty;
+    }
   });
 });
 

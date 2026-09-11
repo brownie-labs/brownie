@@ -201,6 +201,98 @@ describe("CLI start (smoke E2E)", () => {
     expect(result.output).toMatch(/Preflight failed|file missing/);
   }, 30_000);
 
+  it("exits with code 1 when Claude Code is not logged in", async () => {
+    await seedProject(dir);
+    const result = await runCli(
+      dir,
+      fakeClaudeCliEnv("ok", { FAKE_CLAUDE_AUTH: "logged_out" }),
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.output).toMatch(/not logged in/);
+    expect(result.output).toMatch(/claude auth login/);
+  }, 30_000);
+
+  it("an auth failure parks both agents in authBlocked until resume", async () => {
+    await seedProject(dir, {
+      settings: { monitor: { model: "haiku", intervalMinutes: 1 } },
+    });
+    const env = fakeClaudeCliEnv("ok", {
+      CI: "true",
+      FAKE_CLAUDE_MODE_HAIKU: "auth_error",
+    });
+    const outPath = join(dir, "worker-out.log");
+    const outFd = openSync(outPath, "w");
+    const errFd = openSync(join(dir, "worker-err.log"), "w");
+    const worker = spawn(tsxBin, [entry, "--log-format", "json"], {
+      cwd: dir,
+      env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
+      stdio: ["ignore", outFd, errFd],
+    });
+    const workerClosed = new Promise<void>((resolve) => {
+      worker.on("close", () => {
+        closeSync(outFd);
+        closeSync(errFd);
+        resolve();
+      });
+    });
+
+    interface AgentJson {
+      control: string;
+      phase: { kind: string; reason?: string };
+    }
+    interface StatusJson {
+      agents: { monitor: AgentJson; executor: AgentJson };
+    }
+
+    async function pollStatus(
+      ready: (status: StatusJson) => boolean,
+    ): Promise<StatusJson | null> {
+      const deadline = Date.now() + INTERRUPT_DEADLINE_MS;
+      while (Date.now() < deadline) {
+        const probe = await runCommand(dir, env, ["status", "--json"]);
+        if (probe.code === 0) {
+          const status = JSON.parse(probe.stdout) as StatusJson;
+          if (ready(status)) return status;
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+      return null;
+    }
+
+    try {
+      const blocked = await pollStatus(
+        (status) =>
+          status.agents.monitor.phase.kind === "authBlocked" &&
+          status.agents.monitor.control === "paused" &&
+          status.agents.executor.control === "paused",
+      );
+      expect(blocked).not.toBeNull();
+      expect(blocked?.agents.monitor.phase.reason).toContain("401");
+
+      const log = await readFile(outPath, "utf8");
+      expect(log).toContain('"event":"monitor.authBlocked"');
+      expect(log).not.toContain('"cycle":2');
+
+      const resumed = await runCommand(dir, env, ["resume"]);
+      expect(resumed.code).toBe(0);
+
+      const deadline = Date.now() + INTERRUPT_DEADLINE_MS;
+      let secondCycle = false;
+      while (Date.now() < deadline && !secondCycle) {
+        secondCycle = (await readFile(outPath, "utf8")).includes(
+          '"event":"cycle.started","cycle":2',
+        );
+        if (!secondCycle)
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+      expect(secondCycle).toBe(true);
+    } finally {
+      worker.kill("SIGINT");
+      await workerClosed;
+    }
+  }, 40_000);
+
   it("answers brownie status --json and pause over the control socket", async () => {
     await seedProject(dir, {
       settings: { monitor: { model: "haiku", intervalMinutes: 1 } },
@@ -261,6 +353,42 @@ describe("CLI start (smoke E2E)", () => {
       expect(human.code).toBe(0);
       expect(human.stdout).toContain("monitor");
       expect(human.stdout).toContain("executor");
+
+      const added = await runCommand(dir, env, [
+        "tasks",
+        "add",
+        "e2e manual task",
+        "--id",
+        "e2e-manual",
+      ]);
+      expect(added.code).toBe(0);
+      const listed = await runCommand(dir, env, ["tasks", "list", "--json"]);
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.stdout)).toContainEqual(
+        expect.objectContaining({ id: "e2e-manual", title: "e2e manual task" }),
+      );
+
+      const settings = await runCommand(dir, env, ["settings", "get", "--json"]);
+      expect(settings.code).toBe(0);
+      expect(JSON.parse(settings.stdout)).toMatchObject({ monitor: { model: "haiku" } });
+      const patched = await runCommand(dir, env, [
+        "settings",
+        "patch",
+        '{"executor":{"maxTaskAttempts":5}}',
+        "--json",
+      ]);
+      expect(patched.code).toBe(0);
+      expect(JSON.parse(patched.stdout)).toMatchObject({
+        executor: { maxTaskAttempts: 5 },
+      });
+
+      const prompt = await runCommand(dir, env, ["prompt", "get", "monitor"]);
+      expect(prompt.code).toBe(0);
+      expect(prompt.stdout.trim()).toBe("observe");
+
+      const memory = await runCommand(dir, env, ["memory", "recent", "--json"]);
+      expect(memory.code).toBe(0);
+      expect(JSON.parse(memory.stdout)).toEqual([]);
     } finally {
       worker.kill("SIGINT");
       await workerClosed;

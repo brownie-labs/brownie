@@ -25,6 +25,28 @@ function collect(options: { verbose?: boolean } = {}) {
 }
 
 describe("createHeadlessReporters", () => {
+  it("logs an auth block as an error for both agents", () => {
+    const { events, monitor, executor } = collect();
+
+    monitor.authBlocked({ reason: "Not logged in · Please run /login" });
+    executor.authBlocked({ reason: "HTTP 401 authentication_failed" });
+
+    expect(events).toEqual([
+      {
+        level: "error",
+        agent: "monitor",
+        event: "monitor.authBlocked",
+        fields: { reason: "Not logged in · Please run /login" },
+      },
+      {
+        level: "error",
+        agent: "executor",
+        event: "executor.authBlocked",
+        fields: { reason: "HTTP 401 authentication_failed" },
+      },
+    ]);
+  });
+
   it("maps monitor lifecycle callbacks to events", () => {
     const { events, monitor } = collect();
 

@@ -1,7 +1,13 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { patchSettings, readRawSettings, settingsSection } from "../src/settings-file.js";
+import {
+  patchSettings,
+  readRawSettings,
+  settingsSection,
+  isPlainObject,
+  mergeSettingsPatch,
+} from "../src/settings-file.js";
 import { createTempDir, removeTempDir } from "./helpers.js";
 
 describe("readRawSettings", () => {
@@ -53,6 +59,45 @@ describe("settingsSection", () => {
     expect(raw.monitor).toBe(monitor);
     expect(raw.executor).toBe(executor);
     expect(executor).toEqual({});
+  });
+});
+
+describe("mergeSettingsPatch", () => {
+  it("assigns scalars, recurses into objects and deletes on null", () => {
+    const raw: Record<string, unknown> = {
+      monitor: { model: "haiku", activeHours: "09:00-17:00", intervalMinutes: 15 },
+      streamPartial: true,
+    };
+    mergeSettingsPatch(raw, {
+      monitor: { model: "opus", activeHours: null },
+      executor: { maxTaskAttempts: 5 },
+      streamPartial: null,
+    });
+    expect(raw).toEqual({
+      monitor: { model: "opus", intervalMinutes: 15 },
+      executor: { maxTaskAttempts: 5 },
+    });
+  });
+
+  it("replaces a non-object section and assigns arrays as values", () => {
+    const raw: Record<string, unknown> = { monitor: "oops" };
+    mergeSettingsPatch(raw, { monitor: { tags: ["a", "b"] } });
+    expect(raw).toEqual({ monitor: { tags: ["a", "b"] } });
+  });
+
+  it("an empty patch changes nothing", () => {
+    const raw: Record<string, unknown> = { streamPartial: false };
+    mergeSettingsPatch(raw, {});
+    expect(raw).toEqual({ streamPartial: false });
+  });
+});
+
+describe("isPlainObject", () => {
+  it("accepts objects and rejects arrays, null and scalars", () => {
+    expect(isPlainObject({})).toBe(true);
+    expect(isPlainObject([])).toBe(false);
+    expect(isPlainObject(null)).toBe(false);
+    expect(isPlainObject("x")).toBe(false);
   });
 });
 

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
-import { AgentController } from "../src/control.js";
+import { AuthGate } from "../src/auth-gate.js";
+import { AgentController, type AgentControlState } from "../src/control.js";
+import type { LoopGates } from "../src/gates.js";
 import type { TaskSummarizer } from "../src/memory/summarizer.js";
 import type { SessionSpec } from "../src/runner.js";
 import type { SessionEvent, SessionEventSink } from "../src/session-events.js";
@@ -13,9 +15,11 @@ import type {
   AgentConfig,
   ExecutorConfig,
   MonitorConfig,
+  SessionResult,
   SummarizerConfig,
   WorkerConfig,
 } from "../src/types.js";
+import { UsageLimitGate } from "../src/usage-limit.js";
 
 export function createTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "claude-worker-test-"));
@@ -256,6 +260,7 @@ export interface MonitorReporterSpy {
   reporter: MonitorReporter;
   offHours: ReturnType<typeof vi.fn>;
   usageLimit: ReturnType<typeof vi.fn>;
+  authBlocked: ReturnType<typeof vi.fn>;
   cycleStarted: ReturnType<typeof vi.fn>;
   cycleFinished: ReturnType<typeof vi.fn>;
   sleepUntil: ReturnType<typeof vi.fn>;
@@ -266,6 +271,7 @@ export function createMonitorReporterSpy(): MonitorReporterSpy {
   const spies = {
     offHours: vi.fn(),
     usageLimit: vi.fn(),
+    authBlocked: vi.fn(),
     cycleStarted: vi.fn(),
     cycleFinished: vi.fn(),
     sleepUntil: vi.fn(),
@@ -280,6 +286,7 @@ export interface ExecutorReporterSpy {
   taskFinished: ReturnType<typeof vi.fn>;
   retryScheduled: ReturnType<typeof vi.fn>;
   usageLimit: ReturnType<typeof vi.fn>;
+  authBlocked: ReturnType<typeof vi.fn>;
   waiting: ReturnType<typeof vi.fn>;
   summaryStarted: ReturnType<typeof vi.fn>;
   summaryFinished: ReturnType<typeof vi.fn>;
@@ -292,6 +299,7 @@ export function createExecutorReporterSpy(): ExecutorReporterSpy {
     taskFinished: vi.fn(),
     retryScheduled: vi.fn(),
     usageLimit: vi.fn(),
+    authBlocked: vi.fn(),
     waiting: vi.fn(),
     summaryStarted: vi.fn(),
     summaryFinished: vi.fn(),
@@ -312,6 +320,44 @@ export function createTaskSummarizerSpy(): TaskSummarizerSpy {
 
 export function noopController(): AgentController {
   return new AgentController(() => undefined);
+}
+
+export function buildGates(overrides: Partial<LoopGates> = {}): LoopGates {
+  return { limit: new UsageLimitGate(), auth: new AuthGate(), ...overrides };
+}
+
+export interface AuthGateHarness {
+  gates: LoopGates;
+  controller: AgentController;
+  partner: AgentController;
+}
+
+export function authGateHarness(): AuthGateHarness {
+  const controllers: AgentController[] = [];
+  const gates = buildGates({
+    auth: new AuthGate(() => {
+      for (const controller of controllers) controller.pause();
+    }),
+  });
+  const clearOnResume = (state: AgentControlState): void => {
+    if (state === "running") gates.auth.clear();
+  };
+  const controller = new AgentController(clearOnResume);
+  const partner = new AgentController(clearOnResume);
+  controllers.push(controller, partner);
+  return { gates, controller, partner };
+}
+
+export function authFailureResult(overrides: Partial<SessionResult> = {}): SessionResult {
+  return {
+    ok: false,
+    durationMs: 10,
+    failureReason: "isError",
+    error: "Session ended with an error (is_error)",
+    resultText: "Not logged in · Please run /login",
+    terminalReason: "api_error",
+    ...overrides,
+  };
 }
 
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {

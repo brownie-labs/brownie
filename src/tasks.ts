@@ -25,6 +25,21 @@ function corruptStoreError(path: string, reason: string): Error {
   );
 }
 
+const TASK_TITLE_MAX = 60;
+
+let manualTaskCounter = 0;
+
+export function buildManualTask(description: string): NewTask {
+  manualTaskCounter += 1;
+  const id = `manual-${Date.now().toString(36)}-${manualTaskCounter.toString(36)}`;
+  const firstLine = description.split("\n", 1)[0] ?? description;
+  const title =
+    firstLine.length > TASK_TITLE_MAX
+      ? `${firstLine.slice(0, TASK_TITLE_MAX - 1)}…`
+      : firstLine;
+  return { id, title, description };
+}
+
 export class TaskStore {
   private chain: Promise<unknown> = Promise.resolve();
   private readonly listeners = new Set<(tasks: Task[]) => void>();

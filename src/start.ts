@@ -1,9 +1,11 @@
 import { join } from "node:path";
+import { AuthGate } from "./auth-gate.js";
 import { loadWorkerConfig } from "./config.js";
 import { buildControlStatus } from "./control-protocol.js";
 import { startControlServer } from "./control-server.js";
 import { AgentController } from "./control.js";
 import { runExecutorLoop } from "./executor.js";
+import type { LoopGates } from "./gates.js";
 import { loadGlobalConfig } from "./global-config.js";
 import { compactFields } from "./headless/events.js";
 import type { HeadlessLogFormat } from "./headless/format.js";
@@ -32,6 +34,7 @@ export interface StartWorkerOptions {
   headless?: boolean | undefined;
   logFormat?: HeadlessLogFormat | undefined;
   verbose?: boolean | undefined;
+  paused?: boolean | undefined;
   stdout?: { write(chunk: string): unknown } | undefined;
 }
 
@@ -73,9 +76,17 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     status.shutdownRequested(signalName);
   });
   const waker = new Waker();
-  const limitGate = new UsageLimitGate();
-  const initialControlState = interactive ? "paused" : "running";
+  const gates: LoopGates = {
+    limit: new UsageLimitGate(),
+    auth: new AuthGate(() => {
+      monitorControl.pause();
+      executorControl.pause();
+    }),
+  };
+  const initialControlState =
+    interactive || options.paused === true ? "paused" : "running";
   const monitorControl = new AgentController((state) => {
+    if (state === "running") gates.auth.clear();
     status.setControl("monitor", state);
     headlessEmit?.({
       level: "info",
@@ -85,6 +96,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     });
   }, initialControlState);
   const executorControl = new AgentController((state) => {
+    if (state === "running") gates.auth.clear();
     status.setControl("executor", state);
     headlessEmit?.({
       level: "info",
@@ -96,11 +108,25 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   status.setControl("monitor", initialControlState);
   status.setControl("executor", initialControlState);
 
+  const settings = createSettingsController({
+    config,
+    settingsFile: config.settingsFilePath,
+  });
+  const prompts = createPromptFileAccess({
+    monitor: config.monitor.promptPath,
+    executor: config.executor.promptPath,
+  });
+
   let controlServer;
   try {
     controlServer = await startControlServer({
       socketPath: controlSocketPath(config.cwd),
       controls: { monitor: monitorControl, executor: executorControl },
+      tasks: store,
+      memory,
+      settings,
+      prompts,
+      waker,
       buildStatus: () => {
         status.flush();
         return buildControlStatus({
@@ -121,14 +147,6 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     return;
   }
 
-  const settings = createSettingsController({
-    config,
-    settingsFile: config.settingsFilePath,
-  });
-  const prompts = createPromptFileAccess({
-    monitor: config.monitor.promptPath,
-    executor: config.executor.promptPath,
-  });
   const dashboard = interactive
     ? mountDashboard({
         store: status,
@@ -172,17 +190,18 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
       return executorLog.pathFor(sessionId);
     },
     reporter: teeSession(summaryReporter, summarizerLog.sink),
-    limitGate,
+    gates,
   });
 
   headlessEmit?.({
     level: "info",
     event: "worker.started",
-    fields: {
+    fields: compactFields({
       version: packageVersion(),
       pid: process.pid,
       projectDir: config.cwd,
-    },
+      paused: initialControlState === "paused" ? true : undefined,
+    }),
   });
 
   const globalConfig = await loadGlobalConfig();
@@ -196,7 +215,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         waker,
         teeSession(monitorReporter, monitorLog.sink),
         monitorControl,
-        limitGate,
+        gates,
         signal,
       ),
       runExecutorLoop(
@@ -206,7 +225,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         teeSession(executorReporter, executorLog.sink),
         summarizer,
         executorControl,
-        limitGate,
+        gates,
         signal,
       ),
       runAutoUpdateLoop({

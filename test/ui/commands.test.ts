@@ -28,6 +28,8 @@ function buildRecord(id: number): TaskSummaryRecord {
 
 function fakeSettings() {
   return {
+    current: vi.fn().mockResolvedValue({}),
+    patch: vi.fn().mockResolvedValue({}),
     setModel: vi.fn().mockResolvedValue(undefined),
     setEffort: vi.fn().mockResolvedValue(undefined),
     setIntervalMinutes: vi.fn().mockResolvedValue(undefined),
@@ -91,7 +93,7 @@ function fakeContext(): FakeContext {
       setView: (view) => views.push(view),
       monitorControl,
       executorControl,
-      tasks: { retry, cancel, addTasks },
+      tasks: { list: vi.fn().mockReturnValue([]), retry, cancel, addTasks },
       memory: { recent, search },
       settings,
       prompts,
