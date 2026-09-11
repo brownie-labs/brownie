@@ -60,6 +60,11 @@ The **system prompts** (`prompts/*.system.md`) ship with the npm package (listed
 - Vitest, tests in `test/` mirror the structure of `src/`. Coverage thresholds (statements 92%, lines 94%…) are enforced in `vitest.config.ts` — new code must be tested.
 - Claude sessions are tested without a real CLI: `test/fixtures/claude` is a fake binary script driven by `FAKE_CLAUDE_*` variables (mode, result text, argument dump), with per-model variants via the `_<MODEL>` suffix. Helper factories for configs and reporters are in `test/helpers.ts`.
 
+## Documentation
+
+- Every user-facing change lands in `CHANGELOG.md` under `## [Unreleased]` (Keep a Changelog: `Added` / `Changed` / `Fixed`, one dense bullet per change, written for the user, not the diff).
+- Each doc owns one topic and stays terse: `README.md` is the overview and command tables, `docs/configuration.md` settings, `docs/prompts.md` prompts, `docs/deployment.md` headless mode and servers, `docs/control.md` the control socket (CLI, containers, wire protocol). A feature that touches several topics gets one sentence with a link in each, not a copy of the explanation — prefer a short paragraph or a table row over a new section, and a new file over a section that mixes audiences.
+
 ## Conventions
 
 - ESLint: `strictTypeChecked` + `stylisticTypeChecked`; `tsconfig` with `exactOptionalPropertyTypes` (hence explicit `| undefined` in interfaces).
