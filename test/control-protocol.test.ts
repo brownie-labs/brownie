@@ -5,6 +5,7 @@ import {
   MEMORY_LIMIT_DEFAULT,
   parseControlRequest,
   UNRECOGNIZED_REQUEST,
+  type WorkerIdentity,
 } from "../src/control-protocol.js";
 import type { WorkerStatus } from "../src/status.js";
 import type { Task } from "../src/types.js";
@@ -58,6 +59,7 @@ function rejected(line: string): string {
 describe("parseControlRequest", () => {
   it("parses the control commands", () => {
     expect(accepted('{"cmd":"status"}')).toEqual({ cmd: "status" });
+    expect(accepted('{"cmd":"version"}')).toEqual({ cmd: "version" });
     expect(accepted('{"cmd":"pause","agent":"monitor"}')).toEqual({
       cmd: "pause",
       agent: "monitor",
@@ -160,12 +162,16 @@ describe("parseControlRequest", () => {
     expect(rejected('{"cmd":"status","extra":1}')).toMatch(
       /^Invalid status request: \(root\): Unrecognized key/,
     );
+    expect(rejected('{"cmd":"version","json":true}')).toMatch(
+      /^Invalid version request: \(root\): Unrecognized key/,
+    );
   });
 
   it("lists every command", () => {
     expect([...CONTROL_COMMANDS].sort()).toEqual(
       [
         "status",
+        "version",
         "pause",
         "resume",
         "settings.get",
@@ -184,12 +190,16 @@ describe("parseControlRequest", () => {
 });
 
 describe("buildControlStatus", () => {
-  const context = {
+  const identity: WorkerIdentity = {
     version: "1.2.3",
+    claudeVersion: "2.1.268",
+    nodeVersion: "22.16.0",
     pid: 4242,
+    startedAt: "2026-07-08T08:00:00.000Z",
     projectDir: "/srv/project",
-    headless: true,
+    authKind: "oauth",
   };
+  const context = { identity, headless: true };
 
   it("maps worker identity, stats and task counts", () => {
     const snapshot = buildSnapshot({
@@ -206,14 +216,23 @@ describe("buildControlStatus", () => {
     const status = buildControlStatus({ ...context, snapshot });
 
     expect(status).toMatchObject({
-      version: "1.2.3",
-      pid: 4242,
-      startedAt: "2026-07-08T08:00:00.000Z",
-      projectDir: "/srv/project",
+      ...identity,
       headless: true,
       stats: { cycles: 7, tasksSucceeded: 2, tasksFailed: 1, totalCostUsd: 1.5 },
       taskCounts: { pending: 1, in_progress: 1, done: 2, failed: 1, cancelled: 0 },
     });
+  });
+
+  it("carries the identity through without adding fields it lacks", () => {
+    const { version, nodeVersion, pid, startedAt, projectDir, authKind } = identity;
+    const status = buildControlStatus({
+      identity: { version, nodeVersion, pid, startedAt, projectDir, authKind },
+      headless: false,
+      snapshot: buildSnapshot(),
+    });
+
+    expect(status).not.toHaveProperty("claudeVersion");
+    expect(status.headless).toBe(false);
   });
 
   it("serializes monitor phases with ISO timestamps", () => {

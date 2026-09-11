@@ -38,7 +38,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 
 | Event                                                         | Fields                                                                                                                     |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `worker.started`                                              | `version`, `pid`, `projectDir`, `paused` (when booted paused)                                                              |
+| `worker.started`                                              | `version`, `claudeVersion` (when readable), `nodeVersion`, `authKind`, `pid`, `projectDir`, `paused` (when booted paused)  |
 | `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
 | `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
 | `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |
@@ -62,12 +62,13 @@ The worker exposes a local control socket, created automatically — nothing to 
 ```bash
 brownie status           # who's running, phases, task counts, cost
 brownie status --json    # the same as machine-readable JSON
+brownie version          # brownie, Claude Code and Node versions, auth kind, pid
 brownie pause            # both agents finish their session, then park
 brownie pause monitor    # just one agent
 brownie resume           # back to work
 ```
 
-`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`. The same socket edits tasks, settings, prompts and memory, reaches out of a container, and has a documented wire protocol — see [docs/control.md](control.md).
+`brownie status --json` doubles as a health check — it exits non-zero when no worker is running. Its document opens with the worker's identity (brownie, Claude Code and Node versions, `authKind`, pid, start time), which `brownie version` prints on its own. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`. The same socket edits tasks, settings, prompts and memory, reaches out of a container, and has a documented wire protocol — see [docs/control.md](control.md).
 
 ## Staying up to date
 
@@ -109,7 +110,7 @@ The server needs a logged-in Claude Code. Two options:
 
 Either goes into the systemd unit or the container environment — no browser login on the server.
 
-Brownie checks the login at startup (`claude auth status --json`, no network call) and refuses to start when none is configured. Credentials rejected at runtime — an expired token, a revoked key — park both agents in the `authBlocked` phase instead of burning retries: the task goes back to the queue, `brownie status` shows the reason, and `brownie resume` wakes them once the credentials are fixed.
+Brownie checks the login at startup (`claude auth status --json`, no network call) and refuses to start when none is configured. `brownie version` (and the `authKind` field of `brownie status --json`) tells you which kind the worker started with — `apiKey`, `oauth`, `claude.ai` or `unknown`, in Claude Code's own order of precedence — so a unit file and a login left in the keychain can't quietly disagree. Credentials rejected at runtime — an expired token, a revoked key — park both agents in the `authBlocked` phase instead of burning retries: the task goes back to the queue, `brownie status` shows the reason, and `brownie resume` wakes them once the credentials are fixed.
 
 ## A droplet runbook (systemd)
 
@@ -218,6 +219,7 @@ The image installs exactly one Claude Code version (`CLAUDE_CODE_VERSION`, defau
 
 ```bash
 CLAUDE_CODE_VERSION=2.1.300 docker compose build --pull && docker compose up -d
+docker compose exec brownie brownie version   # the claude line confirms what the worker actually runs
 ```
 
 ### What the image gives your agent

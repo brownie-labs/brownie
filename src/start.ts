@@ -29,6 +29,7 @@ import { defaultUpdateDeps } from "./update/updater.js";
 import { mountDashboard } from "./ui/mount.js";
 import { UsageLimitGate } from "./usage-limit.js";
 import { Waker } from "./waker.js";
+import { buildWorkerIdentity } from "./worker-identity.js";
 
 export interface StartWorkerOptions {
   headless?: boolean | undefined;
@@ -39,12 +40,14 @@ export interface StartWorkerOptions {
 }
 
 export async function startWorker(options: StartWorkerOptions = {}): Promise<void> {
+  let claude;
   let config;
   let store;
   let memory;
   try {
-    const paths = await ensureReady();
-    config = await loadWorkerConfig({}, paths);
+    const preflight = await ensureReady();
+    claude = preflight.claude;
+    config = await loadWorkerConfig({}, preflight.paths);
     store = await TaskStore.open(config.tasksFilePath);
     memory = MemoryStore.open(config.memoryDbPath);
   } catch (err) {
@@ -56,6 +59,14 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   const status = new WorkerStatusStore();
   store.onChange((tasks) => status.setTasks(tasks));
   status.setTasks(store.list());
+  const identity = buildWorkerIdentity({
+    version: packageVersion(),
+    claude,
+    nodeVersion: process.versions.node,
+    pid: process.pid,
+    startedAt: status.getSnapshot().startedAt,
+    projectDir: config.cwd,
+  });
 
   const interactive =
     process.stdin.isTTY && process.stdout.isTTY && options.headless !== true;
@@ -121,6 +132,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   try {
     controlServer = await startControlServer({
       socketPath: controlSocketPath(config.cwd),
+      identity,
       controls: { monitor: monitorControl, executor: executorControl },
       tasks: store,
       memory,
@@ -131,9 +143,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         status.flush();
         return buildControlStatus({
           snapshot: status.getSnapshot(),
-          version: packageVersion(),
-          pid: process.pid,
-          projectDir: config.cwd,
+          identity,
           headless: !interactive,
         });
       },
@@ -151,7 +161,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     ? mountDashboard({
         store: status,
         config,
-        version: packageVersion(),
+        version: identity.version,
         controls: { monitor: monitorControl, executor: executorControl },
         tasks: store,
         memory,
@@ -197,9 +207,12 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     level: "info",
     event: "worker.started",
     fields: compactFields({
-      version: packageVersion(),
-      pid: process.pid,
-      projectDir: config.cwd,
+      version: identity.version,
+      claudeVersion: identity.claudeVersion,
+      nodeVersion: identity.nodeVersion,
+      authKind: identity.authKind,
+      pid: identity.pid,
+      projectDir: identity.projectDir,
       paused: initialControlState === "paused" ? true : undefined,
     }),
   });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ControlStatus } from "../src/control-protocol.js";
+import type { ControlStatus, WorkerIdentity } from "../src/control-protocol.js";
 import { snapshotEnv } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
@@ -17,17 +17,34 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
-const { readStdinText, requestControl, runControlAction, runStatus, statusCommand } =
-  await import("../src/control-commands.js");
+const {
+  readStdinText,
+  requestControl,
+  runControlAction,
+  runStatus,
+  runVersion,
+  statusCommand,
+  versionCommand,
+} = await import("../src/control-commands.js");
 const { WorkerNotRunningError } = await import("../src/control-client.js");
 const { logger } = await import("../src/logger.js");
 
-function buildStatus(overrides: Partial<ControlStatus> = {}): ControlStatus {
+function buildIdentity(overrides: Partial<WorkerIdentity> = {}): WorkerIdentity {
   return {
     version: "1.0.0",
+    claudeVersion: "2.1.268",
+    nodeVersion: "22.16.0",
     pid: 4242,
     startedAt: new Date(Date.now() - 90 * 60_000).toISOString(),
     projectDir: "/srv/project",
+    authKind: "oauth",
+    ...overrides,
+  };
+}
+
+function buildStatus(overrides: Partial<ControlStatus> = {}): ControlStatus {
+  return {
+    ...buildIdentity(),
     headless: true,
     agents: {
       monitor: {
@@ -72,7 +89,9 @@ describe("runStatus", () => {
       { cmd: "status" },
     );
     const output = lines.join("\n");
-    expect(output).toContain("brownie 1.0.0 · pid 4242 · up 1h 30m · headless");
+    expect(lines[0]).toBe(
+      "brownie 1.0.0 · claude 2.1.268 · auth oauth · pid 4242 · up 1h 30m · headless",
+    );
     expect(output).toContain("project   /srv/project");
     expect(output).toContain("monitor   running  sleeping · until");
     expect(output).toContain("executor  running  session · t-1");
@@ -108,6 +127,35 @@ describe("runStatus", () => {
     const output = lines.join("\n");
     expect(output).toContain("monitor   paused   authBlocked · Not logged in");
     expect(output).toContain("executor  paused   authBlocked · HTTP 401");
+  });
+
+  it("shows claude unknown when the worker could not read the CLI version", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: buildStatus({ claudeVersion: undefined, authKind: "unknown" }),
+    });
+
+    await runStatus({ write });
+
+    expect(lines[0]).toContain(
+      "brownie 1.0.0 · claude unknown · auth unknown · pid 4242",
+    );
+  });
+
+  it("renders a status document from an older worker that predates the identity fields", async () => {
+    const { version, pid, startedAt, projectDir, headless, agents, stats, taskCounts } =
+      buildStatus();
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { version, pid, startedAt, projectDir, headless, agents, stats, taskCounts },
+    });
+
+    await runStatus({ write });
+
+    expect(lines[0]).toBe(
+      "brownie 1.0.0 · claude unknown · auth unknown · pid 4242 · up 1h 30m · headless",
+    );
+    expect(lines).toHaveLength(6);
   });
 
   it("prints raw JSON with --json", async () => {
@@ -187,6 +235,114 @@ describe("runStatus", () => {
 
     expect(mocks.sendControlRequest).toHaveBeenCalledWith(expect.any(String), {
       cmd: "status",
+    });
+  });
+});
+
+describe("runVersion", () => {
+  let lines: string[];
+  let savedExitCode: typeof process.exitCode;
+  const write = (line: string) => lines.push(line);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lines = [];
+    savedExitCode = process.exitCode;
+  });
+
+  afterEach(() => {
+    process.exitCode = savedExitCode;
+  });
+
+  it("prints one labelled line per identity field", async () => {
+    const identity = buildIdentity({
+      authKind: "apiKey",
+      startedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: identity });
+
+    await runVersion({ write });
+
+    expect(mocks.sendControlRequest).toHaveBeenCalledWith(expect.any(String), {
+      cmd: "version",
+    });
+    expect(lines).toEqual([
+      "brownie   1.0.0",
+      "claude    2.1.268",
+      "node      22.16.0",
+      "auth      apiKey",
+      "pid       4242",
+      `started   ${identity.startedAt} · up 5m`,
+      "project   /srv/project",
+    ]);
+  });
+
+  it("prints claude unknown when the worker could not read the CLI version", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: buildIdentity({ claudeVersion: undefined }),
+    });
+
+    await runVersion({ write });
+
+    expect(lines).toContain("claude    unknown");
+  });
+
+  it("prints raw JSON with --json", async () => {
+    const identity = buildIdentity();
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: identity });
+
+    await runVersion({ json: true, write });
+
+    expect(JSON.parse(lines.join("\n"))).toEqual(identity);
+  });
+
+  it("fails with exit code 1 when no worker is running", async () => {
+    mocks.sendControlRequest.mockRejectedValue(new WorkerNotRunningError());
+
+    await runVersion({ write });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "No brownie worker is running in this project.",
+    );
+    expect(process.exitCode).toBe(1);
+    expect(lines).toEqual([]);
+  });
+
+  it("explains a worker that predates the version command", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: false,
+      error: "Unrecognized control request.",
+    });
+
+    await runVersion({ write });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('does not support "version"'),
+    );
+    expect(process.exitCode).toBe(1);
+    expect(lines).toEqual([]);
+  });
+
+  it("versionCommand.run forwards the json flag", async () => {
+    const identity = buildIdentity();
+    mocks.sendControlRequest.mockResolvedValue({ ok: true, data: identity });
+    const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    try {
+      await (versionCommand.run as (ctx: unknown) => Promise<void>)({
+        args: { json: true, _: [] },
+      });
+      const written = stdoutWrite.mock.calls
+        .map(([chunk]) => (typeof chunk === "string" ? chunk : ""))
+        .join("");
+      expect(JSON.parse(written)).toEqual(identity);
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+
+    expect(mocks.sendControlRequest).toHaveBeenCalledWith(expect.any(String), {
+      cmd: "version",
     });
   });
 });

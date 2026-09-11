@@ -9,6 +9,7 @@ Changes apply live — a patched setting on the next session, a replaced prompt 
 | Command                                                     | Effect                                                                                                 |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `brownie status [--json]`                                   | who's running, phases, task counts, cost — non-zero without a worker, so it doubles as a health check  |
+| `brownie version [--json]`                                  | the worker's identity: brownie, Claude Code and Node versions, auth kind, pid, start time, project     |
 | `brownie pause [monitor\|executor]`                         | graceful pause — the current session finishes first                                                    |
 | `brownie resume [monitor\|executor]`                        | resume paused agents (also after an `authBlocked` stop)                                                |
 | `brownie tasks list [--status <s>] [--json]`                | the task queue, optionally one status                                                                  |
@@ -21,7 +22,7 @@ Changes apply live — a patched setting on the next session, a replaced prompt 
 | `brownie memory search <query> [--limit <n>]`               | full-text search over task summaries (1–100 entries, default 10)                                       |
 | `brownie memory recent [--limit <n>]`                       | the newest task summaries                                                                              |
 
-`--json` prints the raw payload for scripts; `-` reads the body from stdin.
+`--json` prints the raw payload for scripts; `-` reads the body from stdin. `brownie version` describes the _running_ worker and fails without one — `brownie --version` prints the installed CLI's version and needs no worker.
 
 ## In containers
 
@@ -43,6 +44,7 @@ One connection carries one request — a JSON object terminated by `\n` — and 
 | Request                                                        | `data`                                         |
 | -------------------------------------------------------------- | ---------------------------------------------- |
 | `{"cmd":"status"}`                                             | the document `brownie status --json` prints    |
+| `{"cmd":"version"}`                                            | the identity block alone (see below)           |
 | `{"cmd":"pause","agent":"monitor"\|"executor"\|"all"}`         | —                                              |
 | `{"cmd":"resume","agent":…}`                                   | —                                              |
 | `{"cmd":"settings.get"}`                                       | effective settings                             |
@@ -57,3 +59,21 @@ One connection carries one request — a JSON object terminated by `\n` — and 
 | `{"cmd":"prompt.set","agent":…,"content":"…"}`                 | —                                              |
 
 An unknown `cmd` or non-JSON input answers `Unrecognized control request.`; a bad payload names the field (`Invalid tasks.add request: description: …`); a rejected settings patch answers `Invalid configuration (.brownie/settings.json):` with the offending paths.
+
+### The identity block
+
+`version` returns it on its own; the `status` document opens with the same fields, followed by `headless`, `agents`, `stats` and `taskCounts`:
+
+| Field           | Value                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `version`       | the brownie version the worker runs                                                                         |
+| `claudeVersion` | the Claude Code CLI version, read once at startup from `claude --version`; absent when it could not be read |
+| `nodeVersion`   | the Node.js version of the worker process                                                                   |
+| `pid`           | the worker's process id                                                                                     |
+| `startedAt`     | ISO 8601 start time                                                                                         |
+| `projectDir`    | the project the worker operates on                                                                          |
+| `authKind`      | `apiKey`, `oauth`, `claude.ai` or `unknown` — never the secret                                              |
+
+`authKind` follows Claude Code's own precedence: `apiKey` when `ANTHROPIC_API_KEY` is set (it outranks an OAuth token, as it does in `claude -p`) or when `claude auth status` reports any `apiKeySource` — an `apiKeyHelper`, a Console-created key; `oauth` when `CLAUDE_CODE_OAUTH_TOKEN` is set or the CLI reports `oauth_token`; `claude.ai` for a stored `claude auth login`; `unknown` otherwise. Cloud-provider (`CLAUDE_CODE_USE_BEDROCK|VERTEX|FOUNDRY`), gateway and `ANTHROPIC_AUTH_TOKEN` setups are outside this mapping and report `unknown` — a leftover key or token variable next to them is still what the field names.
+
+Fields are only ever added, so a consumer that ignores what it does not know keeps working across upgrades. The other direction degrades gracefully too: against a worker started from an older brownie, `brownie status` shows `claude unknown · auth unknown`, and `brownie version` answers `does not support "version"` with a hint to restart the worker.

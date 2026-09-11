@@ -13,6 +13,7 @@ import {
 import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
 import { projectPaths } from "./paths.js";
+import { parseVersion } from "./update/version.js";
 
 const INSTALL_HINT = "https://docs.claude.com/en/docs/claude-code/setup";
 const CONFIGURE_HINT = "run brownie in an interactive terminal to complete setup";
@@ -22,7 +23,9 @@ const LOGIN_HINT =
   "not logged in — run `claude auth login`, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY";
 const AUTH_UNVERIFIED_LABEL =
   "Claude Code login (not verified — `claude auth status` unavailable)";
-const AUTH_STATUS_TIMEOUT_MS = 10_000;
+const MISSING_CLAUDE_HINT = `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`;
+const CLAUDE_PROBE_TIMEOUT_MS = 10_000;
+const CLAUDE_VERSION_LINE = /^\s*(\S+)\s*\(Claude Code\)/m;
 
 export interface ClaudeAuthStatus {
   loggedIn: boolean;
@@ -30,8 +33,18 @@ export interface ClaudeAuthStatus {
   apiKeySource?: string | undefined;
 }
 
+export interface ClaudeCliInfo {
+  version: string | null;
+  auth: ClaudeAuthStatus | null;
+}
+
+export interface PreflightResult {
+  paths: WorkerPromptPaths;
+  claude: ClaudeCliInfo;
+}
+
 export interface PreflightOptions {
-  authStatusTimeoutMs?: number | undefined;
+  claudeTimeoutMs?: number | undefined;
 }
 
 interface Check {
@@ -63,20 +76,22 @@ async function findOnPath(command: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function locateClaude(): Promise<{ check: Check; path: string | undefined }> {
-  const found = await findOnPath(COMMAND);
-  return {
-    path: found,
-    check: check(
-      `Claude Code (${COMMAND})`,
-      found !== undefined,
-      `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`,
-    ),
-  };
+function claudeLabel(version: string | null): string {
+  return version === null
+    ? `Claude Code (${COMMAND})`
+    : `Claude Code ${version} (${COMMAND})`;
 }
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+export function parseClaudeVersion(output: string): string | null {
+  const tokens = output.split(/\s+/);
+  const labelled = CLAUDE_VERSION_LINE.exec(output)?.[1];
+  if (labelled !== undefined) tokens.unshift(labelled);
+  const version = tokens.find((token) => parseVersion(token) !== null);
+  return version?.replace(/^v/, "") ?? null;
 }
 
 export function parseClaudeAuthStatus(output: string): ClaudeAuthStatus | null {
@@ -117,10 +132,25 @@ function runForStdout(file: string, args: string[], timeoutMs: number): Promise<
   });
 }
 
-async function checkClaudeAuth(claudePath: string, timeoutMs: number): Promise<Check> {
-  const status = await runForStdout(claudePath, ["auth", "status", "--json"], timeoutMs)
+function readClaudeVersion(
+  claudePath: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  return runForStdout(claudePath, ["--version"], timeoutMs)
+    .then(parseClaudeVersion)
+    .catch(() => null);
+}
+
+function readClaudeAuthStatus(
+  claudePath: string,
+  timeoutMs: number,
+): Promise<ClaudeAuthStatus | null> {
+  return runForStdout(claudePath, ["auth", "status", "--json"], timeoutMs)
     .then(parseClaudeAuthStatus)
     .catch(() => null);
+}
+
+function authCheck(status: ClaudeAuthStatus | null): Check {
   if (status === null) {
     logger.warn(
       "Could not verify the Claude Code login (`claude auth status --json` gave no JSON — older CLI?); continuing",
@@ -131,10 +161,27 @@ async function checkClaudeAuth(claudePath: string, timeoutMs: number): Promise<C
   return check(`Claude Code login (${via})`, status.loggedIn, LOGIN_HINT);
 }
 
-async function checkClaudeAndAuth(timeoutMs: number): Promise<Check[]> {
-  const located = await locateClaude();
-  if (located.path === undefined) return [located.check];
-  return [located.check, await checkClaudeAuth(located.path, timeoutMs)];
+interface ClaudeChecks {
+  checks: Check[];
+  claude: ClaudeCliInfo;
+}
+
+async function checkClaudeCli(timeoutMs: number): Promise<ClaudeChecks> {
+  const claudePath = await findOnPath(COMMAND);
+  if (claudePath === undefined) {
+    return {
+      checks: [check(claudeLabel(null), false, MISSING_CLAUDE_HINT)],
+      claude: { version: null, auth: null },
+    };
+  }
+  const [version, auth] = await Promise.all([
+    readClaudeVersion(claudePath, timeoutMs),
+    readClaudeAuthStatus(claudePath, timeoutMs),
+  ]);
+  return {
+    checks: [{ label: claudeLabel(version), ok: true }, authCheck(auth)],
+    claude: { version, auth },
+  };
 }
 
 function checkSqliteFts5(): Check {
@@ -171,11 +218,11 @@ async function checkFile(path: string, label: string): Promise<Check> {
 export async function ensureReady(
   dirs: ConfigDirs = {},
   options: PreflightOptions = {},
-): Promise<WorkerPromptPaths> {
+): Promise<PreflightResult> {
   const paths = resolvePromptPaths(dirs);
 
-  const [claudeChecks, ...fileChecks] = await Promise.all([
-    checkClaudeAndAuth(options.authStatusTimeoutMs ?? AUTH_STATUS_TIMEOUT_MS),
+  const [cli, ...fileChecks] = await Promise.all([
+    checkClaudeCli(options.claudeTimeoutMs ?? CLAUDE_PROBE_TIMEOUT_MS),
     Promise.resolve(checkSqliteFts5()),
     Promise.resolve(checkSettingsFile(projectPaths(dirs.projectDir).settingsFile)),
     checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
@@ -193,7 +240,7 @@ export async function ensureReady(
       PROMPT_FILE_LABELS.summarizer.systemPromptPath,
     ),
   ]);
-  const checks = [...claudeChecks, ...fileChecks];
+  const checks = [...cli.checks, ...fileChecks];
 
   for (const result of checks) {
     if (result.ok) logger.success(result.label);
@@ -206,5 +253,5 @@ export async function ensureReady(
     throw new Error(`Preflight failed — required items are missing:\n${details}`);
   }
 
-  return paths;
+  return { paths, claude: cli.claude };
 }
