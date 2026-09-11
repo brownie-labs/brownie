@@ -6,12 +6,14 @@ Brownie runs unattended just as happily as it runs in a terminal. Without a TTY 
 
 Headless activates automatically when stdin or stdout is not a TTY. Force it in a terminal with `--headless`.
 
-| Flag / env                    | Default  | Effect                                                |
-| ----------------------------- | -------- | ----------------------------------------------------- |
-| `--headless`                  | auto     | skip the dashboard even in a terminal, agents start   |
-| `--log-format <pretty\|json>` | `pretty` | line format on stdout                                 |
-| `BROWNIE_LOG_FORMAT`          | —        | fallback for `--log-format` when the flag is absent   |
-| `--verbose`                   | off      | also log session text, tool calls, and failed results |
+| Flag / env                    | Default  | Effect                                                                                |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `--headless`                  | auto     | skip the dashboard even in a terminal, agents start                                   |
+| `--log-format <pretty\|json>` | `pretty` | line format on stdout                                                                 |
+| `BROWNIE_LOG_FORMAT`          | —        | fallback for `--log-format` when the flag is absent                                   |
+| `--verbose`                   | off      | also log session text, tool calls, and failed results                                 |
+| `--paused`                    | off      | boot both agents paused — wake them with `brownie resume` (a TTY always boots paused) |
+| `BROWNIE_START_PAUSED`        | —        | fallback for `--paused` (`1` or `true`)                                               |
 
 `pretty` is made for `journalctl -f` and human eyes; `json` (NDJSON — one JSON object per line) is made for log aggregators (Loki, Datadog, CloudWatch). Session transcripts are always written to `.brownie/logs/` in both modes, so stdout stays a timeline, not a firehose.
 
@@ -36,7 +38,7 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 
 | Event                                                         | Fields                                                                                                                     |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `worker.started`                                              | `version`, `pid`, `projectDir`                                                                                             |
+| `worker.started`                                              | `version`, `pid`, `projectDir`, `paused` (only when the agents boot paused)                                                |
 | `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
 | `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
 | `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |

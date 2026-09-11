@@ -125,6 +125,7 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | --------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `brownie`                                                 | start the worker (TUI in a terminal, headless without one)                  |
 | `brownie --headless [--log-format json]`                  | force headless mode even in a terminal                                      |
+| `brownie --paused`                                        | boot with both agents paused; `brownie resume` starts them                  |
 | `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible)                     |
 | `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |

@@ -222,8 +222,34 @@ describe("startWorker", () => {
       projectDir: dir,
     });
     expect(typeof events[0]?.version).toBe("string");
+    expect(events[0]).not.toHaveProperty("paused");
     expect(events.at(-1)).toMatchObject({ event: "worker.stopped" });
     expect(events.at(-1)).not.toHaveProperty("signal");
+  });
+
+  it("the paused option boots headless controllers paused and says so in worker.started", async () => {
+    stubHappyPath(buildConfig({ cwd: dir }));
+    const sink = jsonSink();
+
+    await runStart({ paused: true, logFormat: "json", stdout: sink });
+
+    const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
+      typeof AgentController
+    >;
+    const executorController = mocks.runExecutorLoop.mock.calls[0]?.[5] as InstanceType<
+      typeof AgentController
+    >;
+    expect(monitorController.state).toBe("paused");
+    expect(executorController.state).toBe("paused");
+    expect(sink.events()[0]).toMatchObject({ event: "worker.started", paused: true });
+    const serverDeps = mocks.startControlServer.mock.calls[0]?.[0] as {
+      buildStatus: () => {
+        agents: { monitor: { control: string }; executor: { control: string } };
+      };
+    };
+    const agents = serverDeps.buildStatus().agents;
+    expect(agents.monitor.control).toBe("paused");
+    expect(agents.executor.control).toBe("paused");
   });
 
   it("headless: tees loop reporters into the status store and the log sink", async () => {

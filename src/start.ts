@@ -32,6 +32,7 @@ export interface StartWorkerOptions {
   headless?: boolean | undefined;
   logFormat?: HeadlessLogFormat | undefined;
   verbose?: boolean | undefined;
+  paused?: boolean | undefined;
   stdout?: { write(chunk: string): unknown } | undefined;
 }
 
@@ -74,7 +75,8 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   });
   const waker = new Waker();
   const limitGate = new UsageLimitGate();
-  const initialControlState = interactive ? "paused" : "running";
+  const initialControlState =
+    interactive || options.paused === true ? "paused" : "running";
   const monitorControl = new AgentController((state) => {
     status.setControl("monitor", state);
     headlessEmit?.({
@@ -178,11 +180,12 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   headlessEmit?.({
     level: "info",
     event: "worker.started",
-    fields: {
+    fields: compactFields({
       version: packageVersion(),
       pid: process.pid,
       projectDir: config.cwd,
-    },
+      paused: initialControlState === "paused" ? true : undefined,
+    }),
   });
 
   const globalConfig = await loadGlobalConfig();

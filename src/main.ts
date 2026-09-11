@@ -11,10 +11,16 @@ export interface RunBrownieOptions {
   headless?: boolean | undefined;
   logFormat?: string | undefined;
   verbose?: boolean | undefined;
+  paused?: boolean | undefined;
 }
 
 function isInteractiveTerminal(): boolean {
   return process.stdin.isTTY && process.stdout.isTTY;
+}
+
+export function parseStartPaused(raw: string | undefined): boolean {
+  const value = raw?.trim().toLowerCase();
+  return value === "1" || value === "true";
 }
 
 export async function runBrownie(options: RunBrownieOptions = {}): Promise<void> {
@@ -45,7 +51,10 @@ export async function runBrownie(options: RunBrownieOptions = {}): Promise<void>
     if (!saved) return;
   }
 
-  await startWorker({ headless, logFormat, verbose: options.verbose });
+  const paused =
+    options.paused === true || parseStartPaused(process.env.BROWNIE_START_PAUSED);
+
+  await startWorker({ headless, logFormat, verbose: options.verbose, paused });
 }
 
 export const mainCommand = defineCommand({
@@ -69,6 +78,11 @@ export const mainCommand = defineCommand({
       type: "boolean",
       description: "Include session text and tool calls in headless logs",
     },
+    paused: {
+      type: "boolean",
+      description:
+        "Boot both agents paused — wake them with brownie resume or /start (env: BROWNIE_START_PAUSED=1)",
+    },
   },
   run: ({ args }) =>
     runBrownie({
@@ -76,5 +90,6 @@ export const mainCommand = defineCommand({
       headless: args.headless,
       logFormat: args["log-format"],
       verbose: args.verbose,
+      paused: args.paused,
     }),
 });

@@ -16,7 +16,7 @@ vi.mock("../src/logger.js", async () =>
   (await import("./helpers.js")).loggerModuleMock(),
 );
 
-const { mainCommand, runBrownie } = await import("../src/main.js");
+const { mainCommand, parseStartPaused, runBrownie } = await import("../src/main.js");
 const { logger } = await import("../src/logger.js");
 
 describe("runBrownie", () => {
@@ -106,7 +106,37 @@ describe("runBrownie", () => {
       headless: true,
       logFormat: "json",
       verbose: true,
+      paused: false,
     });
+  });
+
+  it("passes --paused through to the worker", async () => {
+    mocks.isConfigured.mockReturnValue(true);
+
+    await runBrownie({ interactive: true, paused: true });
+
+    expect(mocks.startWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ paused: true }),
+    );
+  });
+
+  it("reads BROWNIE_START_PAUSED when the flag is absent", async () => {
+    const restoreEnv = snapshotEnv();
+    mocks.isConfigured.mockReturnValue(true);
+
+    try {
+      process.env.BROWNIE_START_PAUSED = "1";
+      await runBrownie({ interactive: true });
+      process.env.BROWNIE_START_PAUSED = "0";
+      await runBrownie({ interactive: true });
+      await runBrownie({ interactive: true, paused: true });
+    } finally {
+      restoreEnv();
+    }
+
+    expect(
+      mocks.startWorker.mock.calls.map((call) => (call[0] as { paused: boolean }).paused),
+    ).toEqual([true, false, true]);
   });
 
   it("defaults to the pretty log format", async () => {
@@ -177,6 +207,20 @@ describe("runBrownie", () => {
   });
 });
 
+describe("parseStartPaused", () => {
+  it.each([
+    ["1", true],
+    ["true", true],
+    [" TRUE ", true],
+    ["0", false],
+    ["false", false],
+    ["", false],
+    [undefined, false],
+  ])("maps %j to %s", (raw, expected) => {
+    expect(parseStartPaused(raw)).toBe(expected);
+  });
+});
+
 describe("mainCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -187,9 +231,11 @@ describe("mainCommand", () => {
     mocks.isConfigured.mockReturnValue(true);
 
     await (mainCommand.run as (ctx: unknown) => Promise<void>)({
-      args: { _: [] },
+      args: { _: [], paused: true },
     });
 
-    expect(mocks.startWorker).toHaveBeenCalledTimes(1);
+    expect(mocks.startWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ paused: true }),
+    );
   });
 });
