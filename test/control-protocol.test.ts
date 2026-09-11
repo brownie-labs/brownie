@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildControlStatus, parseControlRequest } from "../src/control-protocol.js";
+import {
+  buildControlStatus,
+  CONTROL_COMMANDS,
+  MEMORY_LIMIT_DEFAULT,
+  parseControlRequest,
+  UNRECOGNIZED_REQUEST,
+} from "../src/control-protocol.js";
 import type { WorkerStatus } from "../src/status.js";
 import type { Task } from "../src/types.js";
 
@@ -37,25 +43,143 @@ function buildSnapshot(overrides: Partial<WorkerStatus> = {}): WorkerStatus {
   };
 }
 
+function accepted(line: string): unknown {
+  const parsed = parseControlRequest(line);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.request;
+}
+
+function rejected(line: string): string {
+  const parsed = parseControlRequest(line);
+  if (parsed.ok) throw new Error(`accepted ${line}`);
+  return parsed.error;
+}
+
 describe("parseControlRequest", () => {
-  it("parses the three commands", () => {
-    expect(parseControlRequest('{"cmd":"status"}')).toEqual({ cmd: "status" });
-    expect(parseControlRequest('{"cmd":"pause","agent":"monitor"}')).toEqual({
+  it("parses the control commands", () => {
+    expect(accepted('{"cmd":"status"}')).toEqual({ cmd: "status" });
+    expect(accepted('{"cmd":"pause","agent":"monitor"}')).toEqual({
       cmd: "pause",
       agent: "monitor",
     });
-    expect(parseControlRequest('{"cmd":"resume","agent":"all"}')).toEqual({
+    expect(accepted('{"cmd":"resume","agent":"all"}')).toEqual({
       cmd: "resume",
       agent: "all",
     });
   });
 
-  it("rejects malformed input", () => {
-    expect(parseControlRequest("not json")).toBeNull();
-    expect(parseControlRequest("42")).toBeNull();
-    expect(parseControlRequest('{"cmd":"shutdown"}')).toBeNull();
-    expect(parseControlRequest('{"cmd":"pause"}')).toBeNull();
-    expect(parseControlRequest('{"cmd":"pause","agent":"summarizer"}')).toBeNull();
+  it("parses every data command and fills in defaults", () => {
+    expect(accepted('{"cmd":"settings.get"}')).toEqual({ cmd: "settings.get" });
+    expect(
+      accepted(
+        '{"cmd":"settings.patch","patch":{"monitor":{"activeHours":null,"x":[1,"a"]}}}',
+      ),
+    ).toEqual({
+      cmd: "settings.patch",
+      patch: { monitor: { activeHours: null, x: [1, "a"] } },
+    });
+    expect(accepted('{"cmd":"tasks.list"}')).toEqual({ cmd: "tasks.list" });
+    expect(accepted('{"cmd":"tasks.list","status":"failed"}')).toEqual({
+      cmd: "tasks.list",
+      status: "failed",
+    });
+    expect(accepted('{"cmd":"tasks.add","description":"Do it"}')).toEqual({
+      cmd: "tasks.add",
+      description: "Do it",
+    });
+    expect(
+      accepted('{"cmd":"tasks.add","description":"Do it","id":"t-1","title":"T"}'),
+    ).toEqual({ cmd: "tasks.add", description: "Do it", id: "t-1", title: "T" });
+    expect(accepted('{"cmd":"tasks.retry","id":"t-1"}')).toEqual({
+      cmd: "tasks.retry",
+      id: "t-1",
+    });
+    expect(accepted('{"cmd":"tasks.cancel","id":"t-1"}')).toEqual({
+      cmd: "tasks.cancel",
+      id: "t-1",
+    });
+    expect(accepted('{"cmd":"memory.search","query":"deploy"}')).toEqual({
+      cmd: "memory.search",
+      query: "deploy",
+      limit: MEMORY_LIMIT_DEFAULT,
+    });
+    expect(accepted('{"cmd":"memory.search","query":"deploy","limit":3}')).toEqual({
+      cmd: "memory.search",
+      query: "deploy",
+      limit: 3,
+    });
+    expect(accepted('{"cmd":"memory.recent"}')).toEqual({
+      cmd: "memory.recent",
+      limit: MEMORY_LIMIT_DEFAULT,
+    });
+    expect(accepted('{"cmd":"prompt.get","agent":"monitor"}')).toEqual({
+      cmd: "prompt.get",
+      agent: "monitor",
+    });
+    expect(accepted('{"cmd":"prompt.set","agent":"executor","content":"# Do"}')).toEqual({
+      cmd: "prompt.set",
+      agent: "executor",
+      content: "# Do",
+    });
+  });
+
+  it("rejects unrecognized requests with the legacy message", () => {
+    for (const line of [
+      "not json",
+      "42",
+      "[]",
+      '{"cmd":"shutdown"}',
+      '{"agent":"all"}',
+    ]) {
+      expect(rejected(line)).toBe(UNRECOGNIZED_REQUEST);
+    }
+  });
+
+  it("explains an invalid payload of a known command", () => {
+    expect(rejected('{"cmd":"pause"}')).toMatch(/^Invalid pause request: agent: /);
+    expect(rejected('{"cmd":"pause","agent":"summarizer"}')).toMatch(
+      /^Invalid pause request: agent: /,
+    );
+    expect(rejected('{"cmd":"tasks.add"}')).toMatch(
+      /^Invalid tasks.add request: description: /,
+    );
+    expect(rejected('{"cmd":"tasks.add","description":"  "}')).toMatch(
+      /must not be blank/,
+    );
+    expect(rejected('{"cmd":"tasks.list","status":"nope"}')).toMatch(
+      /^Invalid tasks.list request: status: /,
+    );
+    expect(rejected('{"cmd":"memory.recent","limit":0}')).toMatch(/limit: /);
+    expect(rejected('{"cmd":"memory.recent","limit":101}')).toMatch(/limit: /);
+    expect(rejected('{"cmd":"memory.recent","limit":2.5}')).toMatch(/limit: /);
+    expect(rejected('{"cmd":"settings.patch","patch":[1]}')).toMatch(/patch/);
+    expect(rejected('{"cmd":"settings.patch","patch":"x"}')).toMatch(/patch/);
+    expect(rejected('{"cmd":"prompt.set","agent":"monitor","content":""}')).toMatch(
+      /content: must not be blank/,
+    );
+    expect(rejected('{"cmd":"status","extra":1}')).toMatch(
+      /^Invalid status request: \(root\): Unrecognized key/,
+    );
+  });
+
+  it("lists every command", () => {
+    expect([...CONTROL_COMMANDS].sort()).toEqual(
+      [
+        "status",
+        "pause",
+        "resume",
+        "settings.get",
+        "settings.patch",
+        "tasks.list",
+        "tasks.add",
+        "tasks.retry",
+        "tasks.cancel",
+        "memory.search",
+        "memory.recent",
+        "prompt.get",
+        "prompt.set",
+      ].sort(),
+    );
   });
 });
 

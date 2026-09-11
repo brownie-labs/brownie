@@ -353,6 +353,42 @@ describe("CLI start (smoke E2E)", () => {
       expect(human.code).toBe(0);
       expect(human.stdout).toContain("monitor");
       expect(human.stdout).toContain("executor");
+
+      const added = await runCommand(dir, env, [
+        "tasks",
+        "add",
+        "e2e manual task",
+        "--id",
+        "e2e-manual",
+      ]);
+      expect(added.code).toBe(0);
+      const listed = await runCommand(dir, env, ["tasks", "list", "--json"]);
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.stdout)).toContainEqual(
+        expect.objectContaining({ id: "e2e-manual", title: "e2e manual task" }),
+      );
+
+      const settings = await runCommand(dir, env, ["settings", "get", "--json"]);
+      expect(settings.code).toBe(0);
+      expect(JSON.parse(settings.stdout)).toMatchObject({ monitor: { model: "haiku" } });
+      const patched = await runCommand(dir, env, [
+        "settings",
+        "patch",
+        '{"executor":{"maxTaskAttempts":5}}',
+        "--json",
+      ]);
+      expect(patched.code).toBe(0);
+      expect(JSON.parse(patched.stdout)).toMatchObject({
+        executor: { maxTaskAttempts: 5 },
+      });
+
+      const prompt = await runCommand(dir, env, ["prompt", "get", "monitor"]);
+      expect(prompt.code).toBe(0);
+      expect(prompt.stdout.trim()).toBe("observe");
+
+      const memory = await runCommand(dir, env, ["memory", "recent", "--json"]);
+      expect(memory.code).toBe(0);
+      expect(JSON.parse(memory.stdout)).toEqual([]);
     } finally {
       worker.kill("SIGINT");
       await workerClosed;

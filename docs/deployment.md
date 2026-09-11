@@ -60,14 +60,55 @@ Optional fields are omitted, never `null` — the schema is stable and safe to i
 The worker exposes a local control socket. By default it lives outside the project at `<tmpdir>/brownie-<uid>-<hash>.sock`, derived from the project directory, so any shell in the same project directory finds it without configuration:
 
 ```bash
-brownie status           # who's running, phases, task counts, cost
-brownie status --json    # the same as machine-readable JSON
-brownie pause            # both agents finish their session, then park
-brownie pause monitor    # just one agent
-brownie resume           # back to work
+brownie status                  # who's running, phases, task counts, cost
+brownie status --json           # the same as machine-readable JSON
+brownie pause                   # both agents finish their session, then park
+brownie pause monitor           # just one agent
+brownie resume                  # back to work (also clears an authBlocked stop)
+
+brownie tasks list [--status failed] [--json]
+brownie tasks add "Rotate the API key" [--id ci-42] [--title "…"]
+brownie tasks retry <id>        # requeue a failed task
+brownie tasks cancel <id>       # drop a pending task
+
+brownie settings get [--json]   # effective settings, defaults filled in
+brownie settings patch '{"monitor":{"intervalMinutes":5,"activeHours":null}}'
+echo '{"streamPartial":false}' | brownie settings patch -
+
+brownie prompt get monitor > monitor.md
+brownie prompt set executor executor.md      # or pipe it: … | brownie prompt set executor
+
+brownie memory search "deploy" [--limit 5] [--json]
+brownie memory recent [--limit 20] [--json]
 ```
 
+Every command talks to the running process, so changes apply live: a patched setting takes effect on the next session without a restart, a replaced prompt on the next iteration, an added task as soon as the executor is idle. `settings patch` merges a sparse JSON object into `.brownie/settings.json` — `null` deletes a key (`"activeHours": null` switches the window off, `"model": null` falls back to the default) — and validates the whole file before writing, so a typo is rejected with its path and nothing changes. `--json` prints the raw payload for scripts; `-` reads a body from stdin. Commands exit `1` when the worker rejects the request, when a `retry`/`cancel` finds no matching task, and when no worker is running.
+
 When the worker and the controlling shell do not share a temp directory — the worker in a container, the operator on the host, or a supervisor that manages many agents — point both at the same file with `BROWNIE_CONTROL_SOCKET=/run/brownie/control.sock`. The path must be absolute and shorter than 104 bytes; the worker creates the directory if it is missing, and the socket is `chmod 0600`, so the caller has to run as the same user (a different uid gets `Permission denied`, not `no worker is running`). `brownie status --json` doubles as a health check — it exits non-zero when no worker is running. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`.
+
+### Control protocol
+
+A control plane does not need the CLI — it can speak to the socket directly. Transport: a unix domain socket (a named pipe on Windows); one connection carries exactly one request — a JSON object terminated by `\n` — and receives one JSON line back, then the worker closes the connection. Requests larger than 1 MiB are refused, idle connections are dropped after 5 s.
+
+Responses are `{"ok":true,"data":…}` or `{"ok":false,"error":"…"}`; `data` is omitted when a command returns nothing. Optional fields inside `data` are omitted, never `null`.
+
+| Request                                                                                  | `data`                                                    |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `{"cmd":"status"}`                                                                       | the status document `brownie status --json` prints        |
+| `{"cmd":"pause","agent":"monitor"\|"executor"\|"all"}`                                   | —                                                         |
+| `{"cmd":"resume","agent":…}`                                                             | —                                                         |
+| `{"cmd":"settings.get"}`                                                                 | effective settings (defaults filled in)                   |
+| `{"cmd":"settings.patch","patch":{…}}`                                                   | the resulting settings; `null` in the patch deletes a key |
+| `{"cmd":"tasks.list","status"?:"pending"\|"in_progress"\|"done"\|"failed"\|"cancelled"}` | `Task[]`                                                  |
+| `{"cmd":"tasks.add","description":"…","id"?:"…","title"?:"…"}`                           | the created `Task`; a duplicate id is an error            |
+| `{"cmd":"tasks.retry","id":"…"}`                                                         | `true` when a failed task was requeued, else `false`      |
+| `{"cmd":"tasks.cancel","id":"…"}`                                                        | `true` when a pending task was cancelled, else `false`    |
+| `{"cmd":"memory.search","query":"…","limit"?:1-100}`                                     | task summaries, best match first (default limit 10)       |
+| `{"cmd":"memory.recent","limit"?:1-100}`                                                 | the newest task summaries                                 |
+| `{"cmd":"prompt.get","agent":"monitor"\|"executor"}`                                     | `{"agent":…,"content":"…"}`                               |
+| `{"cmd":"prompt.set","agent":…,"content":"…"}`                                           | —                                                         |
+
+An unknown `cmd` or non-JSON input answers `{"ok":false,"error":"Unrecognized control request."}`; a known command with a bad payload explains the field, e.g. `Invalid tasks.add request: description: Invalid input: expected string, received undefined`. Settings rejected by the schema come back as `Invalid configuration (.brownie/settings.json):` followed by the offending paths.
 
 ## Staying up to date
 

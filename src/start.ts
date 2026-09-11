@@ -108,11 +108,25 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   status.setControl("monitor", initialControlState);
   status.setControl("executor", initialControlState);
 
+  const settings = createSettingsController({
+    config,
+    settingsFile: config.settingsFilePath,
+  });
+  const prompts = createPromptFileAccess({
+    monitor: config.monitor.promptPath,
+    executor: config.executor.promptPath,
+  });
+
   let controlServer;
   try {
     controlServer = await startControlServer({
       socketPath: controlSocketPath(config.cwd),
       controls: { monitor: monitorControl, executor: executorControl },
+      tasks: store,
+      memory,
+      settings,
+      prompts,
+      waker,
       buildStatus: () => {
         status.flush();
         return buildControlStatus({
@@ -133,14 +147,6 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     return;
   }
 
-  const settings = createSettingsController({
-    config,
-    settingsFile: config.settingsFilePath,
-  });
-  const prompts = createPromptFileAccess({
-    monitor: config.monitor.promptPath,
-    executor: config.executor.promptPath,
-  });
   const dashboard = interactive
     ? mountDashboard({
         store: status,

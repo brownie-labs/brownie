@@ -184,6 +184,19 @@ describe("startWorker", () => {
         socketPath: expect.stringContaining("brownie-") as unknown,
         controls: { monitor: monitorController, executor: executorController },
         buildStatus: expect.any(Function) as unknown,
+        tasks: store,
+        memory: expect.objectContaining({
+          close: expect.any(Function) as unknown,
+        }) as unknown,
+        settings: expect.objectContaining({
+          current: expect.any(Function) as unknown,
+          patch: expect.any(Function) as unknown,
+        }) as unknown,
+        prompts: expect.objectContaining({
+          read: expect.any(Function) as unknown,
+          write: expect.any(Function) as unknown,
+        }) as unknown,
+        waker: expect.any(Waker) as unknown,
         signal,
       }),
     );
@@ -388,9 +401,20 @@ describe("startWorker", () => {
       store: InstanceType<typeof WorkerStatusStore>;
       controls: { monitor: unknown; executor: unknown };
       version: string;
+      settings: unknown;
+      prompts: unknown;
+      waker: unknown;
     };
     expect(mountProps.controls.monitor).toBe(monitorController);
     expect(mountProps.controls.executor).toBe(executorController);
+    const serverDeps = mocks.startControlServer.mock.calls[0]?.[0] as {
+      settings: unknown;
+      prompts: unknown;
+      waker: unknown;
+    };
+    expect(serverDeps.settings).toBe(mountProps.settings);
+    expect(serverDeps.prompts).toBe(mountProps.prompts);
+    expect(serverDeps.waker).toBe(mountProps.waker);
     expect(mountProps.version).not.toBe("unknown");
     mountProps.store.flush();
     expect(mountProps.store.getSnapshot().monitor.control).toBe("paused");

@@ -68,6 +68,8 @@ function buildRecord(overrides: Partial<TaskSummaryRecord> = {}): TaskSummaryRec
 
 function fakeSettingsController() {
   return {
+    current: vi.fn().mockResolvedValue({}),
+    patch: vi.fn().mockResolvedValue({}),
     setModel: vi.fn().mockResolvedValue(undefined),
     setEffort: vi.fn().mockResolvedValue(undefined),
     setIntervalMinutes: vi.fn().mockResolvedValue(undefined),
@@ -115,6 +117,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
   const addTasks = vi
     .fn()
     .mockImplementation((tasks: unknown[]) => Promise.resolve(tasks));
+  const list = vi.fn().mockReturnValue([]);
   const recent = vi.fn().mockReturnValue([buildRecord()]);
   const search = vi.fn().mockReturnValue([buildRecord({ id: 2, taskId: "t-2" })]);
   const settings = fakeSettingsController();
@@ -139,7 +142,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
       config: buildConfig({ cwd: "/tmp/ws" }),
       version: "1.2.3",
       controls: { monitor: monitorControl, executor: executorControl },
-      tasks: { retry, cancel, addTasks },
+      tasks: { list, retry, cancel, addTasks },
       memory: { recent, search },
       settings,
       prompts,

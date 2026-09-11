@@ -1,4 +1,9 @@
+import { z } from "zod";
+import type { Settings } from "./config.js";
 import type { AgentControlState } from "./control.js";
+import type { TaskSummaryRecord } from "./memory/store.js";
+import { PROMPT_AGENTS, type PromptAgent } from "./prompt-files.js";
+import type { JsonValue } from "./settings-file.js";
 import type {
   ExecutorPhase,
   ExecutorTaskOutcome,
@@ -7,16 +12,140 @@ import type {
   WorkerStats,
   WorkerStatus,
 } from "./status.js";
-import type { TaskStatus } from "./types.js";
+import { TASK_STATUSES, type Task, type TaskStatus } from "./types.js";
 
 export const CONTROL_TARGETS = ["monitor", "executor", "all"] as const;
 
 export type ControlTarget = (typeof CONTROL_TARGETS)[number];
 
-export type ControlRequest =
-  | { cmd: "status" }
-  | { cmd: "pause"; agent: ControlTarget }
-  | { cmd: "resume"; agent: ControlTarget };
+export const MEMORY_LIMIT_DEFAULT = 10;
+export const MEMORY_LIMIT_MAX = 100;
+export const UNRECOGNIZED_REQUEST = "Unrecognized control request.";
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+export const settingsPatchSchema = z.record(z.string(), jsonValueSchema);
+
+const limitSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(MEMORY_LIMIT_MAX)
+  .default(MEMORY_LIMIT_DEFAULT);
+const nonBlank = z.string().refine((value) => value.trim() !== "", "must not be blank");
+const targetSchema = z.enum(CONTROL_TARGETS);
+const promptAgentSchema = z.enum(PROMPT_AGENTS);
+
+export const controlRequestSchema = z.discriminatedUnion("cmd", [
+  z.object({ cmd: z.literal("status") }).strict(),
+  z.object({ cmd: z.literal("pause"), agent: targetSchema }).strict(),
+  z.object({ cmd: z.literal("resume"), agent: targetSchema }).strict(),
+  z.object({ cmd: z.literal("settings.get") }).strict(),
+  z.object({ cmd: z.literal("settings.patch"), patch: settingsPatchSchema }).strict(),
+  z
+    .object({ cmd: z.literal("tasks.list"), status: z.enum(TASK_STATUSES).optional() })
+    .strict(),
+  z
+    .object({
+      cmd: z.literal("tasks.add"),
+      description: nonBlank,
+      id: nonBlank.optional(),
+      title: nonBlank.optional(),
+    })
+    .strict(),
+  z.object({ cmd: z.literal("tasks.retry"), id: nonBlank }).strict(),
+  z.object({ cmd: z.literal("tasks.cancel"), id: nonBlank }).strict(),
+  z
+    .object({ cmd: z.literal("memory.search"), query: nonBlank, limit: limitSchema })
+    .strict(),
+  z.object({ cmd: z.literal("memory.recent"), limit: limitSchema }).strict(),
+  z.object({ cmd: z.literal("prompt.get"), agent: promptAgentSchema }).strict(),
+  z
+    .object({ cmd: z.literal("prompt.set"), agent: promptAgentSchema, content: nonBlank })
+    .strict(),
+]);
+
+export type ControlRequest = z.infer<typeof controlRequestSchema>;
+export type ControlRequestInput = z.input<typeof controlRequestSchema>;
+export type ControlCommand = ControlRequest["cmd"];
+
+export const CONTROL_COMMANDS: readonly ControlCommand[] =
+  controlRequestSchema.options.map((option) => option.shape.cmd.value);
+
+export interface PromptContent {
+  agent: PromptAgent;
+  content: string;
+}
+
+export interface ControlResponseData {
+  status: ControlStatus;
+  pause: undefined;
+  resume: undefined;
+  "settings.get": Settings;
+  "settings.patch": Settings;
+  "tasks.list": Task[];
+  "tasks.add": Task;
+  "tasks.retry": boolean;
+  "tasks.cancel": boolean;
+  "memory.search": TaskSummaryRecord[];
+  "memory.recent": TaskSummaryRecord[];
+  "prompt.get": PromptContent;
+  "prompt.set": undefined;
+}
+
+export interface ControlSuccess<C extends ControlCommand> {
+  ok: true;
+  data: ControlResponseData[C];
+}
+
+export interface ControlFailure {
+  ok: false;
+  error: string;
+}
+
+export type ControlResponse<C extends ControlCommand = ControlCommand> =
+  ControlSuccess<C> | ControlFailure;
+
+export type ParsedControlRequest =
+  { ok: true; request: ControlRequest } | { ok: false; error: string };
+
+function isKnownCommand(value: unknown): value is ControlCommand {
+  return (
+    typeof value === "string" && (CONTROL_COMMANDS as readonly string[]).includes(value)
+  );
+}
+
+export function parseControlRequest(line: string): ParsedControlRequest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return { ok: false, error: UNRECOGNIZED_REQUEST };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: UNRECOGNIZED_REQUEST };
+  }
+  const { cmd } = parsed as Record<string, unknown>;
+  if (!isKnownCommand(cmd)) return { ok: false, error: UNRECOGNIZED_REQUEST };
+  const result = controlRequestSchema.safeParse(parsed);
+  if (result.success) return { ok: true, request: result.data };
+  const issue = result.error.issues[0];
+  const path = issue?.path.map(String).join(".") ?? "";
+  const message = issue?.message ?? "invalid payload";
+  return {
+    ok: false,
+    error: `Invalid ${cmd} request: ${path === "" ? "(root)" : path}: ${message}`,
+  };
+}
 
 export interface ControlPhase {
   kind: string;
@@ -46,34 +175,6 @@ export interface ControlStatus {
   };
   stats: WorkerStats;
   taskCounts: Record<TaskStatus, number>;
-}
-
-export interface ControlResponse {
-  ok: boolean;
-  data?: ControlStatus | undefined;
-  error?: string | undefined;
-}
-
-export function parseControlRequest(line: string): ControlRequest | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const record = parsed as Record<string, unknown>;
-  if (record.cmd === "status") return { cmd: "status" };
-  if (record.cmd === "pause" || record.cmd === "resume") {
-    const agent = record.agent;
-    if (
-      typeof agent === "string" &&
-      (CONTROL_TARGETS as readonly string[]).includes(agent)
-    ) {
-      return { cmd: record.cmd, agent: agent as ControlTarget };
-    }
-  }
-  return null;
 }
 
 function iso(epochMs: number): string {

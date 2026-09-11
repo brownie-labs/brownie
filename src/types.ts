@@ -84,7 +84,15 @@ export interface SessionSummary {
   terminalReason?: string | undefined;
 }
 
-export type TaskStatus = "pending" | "in_progress" | "done" | "failed" | "cancelled";
+export const TASK_STATUSES = [
+  "pending",
+  "in_progress",
+  "done",
+  "failed",
+  "cancelled",
+] as const;
+
+export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export interface Task {
   id: string;

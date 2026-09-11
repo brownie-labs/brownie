@@ -1,5 +1,5 @@
 import { connect } from "node:net";
-import type { ControlRequest, ControlResponse } from "./control-protocol.js";
+import type { ControlRequestInput, ControlResponse } from "./control-protocol.js";
 
 const REQUEST_TIMEOUT_MS = 5_000;
 
@@ -27,11 +27,11 @@ export interface ControlRequestOptions {
   timeoutMs?: number | undefined;
 }
 
-export function sendControlRequest(
+export function sendControlRequest<R extends ControlRequestInput>(
   socketPath: string,
-  request: ControlRequest,
+  request: R,
   options: ControlRequestOptions = {},
-): Promise<ControlResponse> {
+): Promise<ControlResponse<R["cmd"]>> {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     const socket = connect(socketPath);
@@ -43,7 +43,7 @@ export function sendControlRequest(
       socket.destroy();
       reject(error);
     };
-    const succeed = (response: ControlResponse): void => {
+    const succeed = (response: ControlResponse<R["cmd"]>): void => {
       if (settled) return;
       settled = true;
       socket.destroy();
@@ -70,7 +70,7 @@ export function sendControlRequest(
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
       try {
-        succeed(JSON.parse(buffer.slice(0, newline)) as ControlResponse);
+        succeed(JSON.parse(buffer.slice(0, newline)) as ControlResponse<R["cmd"]>);
       } catch {
         fail(new Error("Received a malformed response from the worker."));
       }

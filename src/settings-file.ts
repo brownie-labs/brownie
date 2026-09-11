@@ -27,14 +27,36 @@ export async function readRawSettings(
   return parsed as Record<string, unknown>;
 }
 
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+export type SettingsPatch = Record<string, JsonValue>;
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function mergeSettingsPatch(
+  raw: Record<string, unknown>,
+  patch: SettingsPatch,
+): void {
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      Reflect.deleteProperty(raw, key);
+    } else if (isPlainObject(value)) {
+      mergeSettingsPatch(settingsSection(raw, key), value);
+    } else {
+      raw[key] = value;
+    }
+  }
+}
+
 export function settingsSection(
   raw: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> {
   const existing = raw[key];
-  if (typeof existing === "object" && existing !== null && !Array.isArray(existing)) {
-    return existing as Record<string, unknown>;
-  }
+  if (isPlainObject(existing)) return existing;
   const section: Record<string, unknown> = {};
   raw[key] = section;
   return section;

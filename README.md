@@ -130,6 +130,10 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |
 | `brownie resume [monitor\|executor]`                      | resume paused agents                                                        |
+| `brownie tasks list\|add\|retry\|cancel …`                | inspect and edit the task queue of the running worker                       |
+| `brownie settings get\|patch …`                           | read settings or merge a JSON patch that applies live                       |
+| `brownie prompt get\|set <agent> …`                       | read or replace a project prompt; the next session uses it                  |
+| `brownie memory search\|recent …`                         | query the long-term memory                                                  |
 | `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too) |
 
 A second `brownie` in the same project refuses to start while one is already running. Set `BROWNIE_CONTROL_SOCKET` when the worker and the shell that controls it do not share a temp directory (containers). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, and the reference `Dockerfile` + `docker-compose.yml`: [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).

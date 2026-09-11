@@ -83,6 +83,27 @@ describe("sendControlRequest", () => {
     expect(received.join("")).toBe('{"cmd":"pause","agent":"all"}\n');
   });
 
+  it("reassembles a large response delivered in many chunks", async () => {
+    const content = "x".repeat(200_000);
+    const payload = `${JSON.stringify({ ok: true, data: { agent: "monitor", content } })}\n`;
+    running = await startServer(socketPath, (socket) => {
+      socket.on("data", () => {
+        for (let offset = 0; offset < payload.length; offset += 16_384) {
+          socket.write(payload.slice(offset, offset + 16_384));
+        }
+        socket.end();
+      });
+    });
+
+    const response = await sendControlRequest(socketPath, {
+      cmd: "prompt.get",
+      agent: "monitor",
+    });
+
+    expect(response.ok).toBe(true);
+    if (response.ok) expect(response.data.content).toHaveLength(200_000);
+  });
+
   it("throws WorkerNotRunningError when nothing listens on the socket", async () => {
     await expect(sendControlRequest(socketPath, { cmd: "status" })).rejects.toThrow(
       WorkerNotRunningError,

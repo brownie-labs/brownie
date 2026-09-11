@@ -105,6 +105,58 @@ describe("createSettingsController", () => {
     return JSON.parse(await readFile(settingsFile, "utf8")) as Record<string, unknown>;
   }
 
+  it("current returns the effective settings with defaults filled in", async () => {
+    await writeFile(settingsFile, '{"monitor":{"model":"opus"}}\n', "utf8");
+    const settings = await controller.current();
+    expect(settings.monitor.model).toBe("opus");
+    expect(settings.monitor.intervalMinutes).toBe(15);
+    expect(settings.executor.model).toBe("opus");
+    expect(settings.streamPartial).toBe(true);
+  });
+
+  it("patch merges nested keys, applies them live and returns the result", async () => {
+    const monitor = config.monitor;
+    const settings = await controller.patch({
+      monitor: { intervalMinutes: 5, activeHours: "09:00-17:00" },
+      executor: { maxTaskAttempts: 7 },
+      streamPartial: false,
+    });
+    expect(config.monitor).toBe(monitor);
+    expect(monitor.intervalMs).toBe(300_000);
+    expect(monitor.schedule).not.toBeNull();
+    expect(config.executor.maxTaskAttempts).toBe(7);
+    expect(config.streamPartial).toBe(false);
+    expect(settings.executor.maxTaskAttempts).toBe(7);
+    expect(await persisted()).toEqual({
+      monitor: { intervalMinutes: 5, activeHours: "09:00-17:00" },
+      executor: { maxTaskAttempts: 7 },
+      streamPartial: false,
+    });
+  });
+
+  it("patch deletes a key on null and falls back to the schema default", async () => {
+    await controller.patch({ monitor: { model: "opus", activeHours: "09:00-17:00" } });
+    await controller.patch({ monitor: { model: null, activeHours: null } });
+    expect(config.monitor.model).toBe("haiku");
+    expect(config.monitor.schedule).toBeNull();
+    expect(await persisted()).toEqual({ monitor: {} });
+  });
+
+  it("patch rejects invalid values with the named path and leaves the file untouched", async () => {
+    await writeFile(
+      settingsFile,
+      '{\n  "monitor": {\n    "model": "haiku"\n  }\n}\n',
+      "utf8",
+    );
+    const before = await readFile(settingsFile, "utf8");
+    await expect(controller.patch({ monitor: { intervalMinutes: -1 } })).rejects.toThrow(
+      /monitor\.intervalMinutes/,
+    );
+    await expect(controller.patch({ montior: {} })).rejects.toThrow(/montior/);
+    expect(await readFile(settingsFile, "utf8")).toBe(before);
+    expect(config.monitor.intervalMs).toBe(300_000);
+  });
+
   it("setModel persists and applies to the live config", async () => {
     const monitor = config.monitor;
     await controller.setModel("monitor", "opus");
