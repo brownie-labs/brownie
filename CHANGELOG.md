@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--paused` (env `BROWNIE_START_PAUSED=1`) boots a headless worker with both agents paused, so a supervisor decides when they start.
 - Credential failures park the agents instead of burning retries: a rejected token (`401`, `Not logged in`) returns the task to the queue without consuming an attempt, pauses both agents in the new `authBlocked` phase — visible in the dashboard, `brownie status` and the `monitor.authBlocked` / `executor.authBlocked` log events — and waits for `brownie resume` or `/start`. Preflight runs `claude auth status --json` and refuses to start when no login is configured.
 - Prebuilt container images on GHCR, published for `linux/amd64` and `linux/arm64` with every release: `ghcr.io/brownie-labs/brownie` is the image the reference `Dockerfile` builds, and the `-browser` variant adds Chromium (run headless) with a pinned `@playwright/mcp` (installed globally as `playwright-mcp`) for agents that browse the web through MCP. Tagged `<version>`, `<major>.<minor>` and `latest` — use them in `docker-compose.yml` with `image:` instead of `build:` ([docs/deployment.md](docs/deployment.md#prebuilt-images)).
+- `brownie version [--json]` and the `{"cmd":"version"}` control request expose a running worker's identity — brownie, Claude Code CLI and Node versions, pid, start time, project directory, and `authKind` (`apiKey`, `oauth`, `claude.ai` or `unknown`, never the secret itself). `brownie status --json` carries the same fields and the headless `worker.started` event logs the versions and `authKind` too; `brownie --version` is unchanged.
 
 ### Changed
 
 - The `Dockerfile` names its stages: `runtime` is the image it always built and stays the default target of a plain `docker build .`, `browser` is the new variant (`docker build --target browser .`); `docker-compose.yml` targets `runtime` explicitly.
+- `brownie status` opens with an identity line (`brownie <version> · claude <version> · auth <kind> · pid <pid> · …`), and a CLI asking a worker started from an older brownie for a command it predates gets a restart hint instead of `Unrecognized control request.`
 - The Docker image pins the Claude Code version (`CLAUDE_CODE_VERSION`, overridable from `docker-compose.yml`) and disables both auto-updaters, so every container runs the CLI it was built with.
 
 ## [0.4.0] - 2026-09-03

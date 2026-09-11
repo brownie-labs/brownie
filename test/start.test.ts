@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StartWorkerOptions } from "../src/start.js";
+import { packageVersion } from "../src/paths.js";
 import type { ExecutorReporter, MonitorReporter } from "../src/status.js";
-import { buildConfig, createTempDir, removeTempDir } from "./helpers.js";
+import { buildConfig, createTempDir, removeTempDir, snapshotEnv } from "./helpers.js";
 
 const mocks = vi.hoisted(() => ({
   ensureReady: vi.fn(),
@@ -63,6 +64,13 @@ function verifiedPaths(dir: string) {
   };
 }
 
+function preflightResult(dir: string) {
+  return {
+    paths: verifiedPaths(dir),
+    claude: { version: "2.1.268", auth: { loggedIn: true, authMethod: "claude.ai" } },
+  };
+}
+
 interface JsonSink {
   write(chunk: string): boolean;
   events(): Record<string, unknown>[];
@@ -114,7 +122,7 @@ describe("startWorker", () => {
   function stubHappyPath(config = buildConfig()) {
     const signal = new AbortController().signal;
     const store = { pendingCount: () => 0, list: () => [], onChange: vi.fn() };
-    mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
+    mocks.ensureReady.mockResolvedValue(preflightResult(dir));
     mocks.loadWorkerConfig.mockResolvedValue(config);
     mocks.abortOnSignals.mockReturnValue(signal);
     mocks.taskStoreOpen.mockResolvedValue(store);
@@ -212,6 +220,37 @@ describe("startWorker", () => {
     });
   });
 
+  it("hands the control server an identity built from preflight, the process and the credential variables", async () => {
+    stubHappyPath(buildConfig({ cwd: dir }));
+    const restoreEnv = snapshotEnv();
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "test-token";
+    delete process.env.ANTHROPIC_API_KEY;
+
+    try {
+      await runStart({ stdout: jsonSink() });
+    } finally {
+      restoreEnv();
+    }
+
+    const serverDeps = mocks.startControlServer.mock.calls[0]?.[0] as {
+      identity: Record<string, unknown>;
+      buildStatus: () => Record<string, unknown>;
+    };
+    expect(serverDeps.identity).toEqual({
+      version: packageVersion(),
+      claudeVersion: "2.1.268",
+      nodeVersion: process.versions.node,
+      pid: process.pid,
+      startedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/) as unknown,
+      projectDir: dir,
+      authKind: "oauth",
+    });
+    expect(serverDeps.buildStatus()).toMatchObject({
+      ...serverDeps.identity,
+      headless: true,
+    });
+  });
+
   it("an auth failure pauses both controllers and resume clears the gate", async () => {
     stubHappyPath(buildConfig({ cwd: dir }));
     const sink = jsonSink();
@@ -259,21 +298,31 @@ describe("startWorker", () => {
     expect(mocks.memoryStoreClose).toHaveBeenCalledTimes(1);
   });
 
-  it("headless without a TTY: skips the dashboard and logs the worker lifecycle", async () => {
+  it("headless without a TTY: skips the dashboard and logs the worker lifecycle with its identity", async () => {
     stubHappyPath(buildConfig({ cwd: dir }));
     const sink = jsonSink();
+    const restoreEnv = snapshotEnv();
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
 
-    await runStart({ logFormat: "json", stdout: sink });
+    try {
+      await runStart({ logFormat: "json", stdout: sink });
+    } finally {
+      restoreEnv();
+    }
 
     expect(mocks.mountDashboard).not.toHaveBeenCalled();
     expect(mocks.dashboardUnmount).not.toHaveBeenCalled();
     const events = sink.events();
     expect(events[0]).toMatchObject({
       event: "worker.started",
+      version: packageVersion(),
+      claudeVersion: "2.1.268",
+      nodeVersion: process.versions.node,
+      authKind: "claude.ai",
       pid: process.pid,
       projectDir: dir,
     });
-    expect(typeof events[0]?.version).toBe("string");
     expect(events[0]).not.toHaveProperty("paused");
     expect(events.at(-1)).toMatchObject({ event: "worker.stopped" });
     expect(events.at(-1)).not.toHaveProperty("signal");
@@ -459,7 +508,7 @@ describe("startWorker", () => {
   });
 
   it("config loading error: logs, sets exitCode=1 and does not start the loops", async () => {
-    mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
+    mocks.ensureReady.mockResolvedValue(preflightResult(dir));
     mocks.loadWorkerConfig.mockRejectedValue(
       new Error("Invalid configuration (.brownie/settings.json)"),
     );
@@ -474,7 +523,7 @@ describe("startWorker", () => {
   });
 
   it("corrupted task store: logs, sets exitCode=1 and does not start the loops", async () => {
-    mocks.ensureReady.mockResolvedValue(verifiedPaths(dir));
+    mocks.ensureReady.mockResolvedValue(preflightResult(dir));
     mocks.loadWorkerConfig.mockResolvedValue(buildConfig({ cwd: dir }));
     mocks.taskStoreOpen.mockRejectedValue(new Error("Corrupted task store file (x)"));
 

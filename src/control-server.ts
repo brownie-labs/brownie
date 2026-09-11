@@ -8,6 +8,7 @@ import {
   type ControlResponse,
   type ControlStatus,
   type ControlTarget,
+  type WorkerIdentity,
 } from "./control-protocol.js";
 import { CONTROL_SOCKET_ENV } from "./paths.js";
 import type { PromptAgent, PromptFileAccess } from "./prompt-files.js";
@@ -34,6 +35,7 @@ export class AlreadyRunningError extends Error {
 
 export interface ControlServerDeps {
   socketPath: string;
+  identity: WorkerIdentity;
   buildStatus(): ControlStatus;
   controls: {
     monitor: Pick<AgentController, "pause" | "resume">;
@@ -146,6 +148,8 @@ async function handleRequest(
   switch (request.cmd) {
     case "status":
       return { ok: true, data: deps.buildStatus() };
+    case "version":
+      return { ok: true, data: deps.identity };
     case "pause":
     case "resume":
       applyControl(deps, request.cmd, request.agent);

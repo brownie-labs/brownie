@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sendControlRequest, WorkerNotRunningError } from "../src/control-client.js";
-import type { ControlStatus } from "../src/control-protocol.js";
+import type { ControlStatus, WorkerIdentity } from "../src/control-protocol.js";
 import {
   AlreadyRunningError,
   startControlServer,
@@ -75,12 +75,22 @@ async function rawRequest(socketPath: string, payload: string): Promise<string> 
   });
 }
 
-function buildStatus(overrides: Partial<ControlStatus> = {}): ControlStatus {
+function buildIdentity(overrides: Partial<WorkerIdentity> = {}): WorkerIdentity {
   return {
     version: "1.0.0",
+    claudeVersion: "2.1.268",
+    nodeVersion: "22.16.0",
     pid: 4242,
     startedAt: "2026-07-08T08:00:00.000Z",
     projectDir: "/srv/project",
+    authKind: "oauth",
+    ...overrides,
+  };
+}
+
+function buildStatus(overrides: Partial<ControlStatus> = {}): ControlStatus {
+  return {
+    ...buildIdentity(),
     headless: true,
     agents: {
       monitor: { phase: { kind: "starting" }, control: "running", recentOutcomes: [] },
@@ -114,15 +124,17 @@ describe("startControlServer", () => {
     };
   }
 
-  function fullDeps(
-    overrides: {
-      buildStatus?: () => ControlStatus;
-      controls?: ReturnType<typeof controls>;
-      fakes?: FakeDeps;
-    } = {},
-  ): ControlServerDeps & FakeDeps {
+  interface DepsOverrides {
+    identity?: WorkerIdentity;
+    buildStatus?: () => ControlStatus;
+    controls?: ReturnType<typeof controls>;
+    fakes?: FakeDeps;
+  }
+
+  function fullDeps(overrides: DepsOverrides = {}): ControlServerDeps & FakeDeps {
     return {
       socketPath,
+      identity: overrides.identity ?? buildIdentity(),
       buildStatus: overrides.buildStatus ?? (() => buildStatus()),
       controls: overrides.controls ?? controls(),
       ...(overrides.fakes ?? fakeDeps()),
@@ -130,13 +142,7 @@ describe("startControlServer", () => {
     };
   }
 
-  async function startServer(
-    overrides: {
-      buildStatus?: () => ControlStatus;
-      controls?: ReturnType<typeof controls>;
-      fakes?: FakeDeps;
-    } = {},
-  ) {
+  async function startServer(overrides: DepsOverrides = {}) {
     const deps = fullDeps(overrides);
     const handle = await startControlServer(deps);
     handles.push(handle);
@@ -160,6 +166,15 @@ describe("startControlServer", () => {
 
     expect(response.ok).toBe(true);
     if (response.ok) expect(response.data).toMatchObject({ pid: 777, version: "1.0.0" });
+  });
+
+  it("answers a version request with the worker identity alone", async () => {
+    const identity = buildIdentity({ pid: 777, claudeVersion: "2.1.300" });
+    await startServer({ identity });
+
+    const response = await sendControlRequest(socketPath, { cmd: "version" });
+
+    expect(response).toEqual({ ok: true, data: identity });
   });
 
   it("routes pause and resume to the right controllers", async () => {

@@ -47,6 +47,7 @@ const promptAgentSchema = z.enum(PROMPT_AGENTS);
 
 export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z.object({ cmd: z.literal("status") }).strict(),
+  z.object({ cmd: z.literal("version") }).strict(),
   z.object({ cmd: z.literal("pause"), agent: targetSchema }).strict(),
   z.object({ cmd: z.literal("resume"), agent: targetSchema }).strict(),
   z.object({ cmd: z.literal("settings.get") }).strict(),
@@ -88,6 +89,7 @@ export interface PromptContent {
 
 export interface ControlResponseData {
   status: ControlStatus;
+  version: WorkerIdentity;
   pause: undefined;
   resume: undefined;
   "settings.get": Settings;
@@ -163,11 +165,19 @@ export interface ControlAgentStatus<Outcome> {
   recentOutcomes: Outcome[];
 }
 
-export interface ControlStatus {
+export type AuthKind = "oauth" | "apiKey" | "claude.ai" | "unknown";
+
+export interface WorkerIdentity {
   version: string;
+  claudeVersion?: string | undefined;
+  nodeVersion: string;
   pid: number;
   startedAt: string;
   projectDir: string;
+  authKind: AuthKind;
+}
+
+export interface ControlStatus extends WorkerIdentity {
   headless: boolean;
   agents: {
     monitor: ControlAgentStatus<MonitorCycleOutcome>;
@@ -227,9 +237,7 @@ const RECENT_OUTCOMES_IN_STATUS = 5;
 
 export interface ControlStatusContext {
   snapshot: WorkerStatus;
-  version: string;
-  pid: number;
-  projectDir: string;
+  identity: WorkerIdentity;
   headless: boolean;
 }
 
@@ -244,10 +252,7 @@ export function buildControlStatus(context: ControlStatusContext): ControlStatus
   };
   for (const task of snapshot.tasks) taskCounts[task.status] += 1;
   return {
-    version: context.version,
-    pid: context.pid,
-    startedAt: iso(snapshot.startedAt),
-    projectDir: context.projectDir,
+    ...context.identity,
     headless: context.headless,
     agents: {
       monitor: {

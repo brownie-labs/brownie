@@ -128,6 +128,7 @@ Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts 
 | `brownie --paused`                                        | boot with both agents paused; `brownie resume` starts them                  |
 | `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible)                     |
 | `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
+| `brownie version [--json]`                                | brownie, Claude Code and Node versions, auth kind, pid of the worker        |
 | `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |
 | `brownie resume [monitor\|executor]`                      | resume paused agents                                                        |
 | `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker          |

@@ -2,12 +2,14 @@ import { defineCommand } from "citty";
 import { sendControlRequest } from "./control-client.js";
 import {
   CONTROL_TARGETS,
+  UNRECOGNIZED_REQUEST,
   type ControlAgentStatus,
   type ControlPhase,
   type ControlRequestInput,
   type ControlStatus,
   type ControlSuccess,
   type ControlTarget,
+  type WorkerIdentity,
 } from "./control-protocol.js";
 import { logger } from "./logger.js";
 import { CONTROL_SOCKET_ENV, controlSocketPath } from "./paths.js";
@@ -51,6 +53,12 @@ export function readStdinText(): Promise<string> {
   });
 }
 
+function describeRejection(cmd: string, error: string): string {
+  return error === UNRECOGNIZED_REQUEST
+    ? `The running worker does not support "${cmd}" — it was started from an older brownie; restart it to pick up the installed version.`
+    : error;
+}
+
 export async function requestControl<R extends ControlRequestInput>(
   request: R,
   io: ControlCommandIo,
@@ -58,7 +66,7 @@ export async function requestControl<R extends ControlRequestInput>(
   try {
     const response = await sendControlRequest(controlSocketPath(io.projectDir), request);
     if (!response.ok) {
-      fail(response.error);
+      fail(describeRejection(request.cmd, response.error));
       return null;
     }
     return response;
@@ -93,11 +101,31 @@ function agentLine(name: string, agent: ControlAgentStatus<{ ok: boolean }>): st
   return `${name.padEnd(9)} ${agent.control.padEnd(8)} ${describePhase(agent.phase)}`;
 }
 
+function orUnknown(value: string | undefined): string {
+  return value ?? "unknown";
+}
+
+function identityLine(identity: WorkerIdentity): string {
+  return `brownie ${identity.version} · claude ${orUnknown(identity.claudeVersion)} · auth ${orUnknown(identity.authKind)} · pid ${String(identity.pid)}`;
+}
+
+function renderIdentity(identity: WorkerIdentity): string[] {
+  return [
+    `brownie   ${identity.version}`,
+    `claude    ${orUnknown(identity.claudeVersion)}`,
+    `node      ${identity.nodeVersion}`,
+    `auth      ${orUnknown(identity.authKind)}`,
+    `pid       ${String(identity.pid)}`,
+    `started   ${identity.startedAt} · up ${formatUptime(identity.startedAt)}`,
+    `project   ${identity.projectDir}`,
+  ];
+}
+
 function renderStatus(status: ControlStatus): string[] {
   const { stats, taskCounts } = status;
   const mode = status.headless ? "headless" : "interactive";
   return [
-    `brownie ${status.version} · pid ${String(status.pid)} · up ${formatUptime(status.startedAt)} · ${mode}`,
+    `${identityLine(status)} · up ${formatUptime(status.startedAt)} · ${mode}`,
     `project   ${status.projectDir}`,
     agentLine("monitor", status.agents.monitor),
     agentLine("executor", status.agents.executor),
@@ -117,6 +145,19 @@ export async function runStatus(
     return;
   }
   for (const line of renderStatus(response.data)) write(line);
+}
+
+export async function runVersion(
+  options: { json?: boolean | undefined } & ControlCommandIo = {},
+): Promise<void> {
+  const write = writerFor(options);
+  const response = await requestControl({ cmd: "version" }, options);
+  if (response === null) return;
+  if (options.json === true) {
+    write(JSON.stringify(response.data, null, 2));
+    return;
+  }
+  for (const line of renderIdentity(response.data)) write(line);
 }
 
 function parseTarget(value: string | undefined): ControlTarget | null {
@@ -153,6 +194,17 @@ export const statusCommand = defineCommand({
     json: { type: "boolean", description: "Print the raw status as JSON" },
   },
   run: ({ args }) => runStatus({ json: args.json }),
+});
+
+export const versionCommand = defineCommand({
+  meta: {
+    name: "version",
+    description: `Show the versions and identity of the brownie worker running in this project (brownie --version prints the installed CLI's version instead). ${SOCKET_ENV_HINT}`,
+  },
+  args: {
+    json: { type: "boolean", description: "Print the raw identity as JSON" },
+  },
+  run: ({ args }) => runVersion({ json: args.json }),
 });
 
 export const pauseCommand = defineCommand({

@@ -24,7 +24,8 @@ vi.mock("node:sqlite", () => ({
   },
 }));
 
-const { ensureReady, parseClaudeAuthStatus } = await import("../src/preflight.js");
+const { ensureReady, parseClaudeAuthStatus, parseClaudeVersion } =
+  await import("../src/preflight.js");
 const { logger } = await import("../src/logger.js");
 
 describe("ensureReady", () => {
@@ -65,20 +66,39 @@ describe("ensureReady", () => {
     return { projectDir: dir, systemPromptsDir };
   }
 
-  it("passes and returns verified prompt paths for all agents", async () => {
+  it("passes and returns verified prompt paths and the Claude CLI facts", async () => {
+    await stubClaude(
+      `case "$1" in --version) echo "2.1.268 (Claude Code)";; *) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
+    );
     await expect(ensureReady(dirs())).resolves.toEqual({
-      monitor: {
-        promptPath: join(dir, ".brownie", "prompts", "monitor.prompt.md"),
-        systemPromptPath: join(systemPromptsDir, "monitor.system.md"),
+      paths: {
+        monitor: {
+          promptPath: join(dir, ".brownie", "prompts", "monitor.prompt.md"),
+          systemPromptPath: join(systemPromptsDir, "monitor.system.md"),
+        },
+        executor: {
+          promptPath: join(dir, ".brownie", "prompts", "executor.prompt.md"),
+          systemPromptPath: join(systemPromptsDir, "executor.system.md"),
+        },
+        summarizer: {
+          systemPromptPath: join(systemPromptsDir, "summarizer.system.md"),
+        },
       },
-      executor: {
-        promptPath: join(dir, ".brownie", "prompts", "executor.prompt.md"),
-        systemPromptPath: join(systemPromptsDir, "executor.system.md"),
-      },
-      summarizer: {
-        systemPromptPath: join(systemPromptsDir, "summarizer.system.md"),
+      claude: {
+        version: "2.1.268",
+        auth: { loggedIn: true, authMethod: "claude.ai", apiKeySource: undefined },
       },
     });
+    expect(logger.success).toHaveBeenCalledWith("Claude Code 2.1.268 (claude)");
+    expect(logger.success).toHaveBeenCalledWith("Claude Code login (claude.ai)");
+  });
+
+  it("reports an unknown CLI version and login when claude prints nothing", async () => {
+    await expect(ensureReady(dirs())).resolves.toMatchObject({
+      claude: { version: null, auth: null },
+    });
+    expect(logger.success).toHaveBeenCalledWith("Claude Code (claude)");
+    expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
   it("throws with an install hint when claude is missing from PATH", async () => {
@@ -131,9 +151,9 @@ describe("ensureReady", () => {
 
   it("warns and passes when auth status hangs past the timeout", async () => {
     await stubClaude("sleep 5");
-    await expect(
-      ensureReady(dirs(), { authStatusTimeoutMs: 100 }),
-    ).resolves.toBeDefined();
+    await expect(ensureReady(dirs(), { claudeTimeoutMs: 100 })).resolves.toMatchObject({
+      claude: { version: null, auth: null },
+    });
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
@@ -180,6 +200,26 @@ describe("parseClaudeAuthStatus", () => {
     "returns null for %j",
     (output) => {
       expect(parseClaudeAuthStatus(output)).toBeNull();
+    },
+  );
+});
+
+describe("parseClaudeVersion", () => {
+  it.each([
+    ["2.1.268 (Claude Code)\n", "2.1.268"],
+    ["v1.0.0", "1.0.0"],
+    ["Claude Code 2.2.0-beta.1+build.7", "2.2.0-beta.1+build.7"],
+    ["warning: something\n2.1.300 (Claude Code)", "2.1.300"],
+    ["Using node 22.22.0\n2.1.268 (Claude Code)\n", "2.1.268"],
+    ["Claude Code 2.2.0 is available\n2.1.268 (Claude Code)", "2.1.268"],
+  ])("extracts the version from %j", (output, expected) => {
+    expect(parseClaudeVersion(output)).toBe(expected);
+  });
+
+  it.each(["", "Claude Code", "2.1", "error: unknown option '--version'"])(
+    "returns null for %j",
+    (output) => {
+      expect(parseClaudeVersion(output)).toBeNull();
     },
   );
 });

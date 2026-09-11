@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { packageVersion } from "../src/paths.js";
 import {
   createTempDir,
   fakeClaudeCliEnv,
@@ -299,8 +300,11 @@ describe("CLI start (smoke E2E)", () => {
     });
     const env = fakeClaudeCliEnv("ok", {
       CI: "true",
+      CLAUDE_CODE_OAUTH_TOKEN: "e2e-oauth-token",
+      FAKE_CLAUDE_VERSION: "2.1.300",
       FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({ tasks: [] }),
     });
+    delete env.ANTHROPIC_API_KEY;
     const outFd = openSync(join(dir, "worker-out.log"), "w");
     const errFd = openSync(join(dir, "worker-err.log"), "w");
     const worker = spawn(tsxBin, [entry, "--log-format", "json"], {
@@ -316,8 +320,15 @@ describe("CLI start (smoke E2E)", () => {
       });
     });
 
-    interface StatusJson {
+    interface IdentityJson {
+      version: string;
+      claudeVersion?: string;
+      nodeVersion: string;
       pid: number;
+      startedAt: string;
+      authKind: string;
+    }
+    interface StatusJson extends IdentityJson {
       headless: boolean;
       agents: { monitor: { control: string }; executor: { control: string } };
     }
@@ -337,8 +348,31 @@ describe("CLI start (smoke E2E)", () => {
       expect(status).not.toBeNull();
       expect(status?.headless).toBe(true);
       expect(typeof status?.pid).toBe("number");
+      expect(status?.version).toBe(packageVersion());
+      expect(status?.claudeVersion).toBe("2.1.300");
+      expect(status?.nodeVersion).toMatch(/^\d+\.\d+\.\d+/);
+      expect(status?.authKind).toBe("oauth");
       expect(status?.agents.monitor.control).toBe("running");
       expect(status?.agents.executor.control).toBe("running");
+
+      const identity = await runCommand(dir, env, ["version", "--json"]);
+      expect(identity.code).toBe(0);
+      const identityJson = JSON.parse(identity.stdout) as IdentityJson;
+      expect(identityJson).toEqual({
+        version: status?.version,
+        claudeVersion: "2.1.300",
+        nodeVersion: status?.nodeVersion,
+        pid: status?.pid,
+        startedAt: status?.startedAt,
+        projectDir: expect.any(String) as unknown,
+        authKind: "oauth",
+      });
+
+      const identityText = await runCommand(dir, env, ["version"]);
+      expect(identityText.code).toBe(0);
+      expect(identityText.stdout).toContain(`brownie   ${packageVersion()}`);
+      expect(identityText.stdout).toContain("claude    2.1.300");
+      expect(identityText.stdout).toContain("auth      oauth");
 
       const paused = await runCommand(dir, env, ["pause", "monitor"]);
       expect(paused.code).toBe(0);
@@ -351,6 +385,9 @@ describe("CLI start (smoke E2E)", () => {
 
       const human = await runCommand(dir, env, ["status"]);
       expect(human.code).toBe(0);
+      expect(human.stdout).toContain(
+        `brownie ${packageVersion()} · claude 2.1.300 · auth oauth · pid ${String(status?.pid)}`,
+      );
       expect(human.stdout).toContain("monitor");
       expect(human.stdout).toContain("executor");
 
@@ -400,5 +437,19 @@ describe("CLI start (smoke E2E)", () => {
 
     expect(result.code).toBe(1);
     expect(`${result.stdout}${result.stderr}`).toContain("No brownie worker is running");
+  }, 30_000);
+
+  it("brownie version needs a worker, brownie --version does not", async () => {
+    const env = fakeClaudeCliEnv("ok");
+
+    const identity = await runCommand(dir, env, ["version"]);
+    const installed = await runCommand(dir, env, ["--version"]);
+
+    expect(identity.code).toBe(1);
+    expect(`${identity.stdout}${identity.stderr}`).toContain(
+      "No brownie worker is running",
+    );
+    expect(installed.code).toBe(0);
+    expect(`${installed.stdout}${installed.stderr}`).toContain(packageVersion());
   }, 30_000);
 });

@@ -1,6 +1,11 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { runMain } from "citty";
-import { pauseCommand, resumeCommand, statusCommand } from "./control-commands.js";
+import {
+  pauseCommand,
+  resumeCommand,
+  statusCommand,
+  versionCommand,
+} from "./control-commands.js";
 import { initCommand } from "./init-command.js";
 import { mainCommand } from "./main.js";
 import { mcpCommand } from "./mcp-command.js";
@@ -22,6 +27,9 @@ switch (first) {
     break;
   case "status":
     void runMain(statusCommand, { rawArgs: rest });
+    break;
+  case "version":
+    void runMain(versionCommand, { rawArgs: rest });
     break;
   case "pause":
     void runMain(pauseCommand, { rawArgs: rest });
