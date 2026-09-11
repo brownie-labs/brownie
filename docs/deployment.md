@@ -125,7 +125,7 @@ A running worker also checks for updates in the background. Auto-update is contr
 { "autoUpdate": true }
 ```
 
-With `autoUpdate` on (the default) the worker installs new versions in the background — the dashboard header and the `update.installed` log event announce it, and it applies after a restart. With it off, the worker only reports availability (`update.available`) so you can run `brownie update` yourself. Set `BROWNIE_DISABLE_AUTOUPDATER=1` to switch the background checks off entirely.
+With `autoUpdate` on (the default) the worker installs new versions in the background — the dashboard header and the `update.installed` log event announce it, and it applies after a restart. With it off, the worker only reports availability (`update.available`) so you can run `brownie update` yourself. Set `BROWNIE_DISABLE_AUTOUPDATER=1` to switch the background checks off entirely. The reference Docker image sets it, so a container never changes underneath you: updating brownie there means rebuilding the image.
 
 ## Provisioning without a terminal
 
@@ -164,7 +164,7 @@ su - brownie
 
 # Node 22 + the two CLIs
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt-get install -y nodejs git
-sudo npm install -g @anthropic-ai/claude-code @brownie-labs/brownie
+sudo npm install -g @anthropic-ai/claude-code@2.1.268 @brownie-labs/brownie   # pin the CLI you tested with
 
 # the project brownie will work on (with .brownie/ committed, or run brownie init)
 git clone git@github.com:you/your-project.git ~/your-project
@@ -218,6 +218,15 @@ docker compose exec brownie brownie status
 ```
 
 The current directory is mounted as `/workspace`, so the project, its `.brownie/`, and all runtime state stay on the host. `docker ps` shows `healthy` only while the worker actually answers.
+
+### Pinned Claude Code version
+
+The image installs one exact Claude Code version — the `CLAUDE_CODE_VERSION` build argument, defaulting to the version brownie was tested with — and switches off both auto-updaters (`DISABLE_AUTOUPDATER=1` for Claude Code, `BROWNIE_DISABLE_AUTOUPDATER=1` for brownie). Two agents built a week apart therefore run the same CLI, and a container never picks up a new `stream-json` format or a new `rate_limit_event`/`api_retry` shape on its own. The build fails fast with `claude --version` when npm did not deliver the native binary for the platform. To move to a newer CLI, rebuild deliberately:
+
+```bash
+CLAUDE_CODE_VERSION=2.1.300 docker compose build --pull
+docker compose up -d
+```
 
 ### Controlling the worker from the host
 
