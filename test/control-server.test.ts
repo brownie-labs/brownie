@@ -11,6 +11,7 @@ import {
   type ControlServerDeps,
   type ControlServerHandle,
 } from "../src/control-server.js";
+import type { SessionRecord } from "../src/sessions/index.js";
 import type { Task } from "../src/types.js";
 
 function buildTask(overrides: Partial<Task> = {}): Task {
@@ -22,6 +23,23 @@ function buildTask(overrides: Partial<Task> = {}): Task {
     attempts: 0,
     createdAt: "2026-07-08T08:00:00.000Z",
     updatedAt: "2026-07-08T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildSessionRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    sessionId: "sess-1",
+    agent: "executor",
+    taskId: "ci-42",
+    model: "opus",
+    startedAt: "2026-09-14T15:44:12.531Z",
+    finishedAt: "2026-09-14T15:49:00.000Z",
+    ok: true,
+    costUsd: 0.4183,
+    numTurns: 24,
+    logPath: "logs/executor/2026-09-14/17-44-12-sess-1.log",
+    jsonlPath: "logs/executor/2026-09-14/17-44-12-sess-1.jsonl",
     ...overrides,
   };
 }
@@ -43,6 +61,10 @@ function fakeDeps() {
     memory: {
       search: vi.fn().mockReturnValue([]),
       recent: vi.fn().mockReturnValue([]),
+    },
+    sessions: {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue(undefined),
     },
     settings: {
       current: vi.fn().mockResolvedValue({ streamPartial: true }),
@@ -367,6 +389,72 @@ describe("startControlServer", () => {
 
     expect(deps.memory.search).toHaveBeenCalledWith("deploy", 5);
     expect(deps.memory.recent).toHaveBeenCalledWith(10);
+  });
+
+  it("lists sessions with the default limit and forwards every filter", async () => {
+    const fakes = fakeDeps();
+    fakes.sessions.list.mockReturnValue([buildSessionRecord()]);
+    await startServer({ fakes });
+
+    const all = await sendControlRequest(socketPath, { cmd: "sessions.list" });
+    await sendControlRequest(socketPath, {
+      cmd: "sessions.list",
+      agent: "executor",
+      taskId: "ci-42",
+      before: "2026-09-14T15:44:12.531Z",
+      limit: 5,
+    });
+
+    expect(all.ok && all.data).toEqual([buildSessionRecord()]);
+    expect(fakes.sessions.list).toHaveBeenNthCalledWith(1, {
+      agent: undefined,
+      taskId: undefined,
+      before: undefined,
+      limit: 20,
+    });
+    expect(fakes.sessions.list).toHaveBeenNthCalledWith(2, {
+      agent: "executor",
+      taskId: "ci-42",
+      before: "2026-09-14T15:44:12.531Z",
+      limit: 5,
+    });
+  });
+
+  it("gets one session and reports an unknown id", async () => {
+    const fakes = fakeDeps();
+    fakes.sessions.get.mockReturnValueOnce(buildSessionRecord());
+    await startServer({ fakes });
+
+    const found = await sendControlRequest(socketPath, {
+      cmd: "sessions.get",
+      sessionId: "sess-1",
+    });
+    const missing = await sendControlRequest(socketPath, {
+      cmd: "sessions.get",
+      sessionId: "nope",
+    });
+
+    expect(found).toEqual({ ok: true, data: buildSessionRecord() });
+    expect(missing).toEqual({ ok: false, error: 'Session "nope" is not indexed.' });
+  });
+
+  it("rejects an unknown agent and an out-of-range session limit", async () => {
+    await startServer();
+
+    const badAgent = await rawRequest(
+      socketPath,
+      '{"cmd":"sessions.list","agent":"wizard"}\n',
+    );
+    const badLimit = await rawRequest(socketPath, '{"cmd":"sessions.list","limit":0}\n');
+
+    expect(JSON.parse(badAgent.trim())).toEqual({
+      ok: false,
+      error: expect.stringMatching(/^Invalid sessions.list request: agent/) as string,
+    });
+    expect(JSON.parse(badLimit.trim())).toEqual({
+      ok: false,
+      error: expect.stringMatching(/^Invalid sessions.list request: limit/) as string,
+    });
   });
 
   it("reads and writes prompts", async () => {

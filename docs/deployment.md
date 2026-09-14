@@ -36,24 +36,37 @@ Every JSON line carries the envelope `ts` (ISO 8601), `level` (`info`/`warn`/`er
 }
 ```
 
-| Event                                                         | Fields                                                                                                                     |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `worker.started`                                              | `version`, `claudeVersion` (when readable), `nodeVersion`, `authKind`, `pid`, `projectDir`, `paused` (when booted paused)  |
-| `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                  |
-| `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                              |
-| `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                               |
-| `cycle.started` / `cycle.finished`                            | `cycle`; finished adds `ok`, `durationMs`, `costUsd`, `addedTasks`, `skippedDuplicates`, `error`                           |
-| `monitor.sleeping` / `monitor.offHours` / `monitor.limitWait` | `nextCycleAt` / `resumeAt`                                                                                                 |
-| `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error` |
-| `task.retryScheduled`                                         | `taskId`, `resumeAt`                                                                                                       |
-| `executor.waiting` / `executor.limitWait`                     | — / `resumeAt`                                                                                                             |
-| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — credentials rejected; both agents park until `brownie resume`                                                   |
-| `summary.started` / `summary.finished`                        | `taskId`; finished adds `ok`, `durationMs`, `costUsd`, `error`                                                             |
-| `session.init`                                                | `model`, `sessionId`                                                                                                       |
-| `session.stderr` / `session.procError` / `session.killed`     | `line` / `message` / `reason`                                                                                              |
-| `session.text` / `session.tool` / `session.toolError`         | only with `--verbose`                                                                                                      |
+| Event                                                         | Fields                                                                                                                                  |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `worker.started`                                              | `version`, `claudeVersion` (when readable), `nodeVersion`, `authKind`, `pid`, `projectDir`, `paused` (when booted paused)               |
+| `worker.stopped`                                              | `signal` (when stopped by SIGINT/SIGTERM)                                                                                               |
+| `control.changed`                                             | `state` — an agent moved between `running`/`pausing`/`paused`                                                                           |
+| `update.available` / `update.installed`                       | `from`, `to`; available adds `installError` when a background install failed                                                            |
+| `cycle.started` / `cycle.finished`                            | `cycle`; finished adds `ok`, `durationMs`, `costUsd`, `addedTasks`, `skippedDuplicates`, `error`, `sessionId`                           |
+| `monitor.sleeping` / `monitor.offHours` / `monitor.limitWait` | `nextCycleAt` / `resumeAt`                                                                                                              |
+| `task.started` / `task.finished`                              | `taskId`, `title`; finished adds `ok`, `durationMs`, `costUsd`, `numTurns`, `willRetry`, `attempt`, `maxAttempts`, `error`, `sessionId` |
+| `task.retryScheduled`                                         | `taskId`, `resumeAt`                                                                                                                    |
+| `executor.waiting` / `executor.limitWait`                     | — / `resumeAt`                                                                                                                          |
+| `monitor.authBlocked` / `executor.authBlocked`                | `reason` — credentials rejected; both agents park until `brownie resume`                                                                |
+| `summary.started` / `summary.finished`                        | `taskId`; finished adds `ok`, `durationMs`, `costUsd`, `error`, `sessionId`                                                             |
+| `session.init`                                                | `model`, `sessionId`, plus `taskId` (executor, summarizer) or `cycle` (monitor)                                                         |
+| `session.stderr` / `session.procError` / `session.killed`     | `line` / `message` / `reason`                                                                                                           |
+| `session.text` / `session.tool` / `session.toolError`         | only with `--verbose`                                                                                                                   |
 
-Optional fields are omitted, never `null` — the schema is stable and safe to index.
+Optional fields are omitted, never `null` — the schema is stable and safe to index. A `*.finished` event carries `sessionId` whenever Claude Code reported a result, which ties the outcome back to the session transcript below; a session killed by a timeout or a shutdown has none.
+
+## Session transcripts
+
+Every session writes two files side by side under `.brownie/logs/<agent>/<YYYY-MM-DD>/<HH-MM-SS>-<sessionId>.*`, named in the machine's local time:
+
+- **`.log`** — the readable transcript the dashboard shows, one `[HH:MM:SS] …` line per event. The summarizer reads this one.
+- **`.jsonl`** — the raw Claude Code stream, one JSON object per line, each wrapped in an envelope so the file survives new message types: `{"ts":"2026-09-14T15:44:12.531Z","event":{…}}`, where `ts` is UTC and `event` is the object Claude Code emitted, untouched. Token-by-token `stream_event` lines are left out — they carry single characters and the assistant blocks already hold the full text. A line the CLI printed that is not JSON is kept as `{"ts":…,"raw":"…"}`.
+
+`brownie sessions list` and `brownie sessions show` find them by session id (see [docs/control.md](control.md#the-session-index)). Brownie never deletes them — on a long-lived server, prune them yourself:
+
+```bash
+find ~/your-project/.brownie/logs -type f -mtime +30 -delete
+```
 
 ## Controlling a running worker
 
@@ -66,6 +79,7 @@ brownie version          # brownie, Claude Code and Node versions, auth kind, pi
 brownie pause            # both agents finish their session, then park
 brownie pause monitor    # just one agent
 brownie resume           # back to work
+brownie sessions list    # what ran, when, at what cost
 ```
 
 `brownie status --json` doubles as a health check — it exits non-zero when no worker is running. Its document opens with the worker's identity (brownie, Claude Code and Node versions, `authKind`, pid, start time), which `brownie version` prints on its own. The socket also guards against double starts: a second `brownie` in the same project refuses to boot with `brownie is already running in this project (pid …)`. The same socket edits tasks, settings, prompts and memory, reaches out of a container, and has a documented wire protocol — see [docs/control.md](control.md).

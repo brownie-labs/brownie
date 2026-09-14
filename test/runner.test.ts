@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runSession } from "../src/runner.js";
 import {
   buildSessionSpec,
@@ -245,5 +245,85 @@ describe("runSession (integration with fake claude)", () => {
     const args = JSON.parse(await readFile(out, "utf8")) as string[];
     const flagIndex = args.indexOf("--model");
     expect(args[flagIndex + 1]).toBe("fable");
+  }, 15_000);
+
+  it("carries the session meta into the init event", async () => {
+    const spec = buildSessionSpec(collector.sink, {
+      meta: { agent: "executor", taskId: "ci-42" },
+      childEnv: fakeClaudeEnv("ok"),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    expect(collector.events).toContainEqual({
+      type: "init",
+      model: "haiku",
+      sessionId: "sess-1",
+      toolCount: 2,
+      taskId: "ci-42",
+      cycle: undefined,
+    });
+  }, 15_000);
+
+  it("records the session in the index, opening it on init and closing it on the result", async () => {
+    const started = vi.fn();
+    const finished = vi.fn();
+    const spec = buildSessionSpec(collector.sink, {
+      meta: { agent: "monitor", cycle: 3 },
+      index: { started, finished },
+      childEnv: fakeClaudeEnv("ok"),
+    });
+
+    await runSession(spec, new AbortController().signal);
+
+    expect(started).toHaveBeenCalledWith({
+      sessionId: "sess-1",
+      agent: "monitor",
+      cycle: 3,
+      taskId: undefined,
+      model: "haiku",
+      startedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) as string,
+    });
+    expect(finished).toHaveBeenCalledWith({
+      sessionId: "sess-1",
+      finishedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) as string,
+      ok: true,
+      failureReason: undefined,
+      costUsd: 0.0123,
+      numTurns: 2,
+    });
+  }, 15_000);
+
+  it("closes a killed session with its failure reason and no cost", async () => {
+    const finished = vi.fn();
+    const controller = new AbortController();
+    const spec = buildSessionSpec(collector.sink, {
+      index: { started: vi.fn(), finished },
+      childEnv: fakeClaudeEnv("hang_after_init"),
+    });
+    const running = runSession(spec, controller.signal);
+    await vi.waitFor(() =>
+      expect(collector.events).toContainEqual(expect.objectContaining({ type: "init" })),
+    );
+    controller.abort();
+    await running;
+
+    expect(finished).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, failureReason: "abort", costUsd: undefined }),
+    );
+  }, 15_000);
+
+  it("records nothing when the session never reaches init", async () => {
+    const started = vi.fn();
+    const finished = vi.fn();
+    const spec = buildSessionSpec(collector.sink, {
+      command: join(dir, "missing-binary"),
+      index: { started, finished },
+    });
+
+    const result = await runSession(spec, new AbortController().signal);
+
+    expect(result.failureReason).toBe("spawn");
+    expect(started).not.toHaveBeenCalled();
+    expect(finished).not.toHaveBeenCalled();
   }, 15_000);
 });

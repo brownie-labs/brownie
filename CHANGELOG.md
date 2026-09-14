@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A machine-readable transcript next to every session log. Alongside `.brownie/logs/<agent>/<day>/<time>-<sessionId>.log` brownie now writes a `.jsonl` of the same name holding the raw Claude Code stream, one line per event in a `{"ts":…,"event":{…}}` envelope (`ts` in UTC, `event` untouched, so new message types survive). Token deltas are left out — the assistant blocks already carry the full text — and a non-JSON line from the CLI is kept as `{"ts":…,"raw":"…"}`. Brownie never deletes these files; prune them yourself ([docs/deployment.md](docs/deployment.md#session-transcripts)).
+- `brownie sessions list [--agent] [--task] [--before] [--limit]` and `brownie sessions show <id> [--log]`, backed by a `sessions` table in `.brownie/data/memory.db` and the `sessions.list`/`sessions.get` control commands. Every session is indexed when it starts and closed with its outcome when it ends — agent, task or cycle, model, start and finish, `ok`, failure reason, cost, turns, and the paths of both transcript files (relative to `.brownie/`, so the index travels between a container and its host). A session killed before Claude Code reported a result is closed without a cost. `sessions.get` answers with metadata only — a socket reply is one line and an executor transcript is megabytes — so read the files through `--log` or straight from the volume ([docs/control.md](docs/control.md#the-session-index)).
+- `sessionId` on `task.finished`, `cycle.finished` and `summary.finished`, and `taskId`/`cycle` on `session.init`, in the headless log and in the recent outcomes of `brownie status` — enough to join an outcome to the session that produced it without guessing.
+
 ## [0.5.1] - 2026-09-14
 
 ### Changed

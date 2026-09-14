@@ -436,6 +436,7 @@ export function buildSessionSpec(
     streamPartial: false,
     cwd: process.cwd(),
     events,
+    meta: { agent: "monitor" },
     ...overrides,
   };
 }

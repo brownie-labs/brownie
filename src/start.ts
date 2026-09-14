@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { AuthGate } from "./auth-gate.js";
 import { loadWorkerConfig } from "./config.js";
 import { buildControlStatus } from "./control-protocol.js";
@@ -16,10 +16,11 @@ import { logger } from "./logger.js";
 import { MemoryStore } from "./memory/store.js";
 import { SessionSummarizer } from "./memory/summarizer.js";
 import { runMonitorLoop } from "./monitor.js";
-import { controlSocketPath, packageVersion } from "./paths.js";
+import { controlSocketPath, packageVersion, projectPaths } from "./paths.js";
 import { ensureReady } from "./preflight.js";
 import { createPromptFileAccess } from "./prompt-files.js";
 import { SessionLog, teeSession } from "./session-log.js";
+import { SessionIndex, type SessionRecorder } from "./sessions/index.js";
 import { createSettingsController } from "./settings-controller.js";
 import { abortOnSignals } from "./shutdown.js";
 import { WorkerStatusStore } from "./status.js";
@@ -55,6 +56,23 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     process.exitCode = 1;
     return;
   }
+
+  const sessions = SessionIndex.on(memory.connection);
+  const brownieDir = projectPaths(config.cwd).brownieDir;
+  const recordSessionsOf = (log: SessionLog): SessionRecorder => ({
+    started: (session) => {
+      const paths = log.pathsFor(session.sessionId);
+      if (paths === undefined) return;
+      sessions.started({
+        ...session,
+        logPath: relative(brownieDir, paths.log),
+        jsonlPath: relative(brownieDir, paths.jsonl),
+      });
+    },
+    finished: (session) => {
+      sessions.finished(session);
+    },
+  });
 
   const status = new WorkerStatusStore();
   store.onChange((tasks) => status.setTasks(tasks));
@@ -136,6 +154,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
       controls: { monitor: monitorControl, executor: executorControl },
       tasks: store,
       memory,
+      sessions,
       settings,
       prompts,
       waker,
@@ -201,6 +220,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     },
     reporter: teeSession(summaryReporter, summarizerLog.sink),
     gates,
+    sessions: recordSessionsOf(summarizerLog),
   });
 
   headlessEmit?.({
@@ -230,6 +250,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         monitorControl,
         gates,
         signal,
+        recordSessionsOf(monitorLog),
       ),
       runExecutorLoop(
         config,
@@ -240,6 +261,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         executorControl,
         gates,
         signal,
+        recordSessionsOf(executorLog),
       ),
       runAutoUpdateLoop({
         globalConfig,

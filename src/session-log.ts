@@ -22,10 +22,24 @@ function safeName(value: string): string {
   return value.replace(/[^\w.-]+/g, "_");
 }
 
+export interface SessionLogPaths {
+  log: string;
+  jsonl: string;
+}
+
+interface SessionStreams {
+  log: WriteStream;
+  jsonl: WriteStream;
+}
+
+function flushStream(stream: WriteStream): Promise<void> {
+  return new Promise((resolve) => stream.write("", () => resolve()));
+}
+
 export class SessionLog {
-  private stream: WriteStream | null = null;
+  private streams: SessionStreams | null = null;
   private readonly closing: Promise<void>[] = [];
-  private readonly sessionPaths = new Map<string, string>();
+  private readonly sessionPaths = new Map<string, SessionLogPaths>();
 
   constructor(
     private readonly dir: string,
@@ -35,44 +49,65 @@ export class SessionLog {
   readonly sink: SessionEventSink = (event) => {
     if (event.type === "partial") return;
     const at = this.now();
-    const stream =
+    const streams =
       event.type === "init"
         ? this.openSession(at, event.sessionId)
-        : (this.stream ?? this.openSession(at, "unknown"));
+        : (this.streams ?? this.openSession(at, "unknown"));
+    if (event.type === "stream") {
+      streams.jsonl.write(
+        `${JSON.stringify({ ts: at.toISOString(), event: event.event })}\n`,
+      );
+      return;
+    }
+    if (event.type === "raw") {
+      streams.jsonl.write(
+        `${JSON.stringify({ ts: at.toISOString(), raw: event.line })}\n`,
+      );
+    }
     const prefix = `[${timeStamp(at)}]`;
     for (const line of formatSessionEvent(event).split("\n")) {
-      stream.write(`${prefix} ${line}\n`);
+      streams.log.write(`${prefix} ${line}\n`);
     }
   };
 
   pathFor(sessionId: string): string | undefined {
+    return this.sessionPaths.get(sessionId)?.log;
+  }
+
+  pathsFor(sessionId: string): SessionLogPaths | undefined {
     return this.sessionPaths.get(sessionId);
   }
 
-  flush(): Promise<void> {
-    const stream = this.stream;
-    if (!stream) return Promise.resolve();
-    return new Promise((resolve) => stream.write("", () => resolve()));
+  async flush(): Promise<void> {
+    const streams = this.streams;
+    if (!streams) return;
+    await Promise.all([flushStream(streams.log), flushStream(streams.jsonl)]);
   }
 
   async close(): Promise<void> {
-    if (this.stream) this.endStream(this.stream);
-    this.stream = null;
+    if (this.streams) this.endStreams(this.streams);
+    this.streams = null;
     await Promise.all(this.closing.splice(0));
   }
 
-  private openSession(at: Date, sessionId: string): WriteStream {
-    if (this.stream) this.endStream(this.stream);
+  private openSession(at: Date, sessionId: string): SessionStreams {
+    if (this.streams) this.endStreams(this.streams);
     const dayDir = join(this.dir, dayStamp(at));
     mkdirSync(dayDir, { recursive: true });
-    const path = join(dayDir, `${clockStamp(at)}-${safeName(sessionId)}.log`);
-    this.sessionPaths.set(sessionId, path);
-    this.stream = createWriteStream(path, { flags: "a" });
-    return this.stream;
+    const base = join(dayDir, `${clockStamp(at)}-${safeName(sessionId)}`);
+    const paths: SessionLogPaths = { log: `${base}.log`, jsonl: `${base}.jsonl` };
+    this.sessionPaths.set(sessionId, paths);
+    this.streams = {
+      log: createWriteStream(paths.log, { flags: "a" }),
+      jsonl: createWriteStream(paths.jsonl, { flags: "a" }),
+    };
+    return this.streams;
   }
 
-  private endStream(stream: WriteStream): void {
-    this.closing.push(new Promise((resolve) => stream.end(() => resolve())));
+  private endStreams(streams: SessionStreams): void {
+    for (const stream of [streams.log, streams.jsonl]) {
+      this.closing.push(new Promise((resolve) => stream.end(() => resolve())));
+    }
   }
 }
 

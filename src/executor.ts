@@ -4,6 +4,7 @@ import type { AgentController } from "./control.js";
 import type { LoopGates } from "./gates.js";
 import type { TaskSummarizer } from "./memory/summarizer.js";
 import { runSession } from "./runner.js";
+import type { SessionRecorder } from "./sessions/index.js";
 import type { ExecutorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { SessionResult, Task, WorkerConfig } from "./types.js";
@@ -40,6 +41,7 @@ export async function runExecutorLoop(
   controller: AgentController,
   gates: LoopGates,
   signal: AbortSignal,
+  sessions?: SessionRecorder,
 ): Promise<void> {
   const { executor } = config;
   const aborted = (): boolean => signal.aborted;
@@ -85,6 +87,8 @@ export async function runExecutorLoop(
           mcpConfig: executor.mcpConfig,
           cwd: config.cwd,
           events: reporter.session,
+          meta: { agent: "executor", taskId: task.id },
+          index: sessions,
         },
         signal,
       );
@@ -100,6 +104,7 @@ export async function runExecutorLoop(
           durationMs: result.durationMs,
           costUsd: result.costUsd,
           numTurns: result.numTurns,
+          sessionId: result.sessionId,
         });
         await summarizer
           .summarize(task, result, { willRetry: false }, signal)
@@ -119,6 +124,7 @@ export async function runExecutorLoop(
             numTurns: result.numTurns,
             error: "authentication failed — task requeued",
             willRetry: true,
+            sessionId: result.sessionId,
           });
           continue;
         }
@@ -135,6 +141,7 @@ export async function runExecutorLoop(
             numTurns: result.numTurns,
             error: "usage limit reached — task requeued",
             willRetry: true,
+            sessionId: result.sessionId,
           });
           continue;
         }
@@ -156,6 +163,7 @@ export async function runExecutorLoop(
           willRetry,
           attempt: task.attempts,
           maxAttempts: executor.maxTaskAttempts,
+          sessionId: result.sessionId,
         });
         await summarizer
           .summarize(task, result, { willRetry }, signal)

@@ -294,6 +294,72 @@ describe("createHeadlessReporters", () => {
     ]);
   });
 
+  it("carries taskId and cycle into session.init when the session has them", () => {
+    const { events, executor, monitor } = collect();
+
+    executor.session({
+      type: "init",
+      model: "opus",
+      sessionId: "s-1",
+      toolCount: 5,
+      taskId: "ci-42",
+    });
+    monitor.session({
+      type: "init",
+      model: "haiku",
+      sessionId: "s-2",
+      toolCount: 5,
+      cycle: 3,
+    });
+
+    expect(events[0]?.fields).toEqual({
+      model: "opus",
+      sessionId: "s-1",
+      taskId: "ci-42",
+    });
+    expect(events[1]?.fields).toEqual({
+      model: "haiku",
+      sessionId: "s-2",
+      cycle: 3,
+    });
+  });
+
+  it("carries the session id into every *.finished event", () => {
+    const { events, executor, monitor, summarizer } = collect();
+
+    monitor.cycleFinished({
+      cycle: 1,
+      ok: true,
+      durationMs: 10,
+      addedTasks: 0,
+      skippedDuplicates: 0,
+      sessionId: "m-1",
+    });
+    executor.taskFinished({
+      taskId: "task-1",
+      title: "Fix the bug",
+      ok: true,
+      durationMs: 10,
+      sessionId: "e-1",
+    });
+    summarizer.summaryFinished({
+      taskId: "task-1",
+      ok: true,
+      durationMs: 10,
+      sessionId: "s-1",
+    });
+
+    expect(events.map((event) => event.fields.sessionId)).toEqual(["m-1", "e-1", "s-1"]);
+  });
+
+  it("ignores the raw stream tap", () => {
+    const { events, executor } = collect({ verbose: true });
+
+    executor.session({ type: "stream", event: { type: "assistant" } });
+
+    expect(events).toEqual([]);
+  });
+
   it("suppresses session text, tool calls and results by default", () => {
     const { events, executor } = collect();
 

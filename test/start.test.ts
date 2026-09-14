@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
   dashboardWaitUntilExit: vi.fn(),
   startControlServer: vi.fn(),
   controlServerClose: vi.fn(),
+  sessionIndexOn: vi.fn(),
+  sessionStarted: vi.fn(),
+  sessionFinished: vi.fn(),
+  sessionList: vi.fn(),
+  sessionGet: vi.fn(),
 }));
 
 vi.mock("../src/preflight.js", () => ({ ensureReady: mocks.ensureReady }));
@@ -29,6 +34,10 @@ vi.mock("../src/shutdown.js", () => ({ abortOnSignals: mocks.abortOnSignals }));
 vi.mock("../src/tasks.js", () => ({ TaskStore: { open: mocks.taskStoreOpen } }));
 vi.mock("../src/memory/store.js", () => ({
   MemoryStore: { open: mocks.memoryStoreOpen },
+}));
+vi.mock("../src/sessions/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/sessions/index.js")>()),
+  SessionIndex: { on: mocks.sessionIndexOn },
 }));
 vi.mock("../src/ui/mount.js", () => ({ mountDashboard: mocks.mountDashboard }));
 vi.mock("../src/control-server.js", () => ({
@@ -101,7 +110,16 @@ describe("startWorker", () => {
       unmount: mocks.dashboardUnmount,
       waitUntilExit: mocks.dashboardWaitUntilExit,
     });
-    mocks.memoryStoreOpen.mockReturnValue({ close: mocks.memoryStoreClose });
+    mocks.memoryStoreOpen.mockReturnValue({
+      close: mocks.memoryStoreClose,
+      connection: {},
+    });
+    mocks.sessionIndexOn.mockReturnValue({
+      started: mocks.sessionStarted,
+      finished: mocks.sessionFinished,
+      list: mocks.sessionList,
+      get: mocks.sessionGet,
+    });
     mocks.controlServerClose.mockResolvedValue(undefined);
     mocks.startControlServer.mockResolvedValue({ close: mocks.controlServerClose });
     dir = await createTempDir();
@@ -154,6 +172,7 @@ describe("startWorker", () => {
         auth: expect.any(AuthGate) as unknown,
       }),
       signal,
+      expect.objectContaining({ started: expect.any(Function) as unknown }),
     );
     expect(mocks.memoryStoreOpen).toHaveBeenCalledWith(config.memoryDbPath);
     expect(mocks.runExecutorLoop).toHaveBeenCalledWith(
@@ -168,6 +187,7 @@ describe("startWorker", () => {
         auth: expect.any(AuthGate) as unknown,
       }),
       signal,
+      expect.objectContaining({ started: expect.any(Function) as unknown }),
     );
     const monitorController = mocks.runMonitorLoop.mock.calls[0]?.[4] as InstanceType<
       typeof AgentController
@@ -205,6 +225,9 @@ describe("startWorker", () => {
           write: expect.any(Function) as unknown,
         }) as unknown,
         waker: expect.any(Waker) as unknown,
+        sessions: expect.objectContaining({
+          list: expect.any(Function) as unknown,
+        }) as unknown,
         signal,
       }),
     );

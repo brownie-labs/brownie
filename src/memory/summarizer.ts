@@ -3,6 +3,7 @@ import { detectAuthFailure } from "../auth-gate.js";
 import type { LoopGates } from "../gates.js";
 import { runSession } from "../runner.js";
 import type { SessionEventSink } from "../session-events.js";
+import type { SessionRecorder } from "../sessions/index.js";
 import type { SummaryOutcome } from "../status.js";
 import type { SessionResult, SummarizerConfig, Task } from "../types.js";
 import { detectUsageLimit } from "../usage-limit.js";
@@ -37,6 +38,7 @@ export interface SessionSummarizerDeps {
   resolveLogPath(sessionId: string): Promise<string | undefined>;
   reporter: SummaryReporter;
   gates: LoopGates;
+  sessions?: SessionRecorder | undefined;
 }
 
 export class SessionSummarizer implements TaskSummarizer {
@@ -53,13 +55,19 @@ export class SessionSummarizer implements TaskSummarizer {
     const { reporter, store, summarizer } = this.deps;
     reporter.summaryStarted(task);
     const startedAt = Date.now();
-    const finished = (ok: boolean, error?: string, costUsd?: number): void => {
+    const finished = (
+      ok: boolean,
+      error?: string,
+      costUsd?: number,
+      sessionId?: string,
+    ): void => {
       reporter.summaryFinished({
         taskId: task.id,
         ok,
         durationMs: Date.now() - startedAt,
         costUsd,
         error,
+        sessionId,
       });
     };
 
@@ -93,6 +101,8 @@ export class SessionSummarizer implements TaskSummarizer {
           jsonSchema: SUMMARY_JSON_SCHEMA,
           cwd: this.deps.cwd,
           events: reporter.session,
+          meta: { agent: "summarizer", taskId: task.id },
+          index: this.deps.sessions,
         },
         signal,
       );
@@ -106,6 +116,7 @@ export class SessionSummarizer implements TaskSummarizer {
             false,
             `authentication failed — ${auth.reason}`,
             sessionResult.costUsd,
+            sessionResult.sessionId,
           );
           return;
         }
@@ -117,6 +128,7 @@ export class SessionSummarizer implements TaskSummarizer {
             ? "usage limit reached"
             : (sessionResult.error ?? "unknown summarizer session error"),
           sessionResult.costUsd,
+          sessionResult.sessionId,
         );
         return;
       }
@@ -126,7 +138,12 @@ export class SessionSummarizer implements TaskSummarizer {
           ? null
           : parseSummary(sessionResult.resultText);
       if (report === null) {
-        finished(false, "invalid summary report", sessionResult.costUsd);
+        finished(
+          false,
+          "invalid summary report",
+          sessionResult.costUsd,
+          sessionResult.sessionId,
+        );
         return;
       }
 
@@ -141,7 +158,7 @@ export class SessionSummarizer implements TaskSummarizer {
         sessionId,
         createdAt: new Date().toISOString(),
       });
-      finished(true, undefined, sessionResult.costUsd);
+      finished(true, undefined, sessionResult.costUsd, sessionResult.sessionId);
     } catch (err) {
       finished(false, err instanceof Error ? err.message : String(err));
     }
