@@ -14,6 +14,7 @@ const mode = pick("FAKE_CLAUDE_MODE") ?? "ok";
 const promptOut = pick("FAKE_CLAUDE_PROMPT_OUT");
 const argsOut = pick("FAKE_CLAUDE_ARGS_OUT");
 const resultText = pick("FAKE_CLAUDE_RESULT_TEXT");
+const sessionId = pick("FAKE_CLAUDE_SESSION_ID") ?? "sess-1";
 
 if (argsOut) writeFileSync(argsOut, JSON.stringify(process.argv.slice(2)));
 
@@ -49,7 +50,7 @@ function emitAuthFailure(text, withRetries) {
     type: "system",
     subtype: "init",
     model: model ?? "haiku",
-    session_id: "sess-1",
+    session_id: sessionId,
     tools: ["Read", "Bash"],
   });
   if (withRetries) {
@@ -62,7 +63,7 @@ function emitAuthFailure(text, withRetries) {
         retry_delay_ms: 531,
         error_status: 401,
         error: "authentication_failed",
-        session_id: "sess-1",
+        session_id: sessionId,
       });
     }
   }
@@ -75,7 +76,7 @@ function emitAuthFailure(text, withRetries) {
     terminal_reason: "api_error",
     num_turns: 1,
     total_cost_usd: 0,
-    session_id: "sess-1",
+    session_id: sessionId,
   });
 }
 
@@ -84,7 +85,7 @@ function emitOk(isError) {
     type: "system",
     subtype: "init",
     model: model ?? "haiku",
-    session_id: "sess-1",
+    session_id: sessionId,
     tools: ["Read", "Bash"],
   });
   emit({
@@ -96,7 +97,7 @@ function emitOk(isError) {
     is_error: isError,
     total_cost_usd: 0.0123,
     num_turns: 2,
-    session_id: "sess-1",
+    session_id: sessionId,
     ...(resultText !== undefined ? { result: resultText } : {}),
   });
 }
@@ -137,6 +138,17 @@ function run() {
       process.exit(1);
       break;
     case "hang":
+      process.on("SIGTERM", () => process.exit(143));
+      setInterval(() => {}, 1000);
+      break;
+    case "hang_after_init":
+      emit({
+        type: "system",
+        subtype: "init",
+        model: model ?? "haiku",
+        session_id: sessionId,
+        tools: ["Read", "Bash"],
+      });
       process.on("SIGTERM", () => process.exit(143));
       setInterval(() => {}, 1000);
       break;

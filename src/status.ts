@@ -51,6 +51,7 @@ export interface MonitorCycleOutcome {
   addedTasks: number;
   skippedDuplicates: number;
   error?: string | undefined;
+  sessionId?: string | undefined;
   finishedAt: number;
 }
 
@@ -65,6 +66,7 @@ export interface ExecutorTaskOutcome {
   willRetry?: boolean | undefined;
   attempt?: number | undefined;
   maxAttempts?: number | undefined;
+  sessionId?: string | undefined;
   finishedAt: number;
 }
 
@@ -74,6 +76,7 @@ export interface SummaryOutcome {
   durationMs: number;
   costUsd?: number | undefined;
   error?: string | undefined;
+  sessionId?: string | undefined;
   finishedAt: number;
 }
 
@@ -395,6 +398,7 @@ export class WorkerStatusStore {
     state: AgentState<Phase, Outcome>,
     event: SessionEvent,
   ): void {
+    if (event.type === "stream") return;
     state.lastEventAt = Date.now();
     if (event.type === "partial") {
       state.partialSeen = true;
@@ -417,7 +421,7 @@ export class WorkerStatusStore {
 
   private pushEvent<Phase, Outcome>(
     state: AgentState<Phase, Outcome>,
-    event: Exclude<SessionEvent, { type: "partial" }>,
+    event: Exclude<SessionEvent, { type: "partial" | "stream" }>,
   ): void {
     switch (event.type) {
       case "init":

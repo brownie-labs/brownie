@@ -45,7 +45,12 @@ describe("SessionLog", () => {
     await log.close();
 
     const files = (await readdir(join(dir, "2026-07-02"))).sort();
-    expect(files).toEqual(["10-00-00-a.log", "10-00-05-b.log"]);
+    expect(files).toEqual([
+      "10-00-00-a.jsonl",
+      "10-00-00-a.log",
+      "10-00-05-b.jsonl",
+      "10-00-05-b.log",
+    ]);
   });
 
   it("skips partial events", async () => {
@@ -72,8 +77,8 @@ describe("SessionLog", () => {
     log.sink({ type: "stderr", line: "something went wrong" });
     await log.close();
 
-    const files = await readdir(join(dir, "2026-07-02"));
-    expect(files).toEqual(["11-30-00-unknown.log"]);
+    const files = (await readdir(join(dir, "2026-07-02"))).sort();
+    expect(files).toEqual(["11-30-00-unknown.jsonl", "11-30-00-unknown.log"]);
     const content = await readFile(
       join(dir, "2026-07-02", "11-30-00-unknown.log"),
       "utf8",
@@ -130,8 +135,78 @@ describe("SessionLog", () => {
     await log.close();
 
     expect((await readdir(dir)).sort()).toEqual(["2026-07-02", "2026-07-03"]);
-    expect(await readdir(join(dir, "2026-07-02"))).toEqual(["23-59-59-yesterday.log"]);
-    expect(await readdir(join(dir, "2026-07-03"))).toEqual(["00-00-01-today.log"]);
+    expect((await readdir(join(dir, "2026-07-02"))).sort()).toEqual([
+      "23-59-59-yesterday.jsonl",
+      "23-59-59-yesterday.log",
+    ]);
+    expect((await readdir(join(dir, "2026-07-03"))).sort()).toEqual([
+      "00-00-01-today.jsonl",
+      "00-00-01-today.log",
+    ]);
+  });
+
+  it("writes stream events to the jsonl file only, in a ts/event envelope", async () => {
+    const at = new Date(Date.UTC(2026, 8, 14, 15, 44, 12, 531));
+    const log = new SessionLog(dir, () => at);
+    const raw = { type: "assistant", message: { content: [], usage: { turns: 1 } } };
+    log.sink({ type: "init", model: "opus", sessionId: "s", toolCount: 0 });
+    log.sink({ type: "stream", event: raw });
+    await log.close();
+
+    const paths = log.pathsFor("s");
+    expect(paths).toBeDefined();
+    expect(JSON.parse(await readFile(paths?.jsonl ?? "", "utf8"))).toEqual({
+      ts: "2026-09-14T15:44:12.531Z",
+      event: raw,
+    });
+    expect(await readFile(paths?.log ?? "", "utf8")).not.toContain("assistant");
+  });
+
+  it("writes a non-JSON line to the jsonl file as raw and still renders it in the log", async () => {
+    const at = new Date(Date.UTC(2026, 8, 14, 15, 44, 12, 531));
+    const log = new SessionLog(dir, () => at);
+    log.sink({ type: "init", model: "opus", sessionId: "s", toolCount: 0 });
+    log.sink({ type: "raw", line: "npm warn deprecated" });
+    await log.close();
+
+    const paths = log.pathsFor("s");
+    const jsonl = (await readFile(paths?.jsonl ?? "", "utf8")).trim().split("\n");
+    expect(JSON.parse(jsonl.at(-1) ?? "")).toEqual({
+      ts: "2026-09-14T15:44:12.531Z",
+      raw: "npm warn deprecated",
+    });
+    expect(await readFile(paths?.log ?? "", "utf8")).toContain(
+      "(non-JSON) npm warn deprecated",
+    );
+  });
+
+  it("pathsFor pairs the log with the jsonl of the same session", async () => {
+    const at = new Date(2026, 6, 2, 10, 0, 0);
+    const log = new SessionLog(dir, () => at);
+
+    expect(log.pathsFor("s")).toBeUndefined();
+    log.sink({ type: "init", model: "haiku", sessionId: "s", toolCount: 0 });
+    await log.close();
+
+    expect(log.pathsFor("s")).toEqual({
+      log: join(dir, "2026-07-02", "10-00-00-s.log"),
+      jsonl: join(dir, "2026-07-02", "10-00-00-s.jsonl"),
+    });
+    expect(log.pathFor("s")).toBe(log.pathsFor("s")?.log);
+  });
+
+  it("flush covers both streams", async () => {
+    const at = new Date(2026, 6, 2, 10, 0, 0);
+    const log = new SessionLog(dir, () => at);
+    log.sink({ type: "init", model: "haiku", sessionId: "s", toolCount: 0 });
+    log.sink({ type: "text", text: "session result" });
+    log.sink({ type: "stream", event: { type: "result" } });
+
+    await log.flush();
+
+    const paths = log.pathsFor("s");
+    expect(await readFile(paths?.log ?? "", "utf8")).toContain("session result");
+    expect(await readFile(paths?.jsonl ?? "", "utf8")).toContain('"result"');
   });
 });
 

@@ -3,6 +3,12 @@ import type { Settings } from "./config.js";
 import type { AgentControlState } from "./control.js";
 import type { TaskSummaryRecord } from "./memory/store.js";
 import { PROMPT_AGENTS, type PromptAgent } from "./prompt-files.js";
+import {
+  SESSION_AGENTS,
+  SESSIONS_LIMIT_DEFAULT,
+  SESSIONS_LIMIT_MAX,
+  type SessionRecord,
+} from "./sessions/index.js";
 import type { JsonValue } from "./settings-file.js";
 import type {
   ExecutorPhase,
@@ -41,9 +47,16 @@ const limitSchema = z
   .min(1)
   .max(MEMORY_LIMIT_MAX)
   .default(MEMORY_LIMIT_DEFAULT);
+const sessionLimitSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(SESSIONS_LIMIT_MAX)
+  .default(SESSIONS_LIMIT_DEFAULT);
 const nonBlank = z.string().refine((value) => value.trim() !== "", "must not be blank");
 const targetSchema = z.enum(CONTROL_TARGETS);
 const promptAgentSchema = z.enum(PROMPT_AGENTS);
+const sessionAgentSchema = z.enum(SESSION_AGENTS);
 
 export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z.object({ cmd: z.literal("status") }).strict(),
@@ -77,6 +90,16 @@ export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z
     .object({ cmd: z.literal("context.set"), content: z.string().max(1_000_000) })
     .strict(),
+  z
+    .object({
+      cmd: z.literal("sessions.list"),
+      agent: sessionAgentSchema.optional(),
+      taskId: nonBlank.optional(),
+      before: z.iso.datetime().optional(),
+      limit: sessionLimitSchema,
+    })
+    .strict(),
+  z.object({ cmd: z.literal("sessions.get"), sessionId: nonBlank }).strict(),
 ]);
 
 export type ControlRequest = z.infer<typeof controlRequestSchema>;
@@ -112,6 +135,8 @@ export interface ControlResponseData {
   "prompt.set": undefined;
   "context.get": ContextContent;
   "context.set": undefined;
+  "sessions.list": SessionRecord[];
+  "sessions.get": SessionRecord;
 }
 
 export interface ControlSuccess<C extends ControlCommand> {

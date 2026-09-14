@@ -8,6 +8,7 @@ import { writeMcpConfig } from "./mcp-config.js";
 import { composePrompt } from "./prompt-compose.js";
 import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
+import type { SessionRecorder } from "./sessions/index.js";
 import type { MonitorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
 import type { WorkerConfig } from "./types.js";
@@ -22,6 +23,7 @@ export async function runMonitorLoop(
   controller: AgentController,
   gates: LoopGates,
   signal: AbortSignal,
+  sessions?: SessionRecorder,
 ): Promise<void> {
   const { monitor } = config;
   const contextFile = createContextFileAccess(config.contextFilePath);
@@ -81,6 +83,8 @@ export async function runMonitorLoop(
           jsonSchema: TASK_REPORT_JSON_SCHEMA,
           cwd: config.cwd,
           events: reporter.session,
+          meta: { agent: "monitor", cycle },
+          index: sessions,
         },
         signal,
       );
@@ -99,6 +103,7 @@ export async function runMonitorLoop(
             addedTasks: 0,
             skippedDuplicates: 0,
             error: `authentication failed — ${auth.reason}`,
+            sessionId: result.sessionId,
           });
           continue;
         }
@@ -112,6 +117,7 @@ export async function runMonitorLoop(
           addedTasks: 0,
           skippedDuplicates: 0,
           error: limit ? "usage limit reached" : (result.error ?? "unknown error"),
+          sessionId: result.sessionId,
         });
         if (limit) continue;
       } else {
@@ -126,6 +132,7 @@ export async function runMonitorLoop(
             addedTasks: 0,
             skippedDuplicates: 0,
             error: "invalid task report — cycle skipped",
+            sessionId: result.sessionId,
           });
         } else {
           const added = await store.addTasks(report);
@@ -136,6 +143,7 @@ export async function runMonitorLoop(
             costUsd: result.costUsd,
             addedTasks: added.length,
             skippedDuplicates: report.length - added.length,
+            sessionId: result.sessionId,
           });
           if (added.length > 0) waker.notify();
         }

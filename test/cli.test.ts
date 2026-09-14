@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { packageVersion } from "../src/paths.js";
+import type { SessionRecord } from "../src/sessions/index.js";
 import {
   createTempDir,
   fakeClaudeCliEnv,
@@ -195,9 +196,116 @@ describe("CLI start (smoke E2E)", () => {
     expect(result.output).toContain("model=haiku");
     expect(result.output).toContain("task.started taskId=e2e-1");
     expect(result.output).toMatch(/task\.finished taskId=e2e-1 .*ok=true/);
+    expect(result.output).toMatch(/task\.finished taskId=e2e-1 .*sessionId=sess-1/);
     expect(result.output).toContain("summary.finished taskId=e2e-1 ok=true");
     expect(result.output).toContain("worker.stopped signal=SIGINT");
   }, 30_000);
+
+  it("indexes the executor session and writes both transcript files next to each other", async () => {
+    await seedProject(dir, {
+      settings: {
+        monitor: { model: "haiku", intervalMinutes: 1 },
+        executor: { model: "opus" },
+        summarizer: { model: "sonnet" },
+      },
+    });
+    const env = fakeClaudeCliEnv("ok", {
+      CI: "true",
+      FAKE_CLAUDE_SESSION_ID_HAIKU: "mon-1",
+      FAKE_CLAUDE_SESSION_ID_OPUS: "exec-1",
+      FAKE_CLAUDE_SESSION_ID_SONNET: "sum-1",
+      FAKE_CLAUDE_RESULT_TEXT_HAIKU: JSON.stringify({
+        tasks: [{ id: "e2e-2", title: "Indexed task", description: "e2e description" }],
+      }),
+      FAKE_CLAUDE_RESULT_TEXT_SONNET: JSON.stringify({
+        headline: "e2e summary",
+        summary: "The executor completed the test task.",
+      }),
+    });
+    const memoryDbPath = join(dir, ".brownie", "data", "memory.db");
+    const brownieDir = join(dir, ".brownie");
+    const outFd = openSync(join(dir, "worker-out.log"), "w");
+    const errFd = openSync(join(dir, "worker-err.log"), "w");
+    const worker = spawn(tsxBin, [entry, "--log-format", "json"], {
+      cwd: dir,
+      env: { ...env, TSX_TSCONFIG_PATH: join(projectRoot, "tsconfig.json") },
+      stdio: ["ignore", outFd, errFd],
+    });
+    const workerClosed = new Promise<void>((resolve) => {
+      worker.on("close", () => {
+        closeSync(outFd);
+        closeSync(errFd);
+        resolve();
+      });
+    });
+
+    try {
+      let sessions: SessionRecord[] = [];
+      const deadline = Date.now() + INTERRUPT_DEADLINE_MS;
+      while (Date.now() < deadline) {
+        const probe = await runCommand(dir, env, [
+          "sessions",
+          "list",
+          "--agent",
+          "executor",
+          "--task",
+          "e2e-2",
+          "--json",
+        ]);
+        if (probe.code === 0) {
+          const listed = JSON.parse(probe.stdout) as SessionRecord[];
+          if (listed[0]?.finishedAt !== undefined) {
+            sessions = listed;
+            break;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+
+      expect(sessions).toHaveLength(1);
+      const [session] = sessions;
+      expect(session).toMatchObject({
+        sessionId: "exec-1",
+        agent: "executor",
+        taskId: "e2e-2",
+        model: "opus",
+        ok: true,
+        costUsd: 0.0123,
+        numTurns: 2,
+      });
+      expect(session?.logPath).toMatch(/^logs\/executor\/\d{4}-\d{2}-\d{2}\/.*\.log$/);
+      expect(session?.jsonlPath).toBe(`${(session?.logPath ?? "").slice(0, -4)}.jsonl`);
+
+      const log = await readFile(join(brownieDir, session?.logPath ?? ""), "utf8");
+      expect(log).toContain("Worker output");
+
+      const jsonl = (await readFile(join(brownieDir, session?.jsonlPath ?? ""), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { ts: string; event: { type: string } });
+      expect(jsonl.map((entry) => entry.event.type)).toEqual([
+        "system",
+        "assistant",
+        "result",
+      ]);
+      expect(jsonl[0]?.ts).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+
+      const shown = await runCommand(dir, env, ["sessions", "show", "exec-1"]);
+      expect(shown.code).toBe(0);
+      expect(shown.stdout).toContain(join(brownieDir, session?.jsonlPath ?? ""));
+
+      const unknown = await runCommand(dir, env, ["sessions", "show", "nope"]);
+      expect(unknown.code).toBe(1);
+      expect(`${unknown.stdout}${unknown.stderr}`).toContain(
+        'Session "nope" is not indexed.',
+      );
+
+      expect(readSummaries(memoryDbPath, "e2e-2")).toEqual([{ headline: "e2e summary" }]);
+    } finally {
+      worker.kill("SIGINT");
+      await workerClosed;
+    }
+  }, 40_000);
 
   it("exits with code 1 when preflight fails (no .brownie/settings.json)", async () => {
     const result = await runCli(dir, fakeClaudeCliEnv("ok"));

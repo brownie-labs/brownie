@@ -66,7 +66,15 @@ export interface WorkerConfig {
   logsDir: string;
 }
 
-export type SessionFailureReason = "timeout" | "abort" | "isError" | "exit" | "spawn";
+export const SESSION_FAILURE_REASONS = [
+  "timeout",
+  "abort",
+  "isError",
+  "exit",
+  "spawn",
+] as const;
+
+export type SessionFailureReason = (typeof SESSION_FAILURE_REASONS)[number];
 
 export interface RateLimitInfo {
   status: string;

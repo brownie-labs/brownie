@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { SessionEventSink } from "./session-events.js";
+import type { SessionMeta, SessionRecorder } from "./sessions/index.js";
 import { StreamRenderer } from "./stream.js";
 import type { EffortLevel, SessionFailureReason, SessionResult } from "./types.js";
 
@@ -21,6 +22,8 @@ export interface SessionSpec {
   cwd: string;
   childEnv?: NodeJS.ProcessEnv | undefined;
   events: SessionEventSink;
+  meta: SessionMeta;
+  index?: SessionRecorder | undefined;
 }
 
 export async function runSession(
@@ -53,7 +56,22 @@ export async function runSession(
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const renderer = new StreamRenderer(spec.events, spec.streamPartial);
+  const indexed: { sessionId: string | null } = { sessionId: null };
+  const events: SessionEventSink = (event) => {
+    if (event.type !== "init") {
+      spec.events(event);
+      return;
+    }
+    spec.events({ ...event, taskId: spec.meta.taskId, cycle: spec.meta.cycle });
+    indexed.sessionId = event.sessionId;
+    spec.index?.started({
+      ...spec.meta,
+      sessionId: event.sessionId,
+      model: event.model,
+      startedAt: new Date(startedAt).toISOString(),
+    });
+  };
+  const renderer = new StreamRenderer(events, spec.streamPartial);
 
   const killState: { reason: KillReason | null } = { reason: null };
   const kill = (reason: KillReason): void => {
@@ -113,6 +131,17 @@ export async function runSession(
     const failureReason = ok
       ? undefined
       : classifyFailure(killState.reason, summary.isError);
+
+    if (indexed.sessionId !== null) {
+      spec.index?.finished({
+        sessionId: indexed.sessionId,
+        finishedAt: new Date().toISOString(),
+        ok,
+        failureReason,
+        costUsd: summary.costUsd,
+        numTurns: summary.numTurns,
+      });
+    }
 
     return {
       ok,

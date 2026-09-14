@@ -1,4 +1,5 @@
 import type { TaskSummaryRecord } from "./memory/store.js";
+import type { SessionListQuery, SessionRecord } from "./sessions/index.js";
 import type { NewTask, Task } from "./types.js";
 
 export interface TaskControls {
@@ -11,4 +12,9 @@ export interface TaskControls {
 export interface MemoryReader {
   recent(limit: number): TaskSummaryRecord[];
   search(query: string, limit: number): TaskSummaryRecord[];
+}
+
+export interface SessionReader {
+  list(query: SessionListQuery): SessionRecord[];
+  get(sessionId: string): SessionRecord | undefined;
 }
