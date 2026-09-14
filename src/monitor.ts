@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { msUntilActive } from "./active-hours.js";
 import { detectAuthFailure } from "./auth-gate.js";
+import { createContextFileAccess } from "./context-file.js";
 import type { AgentController } from "./control.js";
 import type { LoopGates } from "./gates.js";
+import { writeMcpConfig } from "./mcp-config.js";
+import { composePrompt } from "./prompt-compose.js";
 import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
 import type { SessionRecorder } from "./sessions/index.js";
@@ -23,6 +26,7 @@ export async function runMonitorLoop(
   sessions?: SessionRecorder,
 ): Promise<void> {
   const { monitor } = config;
+  const contextFile = createContextFileAccess(config.contextFilePath);
   const aborted = (): boolean => signal.aborted;
 
   let cycle = 0;
@@ -52,9 +56,18 @@ export async function runMonitorLoop(
     reporter.cycleStarted(cycle);
 
     try {
-      const [prompt, systemPrompt] = await Promise.all([
+      const [prompt, systemPrompt, context, mcpConfigPath] = await Promise.all([
         readFile(monitor.promptPath, "utf8"),
         readFile(monitor.systemPromptPath, "utf8"),
+        contextFile.read(),
+        writeMcpConfig(config.dataDir, {
+          role: "monitor",
+          servers: config.mcpServers,
+          selected: monitor.mcpServers,
+          browser: config.browser,
+          memoryDbPath: null,
+          playwrightOutputDir: config.playwrightOutputDir,
+        }),
       ]);
 
       const result = await runSession(
@@ -63,9 +76,10 @@ export async function runMonitorLoop(
           model: monitor.model,
           effort: monitor.effort,
           systemPrompt,
-          prompt,
+          prompt: composePrompt(prompt, context),
           sessionTimeoutMs: monitor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
+          mcpConfigPath,
           jsonSchema: TASK_REPORT_JSON_SCHEMA,
           cwd: config.cwd,
           events: reporter.session,

@@ -86,6 +86,10 @@ export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z
     .object({ cmd: z.literal("prompt.set"), agent: promptAgentSchema, content: nonBlank })
     .strict(),
+  z.object({ cmd: z.literal("context.get") }).strict(),
+  z
+    .object({ cmd: z.literal("context.set"), content: z.string().max(1_000_000) })
+    .strict(),
   z
     .object({
       cmd: z.literal("sessions.list"),
@@ -110,6 +114,10 @@ export interface PromptContent {
   content: string;
 }
 
+export interface ContextContent {
+  content: string;
+}
+
 export interface ControlResponseData {
   status: ControlStatus;
   version: WorkerIdentity;
@@ -125,6 +133,8 @@ export interface ControlResponseData {
   "memory.recent": TaskSummaryRecord[];
   "prompt.get": PromptContent;
   "prompt.set": undefined;
+  "context.get": ContextContent;
+  "context.set": undefined;
   "sessions.list": SessionRecord[];
   "sessions.get": SessionRecord;
 }

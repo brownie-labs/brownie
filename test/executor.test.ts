@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
@@ -17,9 +18,14 @@ import {
 const mocks = vi.hoisted(() => ({
   runSession: vi.fn(),
   readFile: vi.fn(),
+  writeMcpConfig: vi.fn(),
 }));
 
 vi.mock("../src/runner.js", () => ({ runSession: mocks.runSession }));
+vi.mock("../src/mcp-config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/mcp-config.js")>()),
+  writeMcpConfig: mocks.writeMcpConfig,
+}));
 vi.mock("node:fs/promises", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs/promises")>()),
   readFile: mocks.readFile,
@@ -107,7 +113,12 @@ describe("runExecutorLoop", () => {
     spy = createExecutorReporterSpy();
     summarizerSpy = createTaskSummarizerSpy();
     mocks.readFile.mockImplementation((path: string) =>
-      Promise.resolve(path.includes("system") ? "system\n" : "identity\n"),
+      path.endsWith("context.md")
+        ? Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
+        : Promise.resolve(path.includes("system") ? "system\n" : "identity\n"),
+    );
+    mocks.writeMcpConfig.mockImplementation((dataDir: string, input: { role: string }) =>
+      Promise.resolve(join(dataDir, "mcp", `${input.role}.json`)),
     );
   });
 
@@ -186,7 +197,7 @@ describe("runExecutorLoop", () => {
       effort: string;
       systemPrompt: string;
       prompt: string;
-      mcpConfig: string;
+      mcpConfigPath: string;
       jsonSchema?: string;
       events: unknown;
     };
@@ -195,9 +206,79 @@ describe("runExecutorLoop", () => {
     expect(spec.systemPrompt).toBe("system\n");
     expect(spec.prompt).toContain("identity");
     expect(spec.prompt).toContain("ID: x");
-    expect(spec.mcpConfig).toBe('{"mcpServers":{}}');
+    expect(spec.mcpConfigPath).toBe(join(config.dataDir, "mcp", "executor.json"));
     expect(spec.jsonSchema).toBeUndefined();
     expect(spec.events).toBe(spy.reporter.session);
+    expect(spec.prompt).toBe(composeTaskPrompt("identity\n", task("x")));
+  });
+
+  it("puts the context file between the prompt and the task block", async () => {
+    const { store } = fakeStore([task("x")]);
+    const controller = new AbortController();
+    mocks.runSession.mockResolvedValue(ok());
+    mocks.readFile.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("context.md") ? "# Workspace context\n" : "identity\n",
+      ),
+    );
+    const config = buildConfig();
+
+    const promise = runExecutorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      noopController(),
+      buildGates(),
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
+    controller.abort();
+    await promise;
+
+    const spec = mocks.runSession.mock.calls[0]?.[0] as { prompt: string };
+    expect(mocks.readFile).toHaveBeenCalledWith(config.contextFilePath, "utf8");
+    expect(spec.prompt).toBe(
+      composeTaskPrompt("identity\n\n# Workspace context\n", task("x")),
+    );
+    expect(spec.prompt.indexOf("# Workspace context")).toBeLessThan(
+      spec.prompt.indexOf("## Task to complete"),
+    );
+  });
+
+  it("composes the executor MCP config from the live settings, memory included", async () => {
+    const { store } = fakeStore([task("x")]);
+    const controller = new AbortController();
+    mocks.runSession.mockResolvedValue(ok());
+    const config = buildConfig({
+      browser: true,
+      mcpServers: { linter: { command: "run-linter" } },
+    });
+    config.executor = { ...config.executor, mcpServers: ["linter"] };
+
+    const promise = runExecutorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      noopController(),
+      buildGates(),
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
+    controller.abort();
+    await promise;
+
+    expect(mocks.writeMcpConfig).toHaveBeenCalledWith(config.dataDir, {
+      role: "executor",
+      servers: config.mcpServers,
+      selected: ["linter"],
+      browser: true,
+      memoryDbPath: config.memoryDbPath,
+      playwrightOutputDir: config.playwrightOutputDir,
+    });
   });
 
   it("runs a memory summary after a completed task", async () => {

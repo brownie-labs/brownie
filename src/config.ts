@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { buildSchedule, parseActiveDays, parseTimeWindow } from "./active-hours.js";
 import { assertReadable } from "./fs.js";
-import { buildMcpConfig } from "./memory/mcp.js";
+import { MEMORY_SERVER_NAME, PLAYWRIGHT_SERVER_NAME } from "./mcp-config.js";
 import { projectPaths, systemPromptFiles } from "./paths.js";
 import { EFFORT_LEVELS, type WorkerConfig } from "./types.js";
 
@@ -23,6 +23,38 @@ const validatedString = (validate: (value: string) => unknown) =>
       }
     });
 
+export const MCP_SERVER_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/;
+
+export const RESERVED_MCP_SERVER_NAMES: ReadonlySet<string> = new Set([
+  MEMORY_SERVER_NAME,
+  PLAYWRIGHT_SERVER_NAME,
+]);
+
+const mcpEnvSchema = z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string());
+
+const stdioMcpServerSchema = z
+  .object({
+    type: z.literal("stdio").optional(),
+    command: z.string().trim().min(1),
+    args: z.array(z.string()).default([]),
+    env: mcpEnvSchema.default({}),
+  })
+  .strict();
+
+const httpMcpServerSchema = z
+  .object({
+    type: z.enum(["http", "sse"]),
+    url: z.url(),
+    headers: z.record(z.string().min(1), z.string()).default({}),
+  })
+  .strict();
+
+export const mcpServerSchema = z.union([stdioMcpServerSchema, httpMcpServerSchema]);
+
+const mcpServerNamesSchema = z
+  .array(z.string().regex(MCP_SERVER_NAME_PATTERN))
+  .default([]);
+
 export const settingsSchema = z
   .object({
     monitor: z
@@ -33,6 +65,7 @@ export const settingsSchema = z
         activeHours: validatedString(parseTimeWindow).optional(),
         activeDays: validatedString(parseActiveDays).optional(),
         sessionTimeoutMs: z.number().int().positive().optional(),
+        mcpServers: mcpServerNamesSchema,
       })
       .strict()
       .prefault({}),
@@ -43,6 +76,7 @@ export const settingsSchema = z
         sessionTimeoutMs: z.number().int().positive().optional(),
         maxTaskAttempts: z.number().int().positive().default(3),
         retryDelayMs: z.number().int().nonnegative().default(30_000),
+        mcpServers: mcpServerNamesSchema,
       })
       .strict()
       .prefault({}),
@@ -55,8 +89,34 @@ export const settingsSchema = z
       .strict()
       .prefault({}),
     streamPartial: z.boolean().default(true),
+    browser: z.boolean().default(false),
+    mcpServers: z
+      .record(z.string().regex(MCP_SERVER_NAME_PATTERN), mcpServerSchema)
+      .default({}),
   })
-  .strict();
+  .strict()
+  .superRefine((settings, ctx) => {
+    for (const name of Object.keys(settings.mcpServers)) {
+      if (RESERVED_MCP_SERVER_NAMES.has(name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["mcpServers", name],
+          message: `"${name}" is reserved`,
+        });
+      }
+    }
+    for (const role of ["monitor", "executor"] as const) {
+      settings[role].mcpServers.forEach((name, index) => {
+        if (!(name in settings.mcpServers)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [role, "mcpServers", index],
+            message: `unknown MCP server "${name}"`,
+          });
+        }
+      });
+    }
+  });
 
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -106,6 +166,7 @@ export interface WorkerPromptPaths {
   monitor: PromptPaths;
   executor: PromptPaths;
   summarizer: Pick<PromptPaths, "systemPromptPath">;
+  contextPath: string;
 }
 
 export function resolvePromptPaths(dirs: ConfigDirs = {}): WorkerPromptPaths {
@@ -123,6 +184,7 @@ export function resolvePromptPaths(dirs: ConfigDirs = {}): WorkerPromptPaths {
     summarizer: {
       systemPromptPath: system.summarizer,
     },
+    contextPath: project.contextFile,
   };
 }
 
@@ -138,6 +200,7 @@ export const PROMPT_FILE_LABELS = {
   summarizer: {
     systemPromptPath: "summarizer system prompt file (bundled with brownie)",
   },
+  contextPath: "context file (.brownie/prompts/context.md, optional)",
 } as const;
 
 async function assertPromptPathsReadable(paths: WorkerPromptPaths): Promise<void> {
@@ -174,6 +237,7 @@ export async function loadWorkerConfig(
       promptPath: paths.monitor.promptPath,
       systemPromptPath: paths.monitor.systemPromptPath,
       sessionTimeoutMs: settings.monitor.sessionTimeoutMs,
+      mcpServers: settings.monitor.mcpServers,
     },
     executor: {
       model: settings.executor.model,
@@ -183,7 +247,7 @@ export async function loadWorkerConfig(
       sessionTimeoutMs: settings.executor.sessionTimeoutMs,
       maxTaskAttempts: settings.executor.maxTaskAttempts,
       retryDelayMs: settings.executor.retryDelayMs,
-      mcpConfig: buildMcpConfig(project.memoryDbFile),
+      mcpServers: settings.executor.mcpServers,
     },
     summarizer: {
       model: settings.summarizer.model,
@@ -192,10 +256,15 @@ export async function loadWorkerConfig(
       sessionTimeoutMs: settings.summarizer.sessionTimeoutMs,
     },
     streamPartial: settings.streamPartial,
+    browser: settings.browser,
+    mcpServers: settings.mcpServers,
     cwd: project.projectDir,
     settingsFilePath: project.settingsFile,
+    contextFilePath: paths.contextPath,
     tasksFilePath: project.tasksFile,
     memoryDbPath: project.memoryDbFile,
+    dataDir: project.dataDir,
+    playwrightOutputDir: project.playwrightOutputDir,
     logsDir: project.logsDir,
   };
 }

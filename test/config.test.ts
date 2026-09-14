@@ -32,6 +32,10 @@ describe("settingsSchema", () => {
     expect(settings.summarizer.effort).toBe("medium");
     expect(settings.summarizer.sessionTimeoutMs).toBe(300_000);
     expect(settings.streamPartial).toBe(true);
+    expect(settings.browser).toBe(false);
+    expect(settings.mcpServers).toEqual({});
+    expect(settings.monitor.mcpServers).toEqual([]);
+    expect(settings.executor.mcpServers).toEqual([]);
   });
 
   it("rejects a non-positive monitor interval", () => {
@@ -97,6 +101,105 @@ describe("settingsSchema", () => {
       false,
     );
   });
+
+  it("accepts stdio and http MCP servers selected per agent", () => {
+    const settings = settingsSchema.parse({
+      browser: true,
+      mcpServers: {
+        sentry: {
+          type: "http",
+          url: "https://mcp.sentry.dev/mcp",
+          headers: { Authorization: "Bearer ${TOOL_SENTRY_TOKEN}" },
+        },
+        linter: { command: "run-linter", args: ["--stdio"], env: { LOG_LEVEL: "debug" } },
+      },
+      monitor: { mcpServers: ["sentry"] },
+      executor: { mcpServers: ["sentry", "linter"] },
+    });
+
+    expect(settings.browser).toBe(true);
+    expect(settings.monitor.mcpServers).toEqual(["sentry"]);
+    expect(settings.executor.mcpServers).toEqual(["sentry", "linter"]);
+    expect(settings.mcpServers.linter).toEqual({
+      command: "run-linter",
+      args: ["--stdio"],
+      env: { LOG_LEVEL: "debug" },
+    });
+  });
+
+  it("fills in empty args, env and headers for a sparse server entry", () => {
+    const settings = settingsSchema.parse({
+      mcpServers: {
+        linter: { command: "run-linter" },
+        docs: { type: "sse", url: "https://docs.example/mcp" },
+      },
+    });
+
+    expect(settings.mcpServers.linter).toEqual({
+      command: "run-linter",
+      args: [],
+      env: {},
+    });
+    expect(settings.mcpServers.docs).toEqual({
+      type: "sse",
+      url: "https://docs.example/mcp",
+      headers: {},
+    });
+  });
+
+  it("rejects a reserved MCP server name at its own path", () => {
+    for (const name of ["memory", "playwright"]) {
+      const parsed = settingsSchema.safeParse({
+        mcpServers: { [name]: { command: "x" } },
+      });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.path.join(".")).toBe(`mcpServers.${name}`);
+      expect(parsed.error?.issues[0]?.message).toBe(`"${name}" is reserved`);
+    }
+  });
+
+  it("rejects an unknown server name in an agent list at the list index", () => {
+    const parsed = settingsSchema.safeParse({ executor: { mcpServers: ["nope"] } });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.path.join(".")).toBe("executor.mcpServers.0");
+    expect(parsed.error?.issues[0]?.message).toBe('unknown MCP server "nope"');
+  });
+
+  it("rejects an MCP server name outside the allowed pattern", () => {
+    expect(
+      settingsSchema.safeParse({ mcpServers: { "Bad Name": { command: "x" } } }).success,
+    ).toBe(false);
+    expect(
+      settingsSchema.safeParse({ monitor: { mcpServers: ["Bad Name"] } }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown key, a non-uppercase env name and a malformed url in a server", () => {
+    expect(
+      settingsSchema.safeParse({ mcpServers: { a: { command: "x", cwd: "/tmp" } } })
+        .success,
+    ).toBe(false);
+    expect(
+      settingsSchema.safeParse({
+        mcpServers: { a: { command: "x", env: { lower: "1" } } },
+      }).success,
+    ).toBe(false);
+    expect(
+      settingsSchema.safeParse({ mcpServers: { a: { type: "http", url: "nope" } } })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-boolean browser", () => {
+    expect(settingsSchema.safeParse({ browser: "yes" }).success).toBe(false);
+  });
+
+  it("has no mcpServers key for the summarizer", () => {
+    expect(settingsSchema.safeParse({ summarizer: { mcpServers: [] } }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe("loadSettings", () => {
@@ -154,6 +257,7 @@ describe("resolvePromptPaths", () => {
     );
     expect(paths.executor.systemPromptPath).toBe(join("/sys", "executor.system.md"));
     expect(paths.summarizer.systemPromptPath).toBe(join("/sys", "summarizer.system.md"));
+    expect(paths.contextPath).toBe(join("/proj", ".brownie", "prompts", "context.md"));
   });
 
   it("defaults to process.cwd() and the packaged prompts directory", () => {
@@ -221,15 +325,9 @@ describe("loadWorkerConfig", () => {
     expect(config.settingsFilePath).toBe(join(dir, ".brownie", "settings.json"));
     expect(config.tasksFilePath).toBe(join(dir, ".brownie", "data", "tasks.json"));
     expect(config.memoryDbPath).toBe(join(dir, ".brownie", "data", "memory.db"));
+    expect(config.dataDir).toBe(join(dir, ".brownie", "data"));
+    expect(config.playwrightOutputDir).toBe(join(dir, ".brownie", "data", "playwright"));
     expect(config.logsDir).toBe(join(dir, ".brownie", "logs"));
-    const mcpConfig = JSON.parse(config.executor.mcpConfig) as {
-      mcpServers: { memory: { command: string; args: string[] } };
-    };
-    expect(mcpConfig.mcpServers.memory.command).toBe(process.execPath);
-    expect(mcpConfig.mcpServers.memory.args).toContain("mcp");
-    expect(mcpConfig.mcpServers.memory.args).toContain(
-      join(dir, ".brownie", "data", "memory.db"),
-    );
     expect(config.streamPartial).toBe(true);
     expect(config.monitor.schedule).toBeNull();
   });
@@ -292,6 +390,7 @@ describe("loadWorkerConfig", () => {
       summarizer: {
         systemPromptPath: join(dir, "missing-ss.md"),
       },
+      contextPath: join(dir, "missing-context.md"),
     };
 
     const config = await loadWorkerConfig({ projectDir: dir }, verified);
@@ -301,16 +400,25 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.promptPath).toBe(verified.executor.promptPath);
     expect(config.executor.systemPromptPath).toBe(verified.executor.systemPromptPath);
     expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
+    expect(config.contextFilePath).toBe(verified.contextPath);
   });
 
-  it("gives the executor only the memory MCP server", async () => {
-    await seedProject(dir);
+  it("carries the MCP catalogue and the per-agent selections", async () => {
+    await seedProject(dir, {
+      settings: {
+        browser: true,
+        mcpServers: { linter: { command: "run-linter" } },
+        executor: { mcpServers: ["linter"] },
+      },
+    });
 
     const config = await loadWorkerConfig(dirs());
 
-    const executorMcp = JSON.parse(config.executor.mcpConfig) as {
-      mcpServers: Record<string, unknown>;
-    };
-    expect(Object.keys(executorMcp.mcpServers)).toEqual(["memory"]);
+    expect(config.browser).toBe(true);
+    expect(config.mcpServers).toEqual({
+      linter: { command: "run-linter", args: [], env: {} },
+    });
+    expect(config.monitor.mcpServers).toEqual([]);
+    expect(config.executor.mcpServers).toEqual(["linter"]);
   });
 });

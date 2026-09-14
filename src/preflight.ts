@@ -5,6 +5,7 @@ import { delimiter, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   COMMAND,
+  loadSettings,
   PROMPT_FILE_LABELS,
   resolvePromptPaths,
   type ConfigDirs,
@@ -12,6 +13,7 @@ import {
 } from "./config.js";
 import { canAccess } from "./fs.js";
 import { logger } from "./logger.js";
+import { PLAYWRIGHT_MCP_COMMAND } from "./mcp-config.js";
 import { projectPaths } from "./paths.js";
 import { parseVersion } from "./update/version.js";
 
@@ -24,6 +26,7 @@ const LOGIN_HINT =
 const AUTH_UNVERIFIED_LABEL =
   "Claude Code login (not verified — `claude auth status` unavailable)";
 const MISSING_CLAUDE_HINT = `command "${COMMAND}" not found in PATH — install Claude Code: ${INSTALL_HINT}`;
+const MISSING_PLAYWRIGHT_HINT = `command "${PLAYWRIGHT_MCP_COMMAND}" not found in PATH — browser: true requires the -browser image (ghcr.io/brownie-labs/brownie:<version>-browser) or a global @playwright/mcp install`;
 const CLAUDE_PROBE_TIMEOUT_MS = 10_000;
 const CLAUDE_VERSION_LINE = /^\s*(\S+)\s*\(Claude Code\)/m;
 
@@ -184,6 +187,19 @@ async function checkClaudeCli(timeoutMs: number): Promise<ClaudeChecks> {
   };
 }
 
+async function checkBrowserTooling(settingsFile: string): Promise<Check[]> {
+  const settings = await loadSettings(settingsFile).catch(() => null);
+  if (settings?.browser !== true) return [];
+  const binary = await findOnPath(PLAYWRIGHT_MCP_COMMAND);
+  return [
+    check(
+      `Playwright MCP (${PLAYWRIGHT_MCP_COMMAND})`,
+      binary !== undefined,
+      MISSING_PLAYWRIGHT_HINT,
+    ),
+  ];
+}
+
 function checkSqliteFts5(): Check {
   let ok = true;
   try {
@@ -220,11 +236,13 @@ export async function ensureReady(
   options: PreflightOptions = {},
 ): Promise<PreflightResult> {
   const paths = resolvePromptPaths(dirs);
+  const settingsFile = projectPaths(dirs.projectDir).settingsFile;
 
-  const [cli, ...fileChecks] = await Promise.all([
+  const [cli, browserChecks, ...fileChecks] = await Promise.all([
     checkClaudeCli(options.claudeTimeoutMs ?? CLAUDE_PROBE_TIMEOUT_MS),
+    checkBrowserTooling(settingsFile),
     Promise.resolve(checkSqliteFts5()),
-    Promise.resolve(checkSettingsFile(projectPaths(dirs.projectDir).settingsFile)),
+    Promise.resolve(checkSettingsFile(settingsFile)),
     checkFile(paths.monitor.promptPath, PROMPT_FILE_LABELS.monitor.promptPath),
     checkFile(
       paths.monitor.systemPromptPath,
@@ -240,7 +258,7 @@ export async function ensureReady(
       PROMPT_FILE_LABELS.summarizer.systemPromptPath,
     ),
   ]);
-  const checks = [...cli.checks, ...fileChecks];
+  const checks = [...cli.checks, ...fileChecks, ...browserChecks];
 
   for (const result of checks) {
     if (result.ok) logger.success(result.label);

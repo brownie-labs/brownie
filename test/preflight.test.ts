@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,6 +84,7 @@ describe("ensureReady", () => {
         summarizer: {
           systemPromptPath: join(systemPromptsDir, "summarizer.system.md"),
         },
+        contextPath: join(dir, ".brownie", "prompts", "context.md"),
       },
       claude: {
         version: "2.1.268",
@@ -91,6 +93,8 @@ describe("ensureReady", () => {
     });
     expect(logger.success).toHaveBeenCalledWith("Claude Code 2.1.268 (claude)");
     expect(logger.success).toHaveBeenCalledWith("Claude Code login (claude.ai)");
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(existsSync(join(dir, ".brownie", "prompts", "context.md"))).toBe(false);
   });
 
   it("reports an unknown CLI version and login when claude prints nothing", async () => {
@@ -174,6 +178,30 @@ describe("ensureReady", () => {
     await expect(ensureReady(dirs())).rejects.toThrow(
       /Preflight failed[\s\S]*interactive terminal/,
     );
+  });
+
+  it("does not look for playwright-mcp while browser is off", async () => {
+    await expect(ensureReady(dirs())).resolves.toBeDefined();
+    expect(logger.success).not.toHaveBeenCalledWith(
+      expect.stringContaining("playwright-mcp"),
+    );
+  });
+
+  it("throws with an image hint when browser: true finds no playwright-mcp", async () => {
+    await seedProject(dir, { settings: { browser: true } });
+    await expect(ensureReady(dirs())).rejects.toThrow(
+      /Preflight failed[\s\S]*playwright-mcp[\s\S]*-browser image/,
+    );
+  });
+
+  it("passes when browser: true finds playwright-mcp on PATH", async () => {
+    await seedProject(dir, { settings: { browser: true } });
+    const playwright = join(binDir, "playwright-mcp");
+    await writeFile(playwright, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(playwright, 0o755);
+
+    await expect(ensureReady(dirs())).resolves.toBeDefined();
+    expect(logger.success).toHaveBeenCalledWith("Playwright MCP (playwright-mcp)");
   });
 });
 

@@ -46,6 +46,7 @@ export interface SeedProjectOptions {
   settings?: object | string | false;
   monitorPrompt?: string;
   executorPrompt?: string;
+  context?: string;
 }
 
 export async function seedProject(
@@ -56,11 +57,15 @@ export async function seedProject(
     settings = {},
     monitorPrompt = "observe\n",
     executorPrompt = "execute\n",
+    context,
   } = options;
   const promptsDir = join(dir, ".brownie", "prompts");
   await mkdir(promptsDir, { recursive: true });
   await writeFile(join(promptsDir, "monitor.prompt.md"), monitorPrompt, "utf8");
   await writeFile(join(promptsDir, "executor.prompt.md"), executorPrompt, "utf8");
+  if (context !== undefined) {
+    await writeFile(join(promptsDir, "context.md"), context, "utf8");
+  }
   if (settings !== false) {
     const raw =
       typeof settings === "string" ? settings : `${JSON.stringify(settings, null, 2)}\n`;
@@ -360,6 +365,8 @@ export function authFailureResult(overrides: Partial<SessionResult> = {}): Sessi
   };
 }
 
+export const testDataDir = join(tmpdir(), `brownie-test-data-${String(process.pid)}`);
+
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     model: "haiku",
@@ -367,6 +374,7 @@ export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentCon
     promptPath: "/dev/null",
     systemPromptPath: "/dev/null",
     sessionTimeoutMs: undefined,
+    mcpServers: [],
     ...overrides,
   };
 }
@@ -389,7 +397,6 @@ export function buildExecutorConfig(
     ...buildAgentConfig({ model: "opus", effort: "high" }),
     maxTaskAttempts: 3,
     retryDelayMs: 0,
-    mcpConfig: '{"mcpServers":{}}',
     ...overrides,
   };
 }
@@ -413,10 +420,15 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     executor: buildExecutorConfig(),
     summarizer: buildSummarizerConfig(),
     streamPartial: false,
+    browser: false,
+    mcpServers: {},
     cwd: process.cwd(),
     settingsFilePath: join(process.cwd(), ".brownie", "settings.json"),
+    contextFilePath: join(process.cwd(), ".brownie", "prompts", "context.md"),
     tasksFilePath: join(process.cwd(), ".brownie", "data", "tasks.json"),
     memoryDbPath: join(process.cwd(), ".brownie", "data", "memory.db"),
+    dataDir: testDataDir,
+    playwrightOutputDir: join(testDataDir, "playwright"),
     logsDir: join(process.cwd(), ".brownie", "logs"),
     ...overrides,
   };
@@ -434,6 +446,7 @@ export function buildSessionSpec(
     prompt: "task\n",
     sessionTimeoutMs: undefined,
     streamPartial: false,
+    mcpConfigPath: join(testDataDir, "mcp", "session.json"),
     cwd: process.cwd(),
     events,
     meta: { agent: "monitor" },

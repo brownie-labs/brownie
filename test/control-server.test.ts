@@ -74,6 +74,10 @@ function fakeDeps() {
       read: vi.fn().mockResolvedValue("watch the pipelines"),
       write: vi.fn().mockResolvedValue(undefined),
     },
+    context: {
+      read: vi.fn().mockResolvedValue("# Workspace context"),
+      write: vi.fn().mockResolvedValue(undefined),
+    },
     waker: { notify: vi.fn() },
   };
 }
@@ -477,6 +481,42 @@ describe("startControlServer", () => {
     });
     expect(written).toEqual({ ok: true });
     expect(deps.prompts.write).toHaveBeenCalledWith("executor", content);
+  });
+
+  it("reads and writes the context file", async () => {
+    const { deps } = await startServer();
+
+    const read = await sendControlRequest(socketPath, { cmd: "context.get" });
+    const written = await sendControlRequest(socketPath, {
+      cmd: "context.set",
+      content: "# Workspace context\n\nacme-shop",
+    });
+
+    expect(read).toEqual({ ok: true, data: { content: "# Workspace context" } });
+    expect(written).toEqual({ ok: true });
+    expect(deps.context.write).toHaveBeenCalledWith("# Workspace context\n\nacme-shop");
+  });
+
+  it("clears the context file with an empty string", async () => {
+    const { deps } = await startServer();
+
+    const response = await sendControlRequest(socketPath, {
+      cmd: "context.set",
+      content: "",
+    });
+
+    expect(response).toEqual({ ok: true });
+    expect(deps.context.write).toHaveBeenCalledWith("");
+  });
+
+  it("reports an absent context file as an empty context", async () => {
+    const fakes = fakeDeps();
+    fakes.context.read.mockResolvedValue("");
+    await startServer({ fakes });
+
+    const response = await sendControlRequest(socketPath, { cmd: "context.get" });
+
+    expect(response).toEqual({ ok: true, data: { content: "" } });
   });
 
   it("explains a missing prompt file", async () => {

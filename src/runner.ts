@@ -17,7 +17,7 @@ export interface SessionSpec {
   prompt: string;
   sessionTimeoutMs?: number | undefined;
   streamPartial: boolean;
-  mcpConfig?: string | undefined;
+  mcpConfigPath: string;
   jsonSchema?: string | undefined;
   cwd: string;
   childEnv?: NodeJS.ProcessEnv | undefined;
@@ -47,7 +47,7 @@ export async function runSession(
     "bypassPermissions",
   ];
   if (spec.streamPartial) args.push("--include-partial-messages");
-  if (spec.mcpConfig) args.push("--mcp-config", spec.mcpConfig);
+  args.push("--mcp-config", spec.mcpConfigPath, "--strict-mcp-config");
   if (spec.jsonSchema) args.push("--json-schema", spec.jsonSchema);
 
   const child = spawn(spec.command, args, {

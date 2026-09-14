@@ -24,9 +24,12 @@ describe("projectPaths", () => {
       promptsDir: join(brownieDir, "prompts"),
       monitorPromptFile: join(brownieDir, "prompts", "monitor.prompt.md"),
       executorPromptFile: join(brownieDir, "prompts", "executor.prompt.md"),
+      contextFile: join(brownieDir, "prompts", "context.md"),
       dataDir: join(brownieDir, "data"),
       tasksFile: join(brownieDir, "data", "tasks.json"),
       memoryDbFile: join(brownieDir, "data", "memory.db"),
+      mcpDir: join(brownieDir, "data", "mcp"),
+      playwrightOutputDir: join(brownieDir, "data", "playwright"),
       logsDir: join(brownieDir, "logs"),
       gitignoreFile: join(brownieDir, ".gitignore"),
     });
