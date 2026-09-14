@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { detectAuthFailure } from "../auth-gate.js";
 import type { LoopGates } from "../gates.js";
+import { writeMcpConfig } from "../mcp-config.js";
 import { runSession } from "../runner.js";
 import type { SessionEventSink } from "../session-events.js";
 import type { SummaryOutcome } from "../status.js";
@@ -33,6 +34,8 @@ export interface SessionSummarizerDeps {
   summarizer: SummarizerConfig;
   streamPartial: boolean;
   cwd: string;
+  dataDir: string;
+  playwrightOutputDir: string;
   store: MemoryStore;
   resolveLogPath(sessionId: string): Promise<string | undefined>;
   reporter: SummaryReporter;
@@ -75,7 +78,17 @@ export class SessionSummarizer implements TaskSummarizer {
         return;
       }
 
-      const systemPrompt = await readFile(summarizer.systemPromptPath, "utf8");
+      const [systemPrompt, mcpConfigPath] = await Promise.all([
+        readFile(summarizer.systemPromptPath, "utf8"),
+        writeMcpConfig(this.deps.dataDir, {
+          role: "summarizer",
+          servers: {},
+          selected: [],
+          browser: false,
+          memoryDbPath: null,
+          playwrightOutputDir: this.deps.playwrightOutputDir,
+        }),
+      ]);
       const sessionResult = await runSession(
         {
           command: this.deps.command,
@@ -90,6 +103,7 @@ export class SessionSummarizer implements TaskSummarizer {
           }),
           sessionTimeoutMs: summarizer.sessionTimeoutMs,
           streamPartial: this.deps.streamPartial,
+          mcpConfigPath,
           jsonSchema: SUMMARY_JSON_SCHEMA,
           cwd: this.deps.cwd,
           events: reporter.session,

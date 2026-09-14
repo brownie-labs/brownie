@@ -39,6 +39,10 @@ Every section is optional — `{}` is a valid file. A typical setup:
 | `summarizer.effort`           | `medium`         | summarizer effort                                       |
 | `summarizer.sessionTimeoutMs` | `300000` (5 min) | summarizer session timeout                              |
 | `streamPartial`               | `true`           | stream partial responses to the dashboard               |
+| `mcpServers`                  | _(none)_         | MCP servers available to the agents, keyed by name      |
+| `monitor.mcpServers`          | _(none)_         | names from `mcpServers` the monitor gets                |
+| `executor.mcpServers`         | _(none)_         | names from `mcpServers` the executor gets               |
+| `browser`                     | `false`          | give both agents the bundled Playwright browser         |
 
 ## Changing settings at runtime
 
@@ -54,6 +58,33 @@ The dashboard exposes the everyday settings as slash commands — each one valid
 | `/config`                   | shows all current values                                 |
 
 The remaining keys (`streamPartial`, `sessionTimeoutMs`, `maxTaskAttempts`, `retryDelayMs`) are edited by hand and picked up on the next start — or patched live from a shell with `brownie settings patch` ([docs/control.md](control.md)). The agent prompts are also editable in place — `/prompt <monitor|executor>` opens them in the dashboard editor ([docs/prompts.md](prompts.md)).
+
+## MCP servers
+
+Every session runs with `--strict-mcp-config` against a file brownie writes itself, so an agent sees exactly the servers listed here — never what a `.mcp.json` in the repository, `~/.claude.json` or `.claude/settings.json` happens to configure. Declare a server once under `mcpServers`, then hand it to an agent by name:
+
+```json
+{
+  "mcpServers": {
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp",
+      "headers": { "Authorization": "Bearer ${SENTRY_TOKEN}" }
+    },
+    "linter": { "command": "run-linter", "args": ["--stdio"] }
+  },
+  "executor": { "mcpServers": ["sentry", "linter"] },
+  "monitor": { "mcpServers": ["sentry"] },
+  "browser": true
+}
+```
+
+- An entry is a Claude Code MCP server verbatim: `command`/`args`/`env` for stdio, `type` (`http` or `sse`)/`url`/`headers` for a remote one. Claude Code expands `${VAR}` and `${VAR:-default}` in all of them, so secrets stay in the environment instead of in `settings.json`.
+- Names are lowercase (`a-z0-9`, `_` and `-` inside); `memory` and `playwright` are reserved. A name in an agent list that is not in `mcpServers` fails validation at that index (`executor.mcpServers.0`).
+- The executor always gets the `memory` server on top of its list; the monitor never does, and the summarizer gets no servers at all.
+- `browser: true` adds the `playwright` server (headless Chromium, an isolated profile, screenshots into `.brownie/data/playwright`) to the monitor and the executor. It needs `playwright-mcp` on `PATH` — the `-browser` image ([docs/deployment.md](deployment.md#prebuilt-images)) — and preflight refuses to start without it.
+- The composed file lives in `.brownie/data/mcp/<agent>.json`, rewritten before every session, so a change takes effect on the next session without a restart.
+- `brownie settings patch` follows the same rules as everywhere else: an array is replaced whole (`{"executor":{"mcpServers":["a"]}}`), and `null` deletes a key (`{"mcpServers":{"linter":null}}` drops that server).
 
 ## Working hours
 
@@ -82,7 +113,9 @@ your-project/
     │   └── executor.prompt.md     # who the executor is and how it works
     ├── data/
     │   ├── tasks.json             # task queue (atomic writes)
-    │   └── memory.db              # long-term memory (SQLite + FTS5)
+    │   ├── memory.db              # long-term memory (SQLite + FTS5)
+    │   ├── mcp/                   # MCP configuration, one file per agent session
+    │   └── playwright/            # browser screenshots and downloads (browser: true)
     └── logs/                      # session logs: <agent>/<day>/<hour>_<sessionId>.log
 ```
 

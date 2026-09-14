@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defineCommand } from "citty";
@@ -6,25 +5,6 @@ import { z } from "zod";
 import { MemoryStore, type TaskSummaryRecord } from "./store.js";
 
 export type MemoryReader = Pick<MemoryStore, "search" | "get">;
-
-export function buildMcpConfig(
-  dbPath: string,
-  entry: string = process.argv[1] ?? "",
-): string {
-  let resolved: string;
-  try {
-    resolved = realpathSync(entry);
-  } catch {
-    resolved = entry;
-  }
-  const nodeFlags = ["--disable-warning=ExperimentalWarning"];
-  const args = resolved.endsWith(".ts")
-    ? [...nodeFlags, "--import", "tsx", resolved, "mcp", "serve", "--db", dbPath]
-    : [...nodeFlags, resolved, "mcp", "serve", "--db", dbPath];
-  return JSON.stringify({
-    mcpServers: { memory: { command: process.execPath, args } },
-  });
-}
 
 function formatRecord(record: TaskSummaryRecord): string {
   const status = record.ok ? "success" : "failure";

@@ -147,6 +147,65 @@ describe("patchSettings", () => {
     ).rejects.toThrow(/montior/);
   });
 
+  it("accepts an MCP catalogue, per-agent lists and the browser switch", async () => {
+    await writeFile(file, "{}\n", "utf8");
+    const settings = await patchSettings(file, (raw) => {
+      mergeSettingsPatch(raw, {
+        browser: true,
+        mcpServers: { linter: { command: "run-linter" } },
+        executor: { mcpServers: ["linter"] },
+      });
+    });
+
+    expect(settings.browser).toBe(true);
+    expect(settings.executor.mcpServers).toEqual(["linter"]);
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+      browser: true,
+      mcpServers: { linter: { command: "run-linter" } },
+      executor: { mcpServers: ["linter"] },
+    });
+  });
+
+  it("replaces an agent list wholesale and deletes a server with null", async () => {
+    await writeFile(
+      file,
+      JSON.stringify({
+        mcpServers: { linter: { command: "run-linter" }, docs: { command: "run-docs" } },
+        executor: { mcpServers: ["linter", "docs"] },
+      }),
+      "utf8",
+    );
+    const settings = await patchSettings(file, (raw) => {
+      mergeSettingsPatch(raw, {
+        mcpServers: { docs: null },
+        executor: { mcpServers: ["linter"] },
+      });
+    });
+
+    expect(Object.keys(settings.mcpServers)).toEqual(["linter"]);
+    expect(settings.executor.mcpServers).toEqual(["linter"]);
+  });
+
+  it("rejects a reserved server name before writing anything", async () => {
+    const original = "{}\n";
+    await writeFile(file, original, "utf8");
+    await expect(
+      patchSettings(file, (raw) => {
+        mergeSettingsPatch(raw, { mcpServers: { playwright: { command: "x" } } });
+      }),
+    ).rejects.toThrow(/mcpServers\.playwright: "playwright" is reserved/);
+    expect(await readFile(file, "utf8")).toBe(original);
+  });
+
+  it("rejects an unknown server name in an agent list, naming the index", async () => {
+    await writeFile(file, "{}\n", "utf8");
+    await expect(
+      patchSettings(file, (raw) => {
+        mergeSettingsPatch(raw, { executor: { mcpServers: ["missing"] } });
+      }),
+    ).rejects.toThrow(/executor\.mcpServers\.0: unknown MCP server "missing"/);
+  });
+
   it("leaves no temporary file behind", async () => {
     await writeFile(file, "{}\n", "utf8");
     await patchSettings(file, (raw) => {

@@ -194,6 +194,8 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     summarizer: config.summarizer,
     streamPartial: config.streamPartial,
     cwd: config.cwd,
+    dataDir: config.dataDir,
+    playwrightOutputDir: config.playwrightOutputDir,
     store: memory,
     resolveLogPath: async (sessionId) => {
       await executorLog.flush();

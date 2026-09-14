@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopGates } from "../../src/gates.js";
@@ -74,6 +75,8 @@ describe("SessionSummarizer", () => {
       summarizer: buildSummarizerConfig({ sessionTimeoutMs: 60_000 }),
       streamPartial: false,
       cwd: "/workspace",
+      dataDir: dir,
+      playwrightOutputDir: join(dir, "playwright"),
       store,
       resolveLogPath,
       reporter: spy.reporter,
@@ -113,7 +116,7 @@ describe("SessionSummarizer", () => {
       systemPrompt: string;
       prompt: string;
       sessionTimeoutMs: number;
-      mcpConfig?: string;
+      mcpConfigPath: string;
       jsonSchema: string;
       events: unknown;
     };
@@ -123,7 +126,10 @@ describe("SessionSummarizer", () => {
     expect(spec.prompt).toContain("ID: redmine-1");
     expect(spec.prompt).toContain(logPath);
     expect(spec.sessionTimeoutMs).toBe(60_000);
-    expect(spec.mcpConfig).toBeUndefined();
+    expect(spec.mcpConfigPath).toBe(join(dir, "mcp", "summarizer.json"));
+    expect(JSON.parse(readFileSync(spec.mcpConfigPath, "utf8"))).toEqual({
+      mcpServers: {},
+    });
     expect(spec.jsonSchema).toContain('"headline"');
     expect(spec.events).toBe(spy.reporter.session);
 

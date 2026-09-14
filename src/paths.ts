@@ -9,6 +9,10 @@ export const BROWNIE_DIR_NAME = ".brownie";
 
 export const FALLBACK_PACKAGE_NAME = "@brownie-labs/brownie";
 
+export const MCP_DIR_NAME = "mcp";
+
+export const PLAYWRIGHT_DIR_NAME = "playwright";
+
 export interface ProjectPaths {
   projectDir: string;
   brownieDir: string;
@@ -19,6 +23,8 @@ export interface ProjectPaths {
   dataDir: string;
   tasksFile: string;
   memoryDbFile: string;
+  mcpDir: string;
+  playwrightOutputDir: string;
   logsDir: string;
   gitignoreFile: string;
 }
@@ -37,6 +43,8 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
     dataDir,
     tasksFile: join(dataDir, "tasks.json"),
     memoryDbFile: join(dataDir, "memory.db"),
+    mcpDir: join(dataDir, MCP_DIR_NAME),
+    playwrightOutputDir: join(dataDir, PLAYWRIGHT_DIR_NAME),
     logsDir: join(brownieDir, "logs"),
     gitignoreFile: join(brownieDir, ".gitignore"),
   };

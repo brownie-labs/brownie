@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Your own MCP servers in `.brownie/settings.json`: declare them once under `mcpServers` (the Claude Code entry format — `command`/`args`/`env` for stdio, `type`/`url`/`headers` for `http` and `sse`, with `${VAR}` expansion so secrets stay in the environment), then hand each agent the ones it needs through `monitor.mcpServers` and `executor.mcpServers`. A name no server declares, or one of the reserved `memory` and `playwright`, fails validation at the offending path. The executor still gets the memory server on top of its list, the summarizer still gets none, and a change applies to the next session without a restart ([docs/configuration.md](docs/configuration.md#mcp-servers)).
+- `browser: true` gives the monitor and the executor a browser: the bundled `playwright-mcp` runs headless with an isolated profile and writes screenshots and downloads to `.brownie/data/playwright` instead of into your repository. It needs the `-browser` image, and preflight says so at boot rather than letting the first session fail on a missing tool.
+- The reference image carries the Docker buildx plugin next to the compose plugin, so an agent can run `docker buildx build` without installing it first.
+
+### Changed
+
+- Agent sessions no longer inherit MCP configuration from outside brownie. Every session gets `--mcp-config` pointing at a file brownie composes for that agent (`.brownie/data/mcp/<agent>.json`) plus `--strict-mcp-config`, so a repository's `.mcp.json`, `~/.claude.json` and `.claude/settings.json` are ignored — a checkout the agents work on is untrusted input and can no longer slip a server into a session. If you registered Playwright in `.mcp.json`, set `"browser": true` instead. The configuration also stopped travelling in `argv`, where any process in the container could read it with `ps`.
+
 ## [0.5.1] - 2026-09-14
 
 ### Changed
