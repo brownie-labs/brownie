@@ -1,43 +1,112 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { defineCommand } from "citty";
+import { parseSettings } from "./config.js";
 import { runConfigure } from "./configure.js";
 import { logger } from "./logger.js";
 import { projectPaths } from "./paths.js";
-import { writeProjectScaffold } from "./scaffold.js";
+import {
+  writeProjectScaffold,
+  type ProjectPrompts,
+  type ScaffoldExtras,
+} from "./scaffold.js";
 
 export interface InitOptions {
   monitorPromptPath?: string | undefined;
   executorPromptPath?: string | undefined;
+  settingsPath?: string | undefined;
+  contextPath?: string | undefined;
   force?: boolean | undefined;
   projectDir?: string | undefined;
   interactive?: boolean | undefined;
 }
 
-async function readPromptFile(path: string, label: string): Promise<string | null> {
-  let raw: string;
+interface InitInputs {
+  prompts: ProjectPrompts | null;
+  extras: ScaffoldExtras;
+}
+
+class InvalidInputError extends Error {}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+async function readInputFile(path: string, label: string): Promise<string> {
   try {
-    raw = await readFile(path, "utf8");
+    return await readFile(path, "utf8");
   } catch (err) {
-    logger.error(
-      `Cannot read ${label} file ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    throw new InvalidInputError(
+      `Cannot read ${label} file ${path}: ${describeError(err)}`,
     );
-    return null;
   }
-  const content = raw.trimEnd();
+}
+
+async function readPromptFile(path: string, label: string): Promise<string> {
+  const content = (await readInputFile(path, label)).trimEnd();
   if (content === "") {
-    logger.error(`The ${label} file ${path} is empty.`);
-    return null;
+    throw new InvalidInputError(`The ${label} file ${path} is empty.`);
   }
   return content;
 }
 
+async function readPrompts(
+  monitorPromptPath: string,
+  executorPromptPath: string,
+): Promise<ProjectPrompts> {
+  const [monitorPrompt, executorPrompt] = await Promise.all([
+    readPromptFile(monitorPromptPath, "monitor prompt"),
+    readPromptFile(executorPromptPath, "executor prompt"),
+  ]);
+  return { monitorPrompt, executorPrompt };
+}
+
+async function readSettingsDocument(path: string): Promise<unknown> {
+  const raw = await readInputFile(path, "settings");
+  let document: unknown;
+  try {
+    document = JSON.parse(raw);
+  } catch (err) {
+    throw new InvalidInputError(`Invalid JSON in ${path}: ${describeError(err)}`);
+  }
+  try {
+    parseSettings(document);
+  } catch (err) {
+    throw new InvalidInputError(describeError(err));
+  }
+  return document;
+}
+
+async function readContextFile(path: string): Promise<string> {
+  return (await readInputFile(path, "context")).trimEnd();
+}
+
+async function readInitInputs(options: InitOptions): Promise<InitInputs> {
+  const { monitorPromptPath, executorPromptPath, settingsPath, contextPath } = options;
+  const [prompts, settings, context] = await Promise.all([
+    monitorPromptPath === undefined || executorPromptPath === undefined
+      ? null
+      : readPrompts(monitorPromptPath, executorPromptPath),
+    settingsPath === undefined ? undefined : readSettingsDocument(settingsPath),
+    contextPath === undefined ? undefined : readContextFile(contextPath),
+  ]);
+  return {
+    prompts,
+    extras: {
+      ...(settingsPath === undefined ? {} : { settings }),
+      ...(context === undefined ? {} : { context }),
+    },
+  };
+}
+
 export async function runInit(options: InitOptions = {}): Promise<void> {
-  const { monitorPromptPath, executorPromptPath } = options;
+  const { monitorPromptPath, executorPromptPath, settingsPath, contextPath } = options;
   const interactive =
     options.interactive ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const hasPromptFlag =
+    monitorPromptPath !== undefined || executorPromptPath !== undefined;
 
-  if (monitorPromptPath === undefined && executorPromptPath === undefined) {
+  if (!hasPromptFlag && settingsPath === undefined && contextPath === undefined) {
     if (!interactive) {
       logger.error(
         "No prompt files given — pass --monitor-prompt and --executor-prompt, " +
@@ -50,7 +119,10 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     return;
   }
 
-  if (monitorPromptPath === undefined || executorPromptPath === undefined) {
+  if (
+    hasPromptFlag &&
+    (monitorPromptPath === undefined || executorPromptPath === undefined)
+  ) {
     logger.error("Both --monitor-prompt and --executor-prompt are required together.");
     process.exitCode = 1;
     return;
@@ -59,9 +131,12 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
   const paths = projectPaths(options.projectDir);
 
   if (options.force !== true) {
-    const existing = [paths.monitorPromptFile, paths.executorPromptFile].filter((path) =>
-      existsSync(path),
-    );
+    const targets = [
+      ...(hasPromptFlag ? [paths.monitorPromptFile, paths.executorPromptFile] : []),
+      ...(settingsPath === undefined ? [] : [paths.settingsFile]),
+      ...(contextPath === undefined ? [] : [paths.contextFile]),
+    ];
+    const existing = targets.filter((path) => existsSync(path));
     if (existing.length > 0) {
       const details = existing.map((path) => `  - ${path}`).join("\n");
       logger.error(`Refusing to overwrite existing files (use --force):\n${details}`);
@@ -70,23 +145,28 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
   }
 
-  const [monitorPrompt, executorPrompt] = await Promise.all([
-    readPromptFile(monitorPromptPath, "monitor prompt"),
-    readPromptFile(executorPromptPath, "executor prompt"),
-  ]);
-  if (monitorPrompt === null || executorPrompt === null) {
+  let inputs: InitInputs;
+  try {
+    inputs = await readInitInputs(options);
+  } catch (err) {
+    if (!(err instanceof InvalidInputError)) throw err;
+    logger.error(err.message);
     process.exitCode = 1;
     return;
   }
 
-  const { createdSettings } = await writeProjectScaffold(paths, {
-    monitorPrompt,
-    executorPrompt,
-  });
+  const { wroteSettings } = await writeProjectScaffold(
+    paths,
+    inputs.prompts,
+    inputs.extras,
+  );
 
-  if (createdSettings) logger.success(`Saved ${paths.settingsFile}`);
-  logger.success(`Saved ${paths.monitorPromptFile}`);
-  logger.success(`Saved ${paths.executorPromptFile}`);
+  if (wroteSettings) logger.success(`Saved ${paths.settingsFile}`);
+  if (inputs.prompts !== null) {
+    logger.success(`Saved ${paths.monitorPromptFile}`);
+    logger.success(`Saved ${paths.executorPromptFile}`);
+  }
+  if (inputs.extras.context !== undefined) logger.success(`Saved ${paths.contextFile}`);
   logger.info("Run brownie in the project directory to start the worker.");
 }
 
@@ -95,7 +175,8 @@ export const initCommand = defineCommand({
     name: "init",
     description:
       "Set up .brownie/ for the current project — non-interactive with " +
-      "--monitor-prompt/--executor-prompt, or via the wizard in a terminal.",
+      "--monitor-prompt/--executor-prompt/--settings/--context, or via the " +
+      "wizard in a terminal.",
   },
   args: {
     "monitor-prompt": {
@@ -106,15 +187,25 @@ export const initCommand = defineCommand({
       type: "string",
       description: "Path to a markdown file with the executor prompt",
     },
+    settings: {
+      type: "string",
+      description: "Path to a JSON file to write as .brownie/settings.json",
+    },
+    context: {
+      type: "string",
+      description: "Path to a markdown file with the workspace context",
+    },
     force: {
       type: "boolean",
-      description: "Overwrite existing prompt files",
+      description: "Overwrite every file the invocation writes",
     },
   },
   run: ({ args }) =>
     runInit({
       monitorPromptPath: args["monitor-prompt"],
       executorPromptPath: args["executor-prompt"],
+      settingsPath: args.settings,
+      contextPath: args.context,
       force: args.force,
     }),
 });
