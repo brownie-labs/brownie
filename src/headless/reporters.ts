@@ -1,5 +1,5 @@
 import type { SummaryReporter } from "../memory/summarizer.js";
-import { describeToolUse, truncate, type SessionEventSink } from "../session-events.js";
+import { describeToolUse, type SessionEventSink } from "../session-events.js";
 import type { ExecutorReporter, MonitorReporter } from "../status.js";
 import { compactFields, type HeadlessAgent, type HeadlessLogEmitter } from "./events.js";
 
@@ -58,7 +58,7 @@ function sessionSink(
             level: "info",
             agent,
             event: "session.text",
-            fields: { text: truncate(event.text) },
+            fields: { text: event.text },
           });
         }
         return;
@@ -79,7 +79,7 @@ function sessionSink(
             level: "warn",
             agent,
             event: "session.toolError",
-            fields: { output: truncate(event.lines.join(" ")) },
+            fields: { output: event.lines.join("\n") },
           });
         }
         return;

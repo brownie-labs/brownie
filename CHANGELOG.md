@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The JSON log carries the whole of what an agent said. `session.text` and `session.toolError` were cut to 500 characters with their whitespace flattened before they ever left the worker, which is right for a terminal line and wrong for a log another program reads: a supervisor storing the stream had no way to recover the rest. The cut moved to where it belongs, the pretty formatter, so `--log-format pretty` looks as it always did while `--log-format json` keeps the text intact, newlines and all. Tool output on `session.toolError` joins its lines with newlines rather than spaces; it stays bounded by the existing twenty lines of three hundred characters.
+
 ## [0.5.0] - 2026-09-11
 
 ### Added

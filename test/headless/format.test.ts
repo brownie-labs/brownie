@@ -110,3 +110,23 @@ describe("formatPrettyLine", () => {
     expect(line).toBe("09:05:03 worker.stopped");
   });
 });
+
+describe("formatPrettyLine, what a terminal can take", () => {
+  it("cuts a value too long for a line, and says it cut it", () => {
+    const line = formatPrettyLine(
+      event({ event: "session.text", fields: { text: "a".repeat(900) } }),
+      AT,
+    );
+
+    expect(line).toContain("\u2026");
+    expect(line.length).toBeLessThan(600);
+  });
+
+  it("leaves the json line whole, because nothing reads it by eye", () => {
+    const text = "a".repeat(900);
+
+    const line = formatJsonLine(event({ event: "session.text", fields: { text } }), AT);
+
+    expect(JSON.parse(line)).toMatchObject({ text });
+  });
+});

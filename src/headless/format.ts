@@ -1,3 +1,4 @@
+import { truncate } from "../session-events.js";
 import { formatDuration } from "../timing.js";
 import type { HeadlessLogEvent } from "./events.js";
 
@@ -25,10 +26,15 @@ function pad2(value: number): string {
   return value.toString().padStart(2, "0");
 }
 
+const PRETTY_VALUE_MAX = 500;
+
 function renderValue(key: string, value: unknown): string {
   if (key === "durationMs" && typeof value === "number") return formatDuration(value);
   if (key === "costUsd" && typeof value === "number") return `$${value.toFixed(4)}`;
-  if (typeof value === "string") return /\s/.test(value) ? JSON.stringify(value) : value;
+  if (typeof value === "string") {
+    const line = truncate(value, PRETTY_VALUE_MAX);
+    return /\s/.test(line) ? JSON.stringify(line) : line;
+  }
   return JSON.stringify(value);
 }
 

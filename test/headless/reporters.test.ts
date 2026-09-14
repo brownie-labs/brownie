@@ -306,6 +306,35 @@ describe("createHeadlessReporters", () => {
     expect(events).toEqual([]);
   });
 
+  it("keeps the whole thought an agent had, however long it ran", () => {
+    const { events, executor } = collect({ verbose: true });
+    const thought = `${"a".repeat(900)}\nsecond paragraph`;
+
+    executor.session({ type: "text", text: thought });
+
+    expect(events).toEqual([
+      {
+        level: "info",
+        agent: "executor",
+        event: "session.text",
+        fields: { text: thought },
+      },
+    ]);
+  });
+
+  it("keeps the lines of a failed tool apart instead of running them together", () => {
+    const { events, executor } = collect({ verbose: true });
+
+    executor.session({
+      type: "toolResult",
+      isError: true,
+      lines: ["first", "second"],
+      dropped: 0,
+    });
+
+    expect(events[0]?.fields).toEqual({ output: "first\nsecond" });
+  });
+
   it("logs session text, tool calls and failed tool results when verbose", () => {
     const { events, executor } = collect({ verbose: true });
 
