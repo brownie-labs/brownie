@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-14
+
 ### Added
 
 - Your own MCP servers in `.brownie/settings.json`: declare them once under `mcpServers` (the Claude Code entry format — `command`/`args`/`env` for stdio, `type`/`url`/`headers` for `http` and `sse`, with `${VAR}` expansion so secrets stay in the environment), then hand each agent the ones it needs through `monitor.mcpServers` and `executor.mcpServers`. A name no server declares, or one of the reserved `memory` and `playwright`, fails validation at the offending path. The executor still gets the memory server on top of its list, the summarizer still gets none, and a change applies to the next session without a restart ([docs/configuration.md](docs/configuration.md#mcp-servers)).
@@ -91,6 +93,8 @@ Initial release.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
 [Unreleased]: https://github.com/brownie-labs/brownie/compare/v0.5.0...HEAD
+[0.6.0]: https://github.com/brownie-labs/brownie/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/brownie-labs/brownie/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/brownie-labs/brownie/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/brownie-labs/brownie/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/brownie-labs/brownie/compare/v0.3.0...v0.3.1
