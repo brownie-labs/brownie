@@ -27,6 +27,8 @@ describe("projectPaths", () => {
       dataDir: join(brownieDir, "data"),
       tasksFile: join(brownieDir, "data", "tasks.json"),
       memoryDbFile: join(brownieDir, "data", "memory.db"),
+      mcpDir: join(brownieDir, "data", "mcp"),
+      playwrightOutputDir: join(brownieDir, "data", "playwright"),
       logsDir: join(brownieDir, "logs"),
       gitignoreFile: join(brownieDir, ".gitignore"),
     });

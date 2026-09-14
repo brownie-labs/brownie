@@ -6,12 +6,28 @@ export const MODELS = ["haiku", "sonnet", "opus", "fable"] as const;
 
 export const MODELS_WITHOUT_EFFORT: ReadonlySet<string> = new Set(["haiku"]);
 
+export interface StdioMcpServer {
+  type?: "stdio" | undefined;
+  command: string;
+  args?: string[] | undefined;
+  env?: Record<string, string> | undefined;
+}
+
+export interface HttpMcpServer {
+  type: "http" | "sse";
+  url: string;
+  headers?: Record<string, string> | undefined;
+}
+
+export type McpServer = StdioMcpServer | HttpMcpServer;
+
 export interface AgentConfig {
   model: string;
   effort: EffortLevel;
   promptPath: string;
   systemPromptPath: string;
   sessionTimeoutMs?: number | undefined;
+  mcpServers: string[];
 }
 
 export interface MonitorSchedule {
@@ -28,10 +44,9 @@ export interface MonitorConfig extends AgentConfig {
 export interface ExecutorConfig extends AgentConfig {
   maxTaskAttempts: number;
   retryDelayMs: number;
-  mcpConfig: string;
 }
 
-export type SummarizerConfig = Omit<AgentConfig, "promptPath">;
+export type SummarizerConfig = Omit<AgentConfig, "promptPath" | "mcpServers">;
 
 export interface WorkerConfig {
   command: string;
@@ -39,10 +54,14 @@ export interface WorkerConfig {
   executor: ExecutorConfig;
   summarizer: SummarizerConfig;
   streamPartial: boolean;
+  browser: boolean;
+  mcpServers: Record<string, McpServer>;
   cwd: string;
   settingsFilePath: string;
   tasksFilePath: string;
   memoryDbPath: string;
+  dataDir: string;
+  playwrightOutputDir: string;
   logsDir: string;
 }
 

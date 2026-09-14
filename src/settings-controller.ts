@@ -38,15 +38,19 @@ export function applySettings(config: WorkerConfig, settings: Settings): void {
     settings.monitor.activeDays,
   );
   config.monitor.sessionTimeoutMs = settings.monitor.sessionTimeoutMs;
+  config.monitor.mcpServers = settings.monitor.mcpServers;
   config.executor.model = settings.executor.model;
   config.executor.effort = settings.executor.effort;
   config.executor.sessionTimeoutMs = settings.executor.sessionTimeoutMs;
   config.executor.maxTaskAttempts = settings.executor.maxTaskAttempts;
   config.executor.retryDelayMs = settings.executor.retryDelayMs;
+  config.executor.mcpServers = settings.executor.mcpServers;
   config.summarizer.model = settings.summarizer.model;
   config.summarizer.effort = settings.summarizer.effort;
   config.summarizer.sessionTimeoutMs = settings.summarizer.sessionTimeoutMs;
   config.streamPartial = settings.streamPartial;
+  config.browser = settings.browser;
+  config.mcpServers = settings.mcpServers;
 }
 
 export interface SettingsController {

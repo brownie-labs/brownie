@@ -20,6 +20,10 @@ function timeout(ms: number | undefined): string {
   return ms === undefined ? "none" : formatInterval(ms);
 }
 
+function serverList(names: readonly string[]): string {
+  return names.length === 0 ? "none" : names.join(", ");
+}
+
 function buildLines(config: WorkerConfig): ConfigLine[] {
   return [
     { kind: "title", text: "Monitor" },
@@ -40,6 +44,11 @@ function buildLines(config: WorkerConfig): ConfigLine[] {
       label: "session timeout",
       value: timeout(config.monitor.sessionTimeoutMs),
     },
+    {
+      kind: "entry",
+      label: "mcp servers",
+      value: serverList(config.monitor.mcpServers),
+    },
     { kind: "title", text: "Executor" },
     { kind: "entry", label: "model", value: config.executor.model },
     { kind: "entry", label: "effort", value: config.executor.effort },
@@ -58,6 +67,11 @@ function buildLines(config: WorkerConfig): ConfigLine[] {
       label: "retry delay",
       value: formatInterval(config.executor.retryDelayMs),
     },
+    {
+      kind: "entry",
+      label: "mcp servers",
+      value: serverList(config.executor.mcpServers),
+    },
     { kind: "title", text: "Summarizer" },
     { kind: "entry", label: "model", value: config.summarizer.model },
     { kind: "entry", label: "effort", value: config.summarizer.effort },
@@ -71,6 +85,12 @@ function buildLines(config: WorkerConfig): ConfigLine[] {
       kind: "entry",
       label: "stream partial",
       value: config.streamPartial ? "on" : "off",
+    },
+    { kind: "entry", label: "browser", value: config.browser ? "on" : "off" },
+    {
+      kind: "entry",
+      label: "mcp servers",
+      value: serverList(Object.keys(config.mcpServers)),
     },
     { kind: "entry", label: "settings file", value: SETTINGS_PATH_LABEL },
   ];

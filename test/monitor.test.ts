@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskStore } from "../src/tasks.js";
 import type { SessionResult, Task } from "../src/types.js";
@@ -15,9 +16,14 @@ import {
 const mocks = vi.hoisted(() => ({
   runSession: vi.fn(),
   readFile: vi.fn(),
+  writeMcpConfig: vi.fn(),
 }));
 
 vi.mock("../src/runner.js", () => ({ runSession: mocks.runSession }));
+vi.mock("../src/mcp-config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/mcp-config.js")>()),
+  writeMcpConfig: mocks.writeMcpConfig,
+}));
 vi.mock("node:fs/promises", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs/promises")>()),
   readFile: mocks.readFile,
@@ -57,6 +63,9 @@ describe("runMonitorLoop", () => {
     mocks.readFile.mockImplementation((path: string) =>
       Promise.resolve(path.includes("system") ? "system\n" : "prompt\n"),
     );
+    mocks.writeMcpConfig.mockImplementation((dataDir: string, input: { role: string }) =>
+      Promise.resolve(join(dataDir, "mcp", `${input.role}.json`)),
+    );
   });
 
   afterEach(() => {
@@ -94,6 +103,7 @@ describe("runMonitorLoop", () => {
       prompt: string;
       model: string;
       effort: string;
+      mcpConfigPath: string;
       jsonSchema: string;
       events: unknown;
     };
@@ -101,8 +111,44 @@ describe("runMonitorLoop", () => {
     expect(spec.prompt).toBe("prompt\n");
     expect(spec.model).toBe("haiku");
     expect(spec.effort).toBe("medium");
+    expect(spec.mcpConfigPath).toBe(join(config.dataDir, "mcp", "monitor.json"));
     expect(spec.jsonSchema).toBe(TASK_REPORT_JSON_SCHEMA);
     expect(spec.events).toBe(spy.reporter.session);
+  });
+
+  it("composes the monitor MCP config from the live settings and never with memory", async () => {
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const controller = new AbortController();
+    const base = buildConfig();
+    const config = buildConfig({
+      browser: true,
+      mcpServers: { linter: { command: "run-linter" } },
+      monitor: { ...base.monitor, mcpServers: ["linter"] },
+    });
+
+    const promise = runMonitorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      noopController(),
+      buildGates(),
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+
+    expect(mocks.writeMcpConfig).toHaveBeenCalledWith(config.dataDir, {
+      role: "monitor",
+      servers: config.mcpServers,
+      selected: ["linter"],
+      browser: true,
+      memoryDbPath: null,
+      playwrightOutputDir: config.playwrightOutputDir,
+    });
   });
 
   it("adds tasks from the report, reports the cycle result and wakes the executor", async () => {

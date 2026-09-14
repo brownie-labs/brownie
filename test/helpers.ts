@@ -360,6 +360,8 @@ export function authFailureResult(overrides: Partial<SessionResult> = {}): Sessi
   };
 }
 
+export const testDataDir = join(tmpdir(), `brownie-test-data-${String(process.pid)}`);
+
 export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     model: "haiku",
@@ -367,6 +369,7 @@ export function buildAgentConfig(overrides: Partial<AgentConfig> = {}): AgentCon
     promptPath: "/dev/null",
     systemPromptPath: "/dev/null",
     sessionTimeoutMs: undefined,
+    mcpServers: [],
     ...overrides,
   };
 }
@@ -389,7 +392,6 @@ export function buildExecutorConfig(
     ...buildAgentConfig({ model: "opus", effort: "high" }),
     maxTaskAttempts: 3,
     retryDelayMs: 0,
-    mcpConfig: '{"mcpServers":{}}',
     ...overrides,
   };
 }
@@ -413,10 +415,14 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     executor: buildExecutorConfig(),
     summarizer: buildSummarizerConfig(),
     streamPartial: false,
+    browser: false,
+    mcpServers: {},
     cwd: process.cwd(),
     settingsFilePath: join(process.cwd(), ".brownie", "settings.json"),
     tasksFilePath: join(process.cwd(), ".brownie", "data", "tasks.json"),
     memoryDbPath: join(process.cwd(), ".brownie", "data", "memory.db"),
+    dataDir: testDataDir,
+    playwrightOutputDir: join(testDataDir, "playwright"),
     logsDir: join(process.cwd(), ".brownie", "logs"),
     ...overrides,
   };
@@ -434,6 +440,7 @@ export function buildSessionSpec(
     prompt: "task\n",
     sessionTimeoutMs: undefined,
     streamPartial: false,
+    mcpConfigPath: join(testDataDir, "mcp", "session.json"),
     cwd: process.cwd(),
     events,
     ...overrides,

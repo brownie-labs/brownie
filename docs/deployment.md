@@ -201,15 +201,13 @@ services:
     image: ghcr.io/brownie-labs/brownie:0.5
 ```
 
-The `-browser` variant is for agents that need a browser through MCP. `@playwright/mcp` is installed globally as `playwright-mcp`, preconfigured for the bundled Chromium (`PLAYWRIGHT_MCP_BROWSER=chromium`, headless because there is no display), and starts without touching the network, so point MCP at the binary rather than at `npx`. Browsers live in `/opt/playwright` (`PLAYWRIGHT_BROWSERS_PATH`), owned by `brownie`, so a project's own Playwright can add other browsers or versions next to the bundled one. Register the server in the project's `.mcp.json` and approve it for headless sessions in `.claude/settings.json` (agent sessions inherit the project's Claude Code MCP configuration):
+The `-browser` variant is for agents that need a browser through MCP. `@playwright/mcp` is installed globally as `playwright-mcp`, preconfigured for the bundled Chromium (`PLAYWRIGHT_MCP_BROWSER=chromium`, headless because there is no display), and starts without touching the network. Browsers live in `/opt/playwright` (`PLAYWRIGHT_BROWSERS_PATH`), owned by `brownie`, so a project's own Playwright can add other browsers or versions next to the bundled one. Turn it on in `.brownie/settings.json` — brownie writes the MCP configuration itself, and preflight refuses to start when the binary is missing, so the wrong image fails at boot instead of mid-session:
 
 ```json
-{ "mcpServers": { "playwright": { "command": "playwright-mcp" } } }
+{ "browser": true }
 ```
 
-```json
-{ "enabledMcpjsonServers": ["playwright"] }
-```
+Agent sessions run with `--strict-mcp-config`, so a repository's `.mcp.json` and the user's own Claude Code MCP configuration are ignored: every server an agent gets is declared in `.brownie/settings.json` ([docs/configuration.md](configuration.md#mcp-servers)).
 
 Both variants come from the same `Dockerfile`: the `runtime` stage is its default target, so a plain `docker build .` and `docker compose build` produce the default image, and `docker build --target browser .` produces the `-browser` variant locally.
 
@@ -224,7 +222,7 @@ docker compose exec brownie brownie version   # the claude line confirms what th
 
 ### What the image gives your agent
 
-The image ships **Node, Python 3 (with `pip`/`venv`), and the Docker CLI + compose plugin**, plus a developer baseline: `git`, `gh`, `jq`, `ripgrep`, `make`, `build-essential`, `curl`. It deliberately does not bundle every language — for anything else (other runtimes, databases, services) the agent starts its own containers via Docker, so you don't rebuild the image to add a toolchain.
+The image ships **Node, Python 3 (with `pip`/`venv`), and the Docker CLI + the compose and buildx plugins**, plus a developer baseline: `git`, `gh`, `jq`, `ripgrep`, `make`, `build-essential`, `curl`. It deliberately does not bundle every language — for anything else (other runtimes, databases, services) the agent starts its own containers via Docker, so you don't rebuild the image to add a toolchain.
 
 ### Docker access
 

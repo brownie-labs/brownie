@@ -175,6 +175,30 @@ describe("ensureReady", () => {
       /Preflight failed[\s\S]*interactive terminal/,
     );
   });
+
+  it("does not look for playwright-mcp while browser is off", async () => {
+    await expect(ensureReady(dirs())).resolves.toBeDefined();
+    expect(logger.success).not.toHaveBeenCalledWith(
+      expect.stringContaining("playwright-mcp"),
+    );
+  });
+
+  it("throws with an image hint when browser: true finds no playwright-mcp", async () => {
+    await seedProject(dir, { settings: { browser: true } });
+    await expect(ensureReady(dirs())).rejects.toThrow(
+      /Preflight failed[\s\S]*playwright-mcp[\s\S]*-browser image/,
+    );
+  });
+
+  it("passes when browser: true finds playwright-mcp on PATH", async () => {
+    await seedProject(dir, { settings: { browser: true } });
+    const playwright = join(binDir, "playwright-mcp");
+    await writeFile(playwright, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(playwright, 0o755);
+
+    await expect(ensureReady(dirs())).resolves.toBeDefined();
+    expect(logger.success).toHaveBeenCalledWith("Playwright MCP (playwright-mcp)");
+  });
 });
 
 describe("parseClaudeAuthStatus", () => {

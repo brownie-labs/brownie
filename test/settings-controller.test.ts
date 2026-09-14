@@ -73,11 +73,34 @@ describe("applySettings", () => {
     expect(config.streamPartial).toBe(false);
   });
 
-  it("preserves prompt paths and mcp wiring", () => {
+  it("applies the MCP catalogue, the per-agent lists and the browser switch", () => {
     const config = buildConfig();
-    const mcpConfig = config.executor.mcpConfig;
+    const monitor = config.monitor;
+    const executor = config.executor;
+    applySettings(
+      config,
+      parseSettings({
+        browser: true,
+        mcpServers: { linter: { command: "run-linter" } },
+        monitor: { mcpServers: ["linter"] },
+        executor: { mcpServers: ["linter"] },
+      }),
+    );
+    expect(config.browser).toBe(true);
+    expect(config.mcpServers).toEqual({
+      linter: { command: "run-linter", args: [], env: {} },
+    });
+    expect(monitor.mcpServers).toEqual(["linter"]);
+    expect(executor.mcpServers).toEqual(["linter"]);
+  });
+
+  it("preserves prompt paths and resets the mcp wiring to its defaults", () => {
+    const config = buildConfig({ browser: true });
+    config.executor = { ...config.executor, mcpServers: ["linter"] };
     applySettings(config, parseSettings({}));
-    expect(config.executor.mcpConfig).toBe(mcpConfig);
+    expect(config.browser).toBe(false);
+    expect(config.mcpServers).toEqual({});
+    expect(config.executor.mcpServers).toEqual([]);
     expect(config.monitor.promptPath).toBe("/dev/null");
     expect(config.monitor.systemPromptPath).toBe("/dev/null");
   });

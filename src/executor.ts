@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { detectAuthFailure } from "./auth-gate.js";
 import type { AgentController } from "./control.js";
 import type { LoopGates } from "./gates.js";
+import { writeMcpConfig } from "./mcp-config.js";
 import type { TaskSummarizer } from "./memory/summarizer.js";
 import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
@@ -68,9 +69,17 @@ export async function runExecutorLoop(
     const start = Date.now();
 
     try {
-      const [prompt, systemPrompt] = await Promise.all([
+      const [prompt, systemPrompt, mcpConfigPath] = await Promise.all([
         readFile(executor.promptPath, "utf8"),
         readFile(executor.systemPromptPath, "utf8"),
+        writeMcpConfig(config.dataDir, {
+          role: "executor",
+          servers: config.mcpServers,
+          selected: executor.mcpServers,
+          browser: config.browser,
+          memoryDbPath: config.memoryDbPath,
+          playwrightOutputDir: config.playwrightOutputDir,
+        }),
       ]);
 
       const result = await runSession(
@@ -82,7 +91,7 @@ export async function runExecutorLoop(
           prompt: composeTaskPrompt(prompt, task),
           sessionTimeoutMs: executor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
-          mcpConfig: executor.mcpConfig,
+          mcpConfigPath,
           cwd: config.cwd,
           events: reporter.session,
         },

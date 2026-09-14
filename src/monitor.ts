@@ -3,6 +3,7 @@ import { msUntilActive } from "./active-hours.js";
 import { detectAuthFailure } from "./auth-gate.js";
 import type { AgentController } from "./control.js";
 import type { LoopGates } from "./gates.js";
+import { writeMcpConfig } from "./mcp-config.js";
 import { parseTaskReport, TASK_REPORT_JSON_SCHEMA } from "./report.js";
 import { runSession } from "./runner.js";
 import type { MonitorReporter } from "./status.js";
@@ -50,9 +51,17 @@ export async function runMonitorLoop(
     reporter.cycleStarted(cycle);
 
     try {
-      const [prompt, systemPrompt] = await Promise.all([
+      const [prompt, systemPrompt, mcpConfigPath] = await Promise.all([
         readFile(monitor.promptPath, "utf8"),
         readFile(monitor.systemPromptPath, "utf8"),
+        writeMcpConfig(config.dataDir, {
+          role: "monitor",
+          servers: config.mcpServers,
+          selected: monitor.mcpServers,
+          browser: config.browser,
+          memoryDbPath: null,
+          playwrightOutputDir: config.playwrightOutputDir,
+        }),
       ]);
 
       const result = await runSession(
@@ -64,6 +73,7 @@ export async function runMonitorLoop(
           prompt,
           sessionTimeoutMs: monitor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
+          mcpConfigPath,
           jsonSchema: TASK_REPORT_JSON_SCHEMA,
           cwd: config.cwd,
           events: reporter.session,
