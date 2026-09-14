@@ -46,6 +46,7 @@ export interface SeedProjectOptions {
   settings?: object | string | false;
   monitorPrompt?: string;
   executorPrompt?: string;
+  context?: string;
 }
 
 export async function seedProject(
@@ -56,11 +57,15 @@ export async function seedProject(
     settings = {},
     monitorPrompt = "observe\n",
     executorPrompt = "execute\n",
+    context,
   } = options;
   const promptsDir = join(dir, ".brownie", "prompts");
   await mkdir(promptsDir, { recursive: true });
   await writeFile(join(promptsDir, "monitor.prompt.md"), monitorPrompt, "utf8");
   await writeFile(join(promptsDir, "executor.prompt.md"), executorPrompt, "utf8");
+  if (context !== undefined) {
+    await writeFile(join(promptsDir, "context.md"), context, "utf8");
+  }
   if (settings !== false) {
     const raw =
       typeof settings === "string" ? settings : `${JSON.stringify(settings, null, 2)}\n`;
@@ -419,6 +424,7 @@ export function buildConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig
     mcpServers: {},
     cwd: process.cwd(),
     settingsFilePath: join(process.cwd(), ".brownie", "settings.json"),
+    contextFilePath: join(process.cwd(), ".brownie", "prompts", "context.md"),
     tasksFilePath: join(process.cwd(), ".brownie", "data", "tasks.json"),
     memoryDbPath: join(process.cwd(), ".brownie", "data", "memory.db"),
     dataDir: testDataDir,

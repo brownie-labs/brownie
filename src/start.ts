@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { AuthGate } from "./auth-gate.js";
 import { loadWorkerConfig } from "./config.js";
+import { createContextFileAccess } from "./context-file.js";
 import { buildControlStatus } from "./control-protocol.js";
 import { startControlServer } from "./control-server.js";
 import { AgentController } from "./control.js";
@@ -127,6 +128,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
     monitor: config.monitor.promptPath,
     executor: config.executor.promptPath,
   });
+  const context = createContextFileAccess(config.contextFilePath);
 
   let controlServer;
   try {
@@ -138,6 +140,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
       memory,
       settings,
       prompts,
+      context,
       waker,
       buildStatus: () => {
         status.flush();
@@ -167,6 +170,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         memory,
         settings,
         prompts,
+        context,
         waker,
         requestExit: () => process.kill(process.pid, "SIGINT"),
       })

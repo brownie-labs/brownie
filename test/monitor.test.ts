@@ -61,7 +61,9 @@ describe("runMonitorLoop", () => {
     vi.clearAllMocks();
     spy = createMonitorReporterSpy();
     mocks.readFile.mockImplementation((path: string) =>
-      Promise.resolve(path.includes("system") ? "system\n" : "prompt\n"),
+      path.endsWith("context.md")
+        ? Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
+        : Promise.resolve(path.includes("system") ? "system\n" : "prompt\n"),
     );
     mocks.writeMcpConfig.mockImplementation((dataDir: string, input: { role: string }) =>
       Promise.resolve(join(dataDir, "mcp", `${input.role}.json`)),
@@ -114,6 +116,34 @@ describe("runMonitorLoop", () => {
     expect(spec.mcpConfigPath).toBe(join(config.dataDir, "mcp", "monitor.json"));
     expect(spec.jsonSchema).toBe(TASK_REPORT_JSON_SCHEMA);
     expect(spec.events).toBe(spy.reporter.session);
+  });
+
+  it("appends the context file to the prompt", async () => {
+    mocks.runSession.mockResolvedValue(ok(report()));
+    mocks.readFile.mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith("context.md") ? "# Workspace context\n" : "prompt\n"),
+    );
+    const { store } = fakeStore();
+    const controller = new AbortController();
+    const config = buildConfig();
+
+    const promise = runMonitorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      noopController(),
+      buildGates(),
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+
+    const spec = mocks.runSession.mock.calls[0]?.[0] as { prompt: string };
+    expect(mocks.readFile).toHaveBeenCalledWith(config.contextFilePath, "utf8");
+    expect(spec.prompt).toBe("prompt\n\n# Workspace context\n");
   });
 
   it("composes the monitor MCP config from the live settings and never with memory", async () => {

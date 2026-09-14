@@ -42,6 +42,10 @@ function fakePrompts() {
   return { read: vi.fn().mockResolvedValue("prompt content") };
 }
 
+function fakeContextFile() {
+  return { read: vi.fn().mockResolvedValue("context content") };
+}
+
 interface FakeContext {
   ctx: CommandContext;
   views: View[];
@@ -55,6 +59,7 @@ interface FakeContext {
   search: ReturnType<typeof vi.fn>;
   settings: ReturnType<typeof fakeSettings>;
   prompts: ReturnType<typeof fakePrompts>;
+  contextFile: ReturnType<typeof fakeContextFile>;
   notify: ReturnType<typeof vi.fn>;
   requestExit: ReturnType<typeof vi.fn>;
 }
@@ -73,6 +78,7 @@ function fakeContext(): FakeContext {
   const search = vi.fn().mockReturnValue([buildRecord(3)]);
   const settings = fakeSettings();
   const prompts = fakePrompts();
+  const contextFile = fakeContextFile();
   const notify = vi.fn();
   const requestExit = vi.fn();
   return {
@@ -87,6 +93,7 @@ function fakeContext(): FakeContext {
     search,
     settings,
     prompts,
+    contextFile,
     notify,
     requestExit,
     ctx: {
@@ -97,6 +104,7 @@ function fakeContext(): FakeContext {
       memory: { recent, search },
       settings,
       prompts,
+      context: contextFile,
       waker: { notify },
       requestExit,
       notice: (text, tone = "info") => notices.push({ text, tone }),
@@ -453,6 +461,30 @@ describe("dispatchCommand", () => {
     await dispatchCommand("/prompt executor", ctx);
     expect(notices[0]).toEqual({
       text: "ENOENT: prompt file missing",
+      tone: "error",
+    });
+  });
+
+  it("/context opens the editor view with the context file content", async () => {
+    const { ctx, views, contextFile } = fakeContext();
+    await dispatchCommand("/context", ctx);
+    expect(contextFile.read).toHaveBeenCalled();
+    expect(views[0]).toEqual({ kind: "context", content: "context content" });
+  });
+
+  it("/context opens on an empty context too", async () => {
+    const { ctx, views, contextFile } = fakeContext();
+    contextFile.read.mockResolvedValue("");
+    await dispatchCommand("/context", ctx);
+    expect(views[0]).toEqual({ kind: "context", content: "" });
+  });
+
+  it("/context surfaces read failures as error notices", async () => {
+    const { ctx, notices, contextFile } = fakeContext();
+    contextFile.read.mockRejectedValue(new Error("EACCES: context file unreadable"));
+    await dispatchCommand("/context", ctx);
+    expect(notices[0]).toEqual({
+      text: "EACCES: context file unreadable",
       tone: "error",
     });
   });

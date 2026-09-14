@@ -85,6 +85,13 @@ function fakePromptAccess() {
   };
 }
 
+function fakeContextAccess() {
+  return {
+    read: vi.fn().mockResolvedValue("the acme-shop workspace"),
+    write: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 interface Harness {
   store: WorkerStatusStore;
   props: AppProps;
@@ -97,6 +104,7 @@ interface Harness {
   search: ReturnType<typeof vi.fn>;
   settings: ReturnType<typeof fakeSettingsController>;
   prompts: ReturnType<typeof fakePromptAccess>;
+  context: ReturnType<typeof fakeContextAccess>;
   notify: ReturnType<typeof vi.fn>;
   requestExit: ReturnType<typeof vi.fn>;
 }
@@ -122,6 +130,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
   const search = vi.fn().mockReturnValue([buildRecord({ id: 2, taskId: "t-2" })]);
   const settings = fakeSettingsController();
   const prompts = fakePromptAccess();
+  const context = fakeContextAccess();
   const notify = vi.fn();
   const requestExit = vi.fn();
   return {
@@ -135,6 +144,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
     search,
     settings,
     prompts,
+    context,
     notify,
     requestExit,
     props: {
@@ -146,6 +156,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
       memory: { recent, search },
       settings,
       prompts,
+      context,
       waker: { notify },
       requestExit,
     },
@@ -1007,6 +1018,55 @@ describe("App", () => {
     await eventually(() => {
       expect(lastFrame()).toContain("disk full");
     });
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/context opens the same editor and Ctrl+D saves the context file", async () => {
+    const { store, props, context } = buildHarness();
+    const rendered = await renderApp(props);
+    const { lastFrame, stdin, unmount } = rendered;
+
+    await openEditor(
+      rendered,
+      props,
+      "/context",
+      "context file (.brownie/prompts/context.md, optional)",
+    );
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("the acme-shop workspace");
+    expect(frame).toContain("Ctrl+D: save");
+    expect(frame).not.toContain("> ");
+
+    await type(stdin, " and its CI");
+    await type(stdin, CTRL_D);
+
+    await eventually(() => {
+      expect(context.write).toHaveBeenCalledWith("the acme-shop workspace and its CI");
+    });
+    await eventually(() => {
+      expect(lastFrame()).toContain("context saved — applies from the next session");
+    });
+    expect(lastFrame()).toContain("> ");
+
+    unmount();
+    store.dispose();
+  });
+
+  it("/context closed with Esc writes nothing", async () => {
+    const { store, props, context } = buildHarness();
+    const { lastFrame, stdin, unmount } = await renderApp(props);
+
+    await submit(stdin, "/context");
+    await type(stdin, "scratch edits");
+    await type(stdin, ESCAPE);
+
+    await eventually(() => {
+      expect(lastFrame()).toContain("> ");
+    });
+    expect(context.write).not.toHaveBeenCalled();
 
     unmount();
     store.dispose();

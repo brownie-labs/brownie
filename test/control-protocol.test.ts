@@ -123,6 +123,18 @@ describe("parseControlRequest", () => {
       agent: "executor",
       content: "# Do",
     });
+    expect(accepted('{"cmd":"context.get"}')).toEqual({ cmd: "context.get" });
+    expect(accepted('{"cmd":"context.set","content":"# Workspace context"}')).toEqual({
+      cmd: "context.set",
+      content: "# Workspace context",
+    });
+  });
+
+  it("accepts an empty context, the way to clear it", () => {
+    expect(accepted('{"cmd":"context.set","content":""}')).toEqual({
+      cmd: "context.set",
+      content: "",
+    });
   });
 
   it("rejects unrecognized requests with the legacy message", () => {
@@ -159,6 +171,12 @@ describe("parseControlRequest", () => {
     expect(rejected('{"cmd":"prompt.set","agent":"monitor","content":""}')).toMatch(
       /content: must not be blank/,
     );
+    expect(rejected('{"cmd":"context.get","agent":"monitor"}')).toMatch(
+      /^Invalid context.get request: \(root\): Unrecognized key/,
+    );
+    expect(
+      rejected(`{"cmd":"context.set","content":"${"x".repeat(1_000_001)}"}`),
+    ).toMatch(/^Invalid context.set request: content: /);
     expect(rejected('{"cmd":"status","extra":1}')).toMatch(
       /^Invalid status request: \(root\): Unrecognized key/,
     );
@@ -184,6 +202,8 @@ describe("parseControlRequest", () => {
         "memory.recent",
         "prompt.get",
         "prompt.set",
+        "context.get",
+        "context.set",
       ].sort(),
     );
   });

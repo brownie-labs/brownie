@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { runMain } from "citty";
+import { contextCommand } from "./context-command.js";
 import {
   pauseCommand,
   resumeCommand,
@@ -45,6 +46,9 @@ switch (first) {
     break;
   case "prompt":
     void runMain(promptCommand, { rawArgs: rest });
+    break;
+  case "context":
+    void runMain(contextCommand, { rawArgs: rest });
     break;
   case "memory":
     void runMain(memoryCommand, { rawArgs: rest });

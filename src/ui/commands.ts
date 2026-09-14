@@ -1,3 +1,4 @@
+import type { ContextFileAccess } from "../context-file.js";
 import type { AgentController } from "../control.js";
 import type { TaskSummaryRecord } from "../memory/store.js";
 import {
@@ -27,6 +28,7 @@ export type View =
   | { kind: "help" }
   | { kind: "config" }
   | { kind: "prompt"; agent: PromptAgent; content: string }
+  | { kind: "context"; content: string }
   | {
       kind: "memory";
       query?: string | undefined;
@@ -45,6 +47,7 @@ export interface CommandContext {
   memory: MemoryReader;
   settings: SettingsController;
   prompts: Pick<PromptFileAccess, "read">;
+  context: Pick<ContextFileAccess, "read">;
   waker: Pick<Waker, "notify">;
   requestExit(): void;
   notice(text: string, tone?: NoticeTone): void;
@@ -338,6 +341,13 @@ export const COMMANDS: readonly CommandSpec[] = [
       }
       const content = await ctx.prompts.read(agent);
       ctx.setView({ kind: "prompt", agent, content });
+    },
+  },
+  {
+    name: "context",
+    summary: "view and edit the workspace context — Ctrl+D saves, Esc closes",
+    run: async (_args, ctx) => {
+      ctx.setView({ kind: "context", content: await ctx.context.read() });
     },
   },
   {

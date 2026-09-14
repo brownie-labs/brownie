@@ -58,6 +58,7 @@ export interface WorkerConfig {
   mcpServers: Record<string, McpServer>;
   cwd: string;
   settingsFilePath: string;
+  contextFilePath: string;
   tasksFilePath: string;
   memoryDbPath: string;
   dataDir: string;

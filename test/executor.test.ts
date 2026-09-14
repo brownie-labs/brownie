@@ -113,7 +113,9 @@ describe("runExecutorLoop", () => {
     spy = createExecutorReporterSpy();
     summarizerSpy = createTaskSummarizerSpy();
     mocks.readFile.mockImplementation((path: string) =>
-      Promise.resolve(path.includes("system") ? "system\n" : "identity\n"),
+      path.endsWith("context.md")
+        ? Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
+        : Promise.resolve(path.includes("system") ? "system\n" : "identity\n"),
     );
     mocks.writeMcpConfig.mockImplementation((dataDir: string, input: { role: string }) =>
       Promise.resolve(join(dataDir, "mcp", `${input.role}.json`)),
@@ -207,6 +209,42 @@ describe("runExecutorLoop", () => {
     expect(spec.mcpConfigPath).toBe(join(config.dataDir, "mcp", "executor.json"));
     expect(spec.jsonSchema).toBeUndefined();
     expect(spec.events).toBe(spy.reporter.session);
+    expect(spec.prompt).toBe(composeTaskPrompt("identity\n", task("x")));
+  });
+
+  it("puts the context file between the prompt and the task block", async () => {
+    const { store } = fakeStore([task("x")]);
+    const controller = new AbortController();
+    mocks.runSession.mockResolvedValue(ok());
+    mocks.readFile.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("context.md") ? "# Workspace context\n" : "identity\n",
+      ),
+    );
+    const config = buildConfig();
+
+    const promise = runExecutorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      summarizerSpy.summarizer,
+      noopController(),
+      buildGates(),
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.runSession).toHaveBeenCalled());
+    controller.abort();
+    await promise;
+
+    const spec = mocks.runSession.mock.calls[0]?.[0] as { prompt: string };
+    expect(mocks.readFile).toHaveBeenCalledWith(config.contextFilePath, "utf8");
+    expect(spec.prompt).toBe(
+      composeTaskPrompt("identity\n\n# Workspace context\n", task("x")),
+    );
+    expect(spec.prompt.indexOf("# Workspace context")).toBeLessThan(
+      spec.prompt.indexOf("## Task to complete"),
+    );
   });
 
   it("composes the executor MCP config from the live settings, memory included", async () => {

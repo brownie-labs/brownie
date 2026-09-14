@@ -257,6 +257,7 @@ describe("resolvePromptPaths", () => {
     );
     expect(paths.executor.systemPromptPath).toBe(join("/sys", "executor.system.md"));
     expect(paths.summarizer.systemPromptPath).toBe(join("/sys", "summarizer.system.md"));
+    expect(paths.contextPath).toBe(join("/proj", ".brownie", "prompts", "context.md"));
   });
 
   it("defaults to process.cwd() and the packaged prompts directory", () => {
@@ -389,6 +390,7 @@ describe("loadWorkerConfig", () => {
       summarizer: {
         systemPromptPath: join(dir, "missing-ss.md"),
       },
+      contextPath: join(dir, "missing-context.md"),
     };
 
     const config = await loadWorkerConfig({ projectDir: dir }, verified);
@@ -398,6 +400,7 @@ describe("loadWorkerConfig", () => {
     expect(config.executor.promptPath).toBe(verified.executor.promptPath);
     expect(config.executor.systemPromptPath).toBe(verified.executor.systemPromptPath);
     expect(config.summarizer.systemPromptPath).toBe(verified.summarizer.systemPromptPath);
+    expect(config.contextFilePath).toBe(verified.contextPath);
   });
 
   it("carries the MCP catalogue and the per-agent selections", async () => {
