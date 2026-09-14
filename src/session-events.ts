@@ -1,9 +1,17 @@
 export type SessionEvent =
-  | { type: "init"; model: string; sessionId: string; toolCount: number }
+  | {
+      type: "init";
+      model: string;
+      sessionId: string;
+      toolCount: number;
+      taskId?: string | undefined;
+      cycle?: number | undefined;
+    }
   | { type: "text"; text: string }
   | { type: "toolUse"; name: string; input: unknown }
   | { type: "toolResult"; isError: boolean; lines: string[]; dropped: number }
   | { type: "partial"; text: string }
+  | { type: "stream"; event: Record<string, unknown> }
   | { type: "raw"; line: string }
   | { type: "stderr"; line: string }
   | { type: "killing"; reason: "timeout" | "abort" }
@@ -82,7 +90,7 @@ export function formatDroppedLines(dropped: number): string {
 }
 
 export function formatSessionEvent(
-  event: Exclude<SessionEvent, { type: "partial" }>,
+  event: Exclude<SessionEvent, { type: "partial" | "stream" }>,
 ): string {
   switch (event.type) {
     case "init":

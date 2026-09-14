@@ -12,6 +12,7 @@ import { mainCommand } from "./main.js";
 import { mcpCommand } from "./mcp-command.js";
 import { memoryCommand } from "./memory-command.js";
 import { promptCommand } from "./prompt-command.js";
+import { sessionsCommand } from "./sessions-command.js";
 import { settingsCommand } from "./settings-command.js";
 import { tasksCommand } from "./tasks-command.js";
 import { updateCommand } from "./update-command.js";
@@ -52,6 +53,9 @@ switch (first) {
     break;
   case "memory":
     void runMain(memoryCommand, { rawArgs: rest });
+    break;
+  case "sessions":
+    void runMain(sessionsCommand, { rawArgs: rest });
     break;
   case "update":
     void runMain(updateCommand, { rawArgs: rest });

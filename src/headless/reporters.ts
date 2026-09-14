@@ -25,7 +25,12 @@ function sessionSink(
           level: "info",
           agent,
           event: "session.init",
-          fields: { model: event.model, sessionId: event.sessionId },
+          fields: compactFields({
+            model: event.model,
+            sessionId: event.sessionId,
+            taskId: event.taskId,
+            cycle: event.cycle,
+          }),
         });
         return;
       case "stderr":
@@ -84,6 +89,7 @@ function sessionSink(
         }
         return;
       case "partial":
+      case "stream":
       case "raw":
         return;
     }
@@ -142,6 +148,7 @@ export function createHeadlessReporters(
           addedTasks: outcome.addedTasks,
           skippedDuplicates: outcome.skippedDuplicates,
           error: outcome.error,
+          sessionId: outcome.sessionId,
         }),
       });
     },
@@ -181,6 +188,7 @@ export function createHeadlessReporters(
           attempt: outcome.attempt,
           maxAttempts: outcome.maxAttempts,
           error: outcome.error,
+          sessionId: outcome.sessionId,
         }),
       });
     },
@@ -241,6 +249,7 @@ export function createHeadlessReporters(
           durationMs: outcome.durationMs,
           costUsd: outcome.costUsd,
           error: outcome.error,
+          sessionId: outcome.sessionId,
         }),
       });
     },

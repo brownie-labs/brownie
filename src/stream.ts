@@ -57,6 +57,10 @@ interface StreamEvent {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function parseApiError(event: StreamEvent): ApiErrorInfo | undefined {
   if (typeof event.error_status !== "number") return undefined;
   return {
@@ -88,14 +92,17 @@ export class StreamRenderer {
   handleLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed) return;
-    let event: StreamEvent;
+    let parsed: unknown;
     try {
-      event = JSON.parse(trimmed) as StreamEvent;
+      parsed = JSON.parse(trimmed);
     } catch {
       this.emit({ type: "raw", line: truncate(trimmed) });
       return;
     }
-    this.handleEvent(event);
+    this.handleEvent(parsed as StreamEvent);
+    if (isRecord(parsed) && parsed.type !== "stream_event") {
+      this.emit({ type: "stream", event: parsed });
+    }
   }
 
   private handleEvent(event: StreamEvent): void {

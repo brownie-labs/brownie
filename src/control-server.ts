@@ -17,7 +17,7 @@ import type { SettingsController } from "./settings-controller.js";
 import { buildManualTask } from "./tasks.js";
 import type { NewTask } from "./types.js";
 import type { Waker } from "./waker.js";
-import type { MemoryReader, TaskControls } from "./worker-controls.js";
+import type { MemoryReader, SessionReader, TaskControls } from "./worker-controls.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 const MAX_REQUEST_BYTES = 1_048_576;
@@ -44,6 +44,7 @@ export interface ControlServerDeps {
   };
   tasks: TaskControls;
   memory: MemoryReader;
+  sessions: SessionReader;
   settings: Pick<SettingsController, "current" | "patch">;
   prompts: PromptFileAccess;
   context: ContextFileAccess;
@@ -195,6 +196,22 @@ async function handleRequest(
     case "context.set":
       await deps.context.write(request.content);
       return { ok: true, data: undefined };
+    case "sessions.list":
+      return {
+        ok: true,
+        data: deps.sessions.list({
+          agent: request.agent,
+          taskId: request.taskId,
+          before: request.before,
+          limit: request.limit,
+        }),
+      };
+    case "sessions.get": {
+      const session = deps.sessions.get(request.sessionId);
+      return session === undefined
+        ? { ok: false, error: `Session "${request.sessionId}" is not indexed.` }
+        : { ok: true, data: session };
+    }
   }
 }
 

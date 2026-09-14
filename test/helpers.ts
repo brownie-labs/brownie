@@ -449,6 +449,7 @@ export function buildSessionSpec(
     mcpConfigPath: join(testDataDir, "mcp", "session.json"),
     cwd: process.cwd(),
     events,
+    meta: { agent: "monitor" },
     ...overrides,
   };
 }

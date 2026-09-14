@@ -93,6 +93,10 @@ export class MemoryStore {
     return new MemoryStore(db);
   }
 
+  get connection(): DatabaseSync {
+    return this.db;
+  }
+
   add(record: NewTaskSummaryRecord): TaskSummaryRecord {
     this.db.exec("BEGIN");
     try {

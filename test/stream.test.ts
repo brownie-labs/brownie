@@ -4,11 +4,19 @@ import { StreamRenderer } from "../src/stream.js";
 
 function createRenderer(streamPartial = false): {
   events: SessionEvent[];
+  streamed: Record<string, unknown>[];
+  order: string[];
   renderer: StreamRenderer;
 } {
   const events: SessionEvent[] = [];
-  const renderer = new StreamRenderer((event) => events.push(event), streamPartial);
-  return { events, renderer };
+  const streamed: Record<string, unknown>[] = [];
+  const order: string[] = [];
+  const renderer = new StreamRenderer((event) => {
+    order.push(event.type);
+    if (event.type === "stream") streamed.push(event.event);
+    else events.push(event);
+  }, streamPartial);
+  return { events, streamed, order, renderer };
 }
 
 function line(event: unknown): string {
@@ -398,5 +406,50 @@ describe("StreamRenderer", () => {
         dropped: 0,
       },
     ]);
+  });
+});
+
+describe("StreamRenderer raw event tap", () => {
+  it("emits the parsed object unchanged, after the rendered event", () => {
+    const { streamed, order, renderer } = createRenderer();
+    const event = {
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: {} }],
+        usage: { input_tokens: 12, output_tokens: 3 },
+      },
+    };
+
+    renderer.handleLine(line(event));
+
+    expect(streamed).toEqual([event]);
+    expect(order).toEqual(["toolUse", "stream"]);
+  });
+
+  it("taps every type except stream_event", () => {
+    const { streamed, renderer } = createRenderer(true);
+    renderer.handleLine(
+      line({ type: "system", subtype: "init", model: "opus", session_id: "s" }),
+    );
+    renderer.handleLine(
+      line({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } },
+      }),
+    );
+    renderer.handleLine(line({ type: "result", is_error: false, num_turns: 1 }));
+
+    expect(streamed.map((event) => event.type)).toEqual(["system", "result"]);
+  });
+
+  it("does not tap a non-JSON line or a JSON line that is not an object", () => {
+    const { events, streamed, renderer } = createRenderer();
+
+    renderer.handleLine("not json");
+    renderer.handleLine("42");
+    renderer.handleLine("[1, 2]");
+
+    expect(streamed).toEqual([]);
+    expect(events).toEqual([{ type: "raw", line: "not json" }]);
   });
 });

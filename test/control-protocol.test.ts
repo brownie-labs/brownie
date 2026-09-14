@@ -200,6 +200,8 @@ describe("parseControlRequest", () => {
         "tasks.cancel",
         "memory.search",
         "memory.recent",
+        "sessions.list",
+        "sessions.get",
         "prompt.get",
         "prompt.set",
         "context.get",
