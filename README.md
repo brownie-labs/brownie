@@ -121,18 +121,18 @@ Configuration commands persist to `.brownie/settings.json` and apply live — th
 
 Without a TTY (systemd, Docker, CI, piping) brownie skips the dashboard, starts the agents immediately, and prints structured line logs to stdout — human-readable by default, NDJSON with `--log-format json` for log aggregators. A running worker is controlled from a second shell over a local control socket:
 
-| Command                                                   | Effect                                                                      |
-| --------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `brownie`                                                 | start the worker (TUI in a terminal, headless without one)                  |
-| `brownie --headless [--log-format json]`                  | force headless mode even in a terminal                                      |
-| `brownie --paused`                                        | boot with both agents paused; `brownie resume` starts them                  |
-| `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible)                     |
-| `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)               |
-| `brownie version [--json]`                                | brownie, Claude Code and Node versions, auth kind, pid of the worker        |
-| `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                 |
-| `brownie resume [monitor\|executor]`                      | resume paused agents                                                        |
-| `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker          |
-| `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too) |
+| Command                                                   | Effect                                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `brownie`                                                 | start the worker (TUI in a terminal, headless without one)                                                          |
+| `brownie --headless [--log-format json]`                  | force headless mode even in a terminal                                                                              |
+| `brownie --paused`                                        | boot with both agents paused; `brownie resume` starts them                                                          |
+| `brownie init --monitor-prompt <f> --executor-prompt <f>` | non-interactive setup for servers (cloud-init, Ansible); `--settings <f>` and `--context <f>` write those files too |
+| `brownie status [--json]`                                 | live status of the running worker (doubles as a health check)                                                       |
+| `brownie version [--json]`                                | brownie, Claude Code and Node versions, auth kind, pid of the worker                                                |
+| `brownie pause [monitor\|executor]`                       | graceful pause, same as `/pause` in the TUI                                                                         |
+| `brownie resume [monitor\|executor]`                      | resume paused agents                                                                                                |
+| `brownie tasks\|settings\|prompt\|memory …`               | edit the queue, settings, prompts and memory of the running worker                                                  |
+| `brownie update [--check]`                                | update to the newest published version (auto-updates in the background too)                                         |
 
 A second `brownie` in the same project refuses to start while one is already running. The control socket, its subcommands and wire protocol: [docs/control.md](https://github.com/brownie-labs/brownie/blob/main/docs/control.md). The full server story — the NDJSON event schema, a DigitalOcean/systemd runbook, authentication without a browser, the reference `Dockerfile` + `docker-compose.yml`, and the prebuilt images on GHCR (`ghcr.io/brownie-labs/brownie`, plus a `-browser` variant with Chromium for Playwright MCP): [docs/deployment.md](https://github.com/brownie-labs/brownie/blob/main/docs/deployment.md).
 

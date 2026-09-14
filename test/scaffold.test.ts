@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,7 +25,7 @@ describe("writeProjectScaffold", () => {
       executorPrompt: "fix bugs",
     });
 
-    expect(result.createdSettings).toBe(true);
+    expect(result.wroteSettings).toBe(true);
     expect(await readFile(paths.settingsFile, "utf8")).toBe("{}\n");
     expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("watch issues\n");
     expect(await readFile(paths.executorPromptFile, "utf8")).toBe("fix bugs\n");
@@ -41,7 +42,7 @@ describe("writeProjectScaffold", () => {
       executorPrompt: "execute",
     });
 
-    expect(result.createdSettings).toBe(false);
+    expect(result.wroteSettings).toBe(false);
     expect(await readFile(paths.settingsFile, "utf8")).toBe('{"streamPartial": false}\n');
     expect(await readFile(paths.gitignoreFile, "utf8")).toBe("custom\n");
   });
@@ -71,5 +72,53 @@ describe("writeProjectScaffold", () => {
     });
 
     expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("watch\n");
+  });
+
+  it("writes the given settings document over an existing settings file", async () => {
+    const paths = projectPaths(dir);
+    await seedProject(dir, { settings: '{"streamPartial": false}\n' });
+
+    const result = await writeProjectScaffold(
+      paths,
+      { monitorPrompt: "watch", executorPrompt: "execute" },
+      { settings: { executor: { model: "fable" } } },
+    );
+
+    expect(result.wroteSettings).toBe(true);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe(
+      '{\n  "executor": {\n    "model": "fable"\n  }\n}\n',
+    );
+  });
+
+  it("writes the context file, empty content included", async () => {
+    const paths = projectPaths(dir);
+
+    await writeProjectScaffold(
+      paths,
+      { monitorPrompt: "watch", executorPrompt: "execute" },
+      { context: "two repositories\n\n" },
+    );
+    expect(await readFile(paths.contextFile, "utf8")).toBe("two repositories\n");
+
+    await writeProjectScaffold(
+      paths,
+      { monitorPrompt: "watch", executorPrompt: "execute" },
+      { context: "" },
+    );
+    expect(await readFile(paths.contextFile, "utf8")).toBe("");
+  });
+
+  it("writes only the extras when there are no prompts", async () => {
+    const paths = projectPaths(dir);
+
+    await writeProjectScaffold(paths, null, {
+      settings: { browser: true },
+      context: "one repository",
+    });
+
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{\n  "browser": true\n}\n');
+    expect(await readFile(paths.contextFile, "utf8")).toBe("one repository\n");
+    expect(existsSync(paths.monitorPromptFile)).toBe(false);
+    expect(existsSync(paths.executorPromptFile)).toBe(false);
   });
 });

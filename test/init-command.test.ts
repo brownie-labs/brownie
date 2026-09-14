@@ -183,4 +183,215 @@ describe("runInit", () => {
     expect(process.exitCode).toBe(1);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("is empty"));
   });
+
+  it("writes the given settings document as it stands, without defaults", async () => {
+    const paths = projectPaths(dir);
+    const document = {
+      executor: { mcpServers: ["sentry"] },
+      mcpServers: { sentry: { type: "http", url: "https://sentry.example/mcp" } },
+    };
+    const settingsSource = join(dir, "settings-source.json");
+    await writeFile(settingsSource, JSON.stringify(document), "utf8");
+
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      settingsPath: settingsSource,
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(savedExitCode);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe(
+      `${JSON.stringify(document, null, 2)}\n`,
+    );
+    expect(logger.success).toHaveBeenCalledWith(expect.stringContaining("settings.json"));
+  });
+
+  it("fails on a settings file that is not JSON", async () => {
+    const settingsSource = join(dir, "settings-source.json");
+    await writeFile(settingsSource, '{"browser": tru', "utf8");
+
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      settingsPath: settingsSource,
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining(`Invalid JSON in ${settingsSource}`),
+    );
+    expect(existsSync(projectPaths(dir).settingsFile)).toBe(false);
+  });
+
+  it("leaves every file untouched when the settings document is rejected", async () => {
+    await seedProject(dir, { settings: '{"streamPartial": false}\n' });
+    const paths = projectPaths(dir);
+    const settingsSource = join(dir, "settings-source.json");
+    await writeFile(
+      settingsSource,
+      JSON.stringify({ executor: { mcpServers: ["sentry"] } }),
+      "utf8",
+    );
+
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      settingsPath: settingsSource,
+      projectDir: dir,
+      force: true,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid configuration (.brownie/settings.json):"),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('executor.mcpServers.0: unknown MCP server "sentry"'),
+    );
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{"streamPartial": false}\n');
+    expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("observe\n");
+  });
+
+  it("writes the context file and accepts an empty one", async () => {
+    const paths = projectPaths(dir);
+    const contextSource = join(dir, "context-source.md");
+    await writeFile(contextSource, "# Workspace\nTwo repositories\n\n", "utf8");
+
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      contextPath: contextSource,
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(savedExitCode);
+    expect(await readFile(paths.contextFile, "utf8")).toBe(
+      "# Workspace\nTwo repositories\n",
+    );
+    expect(logger.success).toHaveBeenCalledWith(expect.stringContaining("context.md"));
+
+    await writeFile(contextSource, "\n  \n", "utf8");
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      contextPath: contextSource,
+      projectDir: dir,
+      force: true,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(savedExitCode);
+    expect(await readFile(paths.contextFile, "utf8")).toBe("");
+  });
+
+  it("refuses to overwrite the settings and context files without --force", async () => {
+    await seedProject(dir, { settings: '{"streamPartial": false}\n', context: "old\n" });
+    const paths = projectPaths(dir);
+    const settingsSource = join(dir, "settings-source.json");
+    const contextSource = join(dir, "context-source.md");
+    await writeFile(settingsSource, "{}", "utf8");
+    await writeFile(contextSource, "new\n", "utf8");
+
+    await runInit({
+      settingsPath: settingsSource,
+      contextPath: contextSource,
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(1);
+    const [message] = vi.mocked(logger.error).mock.calls[0] as [string];
+    expect(message).toContain(paths.settingsFile);
+    expect(message).toContain(paths.contextFile);
+    expect(message).not.toContain(paths.monitorPromptFile);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{"streamPartial": false}\n');
+    expect(await readFile(paths.contextFile, "utf8")).toBe("old\n");
+  });
+
+  it("overwrites the settings and context files with --force", async () => {
+    await seedProject(dir, { settings: '{"streamPartial": false}\n', context: "old\n" });
+    const paths = projectPaths(dir);
+    const settingsSource = join(dir, "settings-source.json");
+    const contextSource = join(dir, "context-source.md");
+    await writeFile(settingsSource, '{"browser": true}', "utf8");
+    await writeFile(contextSource, "new\n", "utf8");
+
+    await runInit({
+      monitorPromptPath: monitorSource,
+      executorPromptPath: executorSource,
+      settingsPath: settingsSource,
+      contextPath: contextSource,
+      projectDir: dir,
+      force: true,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(savedExitCode);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{\n  "browser": true\n}\n');
+    expect(await readFile(paths.contextFile, "utf8")).toBe("new\n");
+    expect(await readFile(paths.monitorPromptFile, "utf8")).toBe("watch GitHub issues\n");
+  });
+
+  it("updates settings and context without touching the prompts", async () => {
+    const paths = projectPaths(dir);
+    const settingsSource = join(dir, "settings-source.json");
+    const contextSource = join(dir, "context-source.md");
+    await writeFile(settingsSource, '{"browser": true}', "utf8");
+    await writeFile(contextSource, "one repository\n", "utf8");
+
+    await runInit({
+      settingsPath: settingsSource,
+      contextPath: contextSource,
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(savedExitCode);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{\n  "browser": true\n}\n');
+    expect(await readFile(paths.contextFile, "utf8")).toBe("one repository\n");
+    expect(existsSync(paths.monitorPromptFile)).toBe(false);
+    expect(existsSync(paths.executorPromptFile)).toBe(false);
+    expect(mocks.runConfigure).not.toHaveBeenCalled();
+  });
+
+  it("forwards the settings and context args from the citty command", async () => {
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    const settingsSource = join(dir, "settings-source.json");
+    const contextSource = join(dir, "context-source.md");
+    await writeFile(settingsSource, '{"browser": true}', "utf8");
+    await writeFile(contextSource, "one repository\n", "utf8");
+
+    await (initCommand.run as (ctx: unknown) => Promise<void>)({
+      args: {
+        settings: settingsSource,
+        context: contextSource,
+        force: false,
+        _: [],
+      },
+    });
+
+    const paths = projectPaths(dir);
+    expect(await readFile(paths.settingsFile, "utf8")).toBe('{\n  "browser": true\n}\n');
+    expect(await readFile(paths.contextFile, "utf8")).toBe("one repository\n");
+  });
+
+  it("fails when the context file cannot be read", async () => {
+    await runInit({
+      contextPath: join(dir, "missing-context.md"),
+      projectDir: dir,
+      interactive: false,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("Cannot read context file"),
+    );
+    expect(existsSync(projectPaths(dir).contextFile)).toBe(false);
+  });
 });

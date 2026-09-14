@@ -109,11 +109,16 @@ The first-run wizard needs a TTY, but headless machines have two clean paths:
 - **`brownie init`** — the wizard's non-interactive twin, made for cloud-init/Ansible:
 
 ```bash
-brownie init --monitor-prompt monitor.md --executor-prompt executor.md
-brownie init --monitor-prompt monitor.md --executor-prompt executor.md --force  # overwrite existing prompts
+brownie init --force \
+  --settings settings.json \
+  --monitor-prompt monitor.md \
+  --executor-prompt executor.md \
+  --context context.md
 ```
 
-It writes the same files the wizard would (`settings.json` `{}`, both prompts, the `.gitignore`) and never touches an existing `settings.json`. Without `--force` it refuses to overwrite existing prompts, so re-runs are safe. In a terminal, `brownie init` with no flags simply opens the wizard.
+One invocation provisions the whole of `.brownie/`: the settings file, both prompts, the optional [context file](prompts.md) and the `.gitignore`. `--settings` is checked against the same schema the worker uses **before** anything is written, so a typo fails with the worker's own `Invalid configuration (.brownie/settings.json): …` on stderr and exit 1, leaving the project as it was; the file is then stored exactly as you wrote it, defaults left to brownie. `--context` accepts an empty file, which means "no context". Both flags are optional: without `--settings` the file is still created as `{}` when it is missing and left alone when it exists, and without `--context` no context file is written.
+
+Without `--force` the command refuses and lists every file that is in the way; with it, every file the invocation writes is overwritten — settings and context included — so a server can re-run it on each boot. The two prompt flags still go together, but `--settings` and/or `--context` on their own are a complete invocation that updates the configuration and nothing else. In a terminal, `brownie init` with no flags simply opens the wizard.
 
 ## Authentication
 
