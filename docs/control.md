@@ -19,6 +19,8 @@ Changes apply live — a patched setting on the next session, a replaced prompt 
 | `brownie settings patch <json\|-> [--json]`                 | merge a sparse patch into `settings.json` — `null` deletes a key, the file is validated before writing |
 | `brownie prompt get <agent> [--json]`                       | print a project prompt                                                                                 |
 | `brownie prompt set <agent> [file\|-]`                      | replace it from a file or stdin                                                                        |
+| `brownie context get [--json]`                              | print the workspace context file — empty output when there is none                                     |
+| `brownie context set [file\|-]`                             | replace it from a file or stdin; empty input clears it                                                 |
 | `brownie memory search <query> [--limit <n>]`               | full-text search over task summaries (1–100 entries, default 10)                                       |
 | `brownie memory recent [--limit <n>]`                       | the newest task summaries                                                                              |
 
@@ -57,6 +59,8 @@ One connection carries one request — a JSON object terminated by `\n` — and 
 | `{"cmd":"memory.recent","limit"?:1-100}`                       | the newest task summaries                      |
 | `{"cmd":"prompt.get","agent":"monitor"\|"executor"}`           | `{"agent":…,"content":"…"}`                    |
 | `{"cmd":"prompt.set","agent":…,"content":"…"}`                 | —                                              |
+| `{"cmd":"context.get"}`                                        | `{"content":"…"}`; `""` when there is no file  |
+| `{"cmd":"context.set","content":"…"}`                          | —; an empty `content` clears the file          |
 
 An unknown `cmd` or non-JSON input answers `Unrecognized control request.`; a bad payload names the field (`Invalid tasks.add request: description: …`); a rejected settings patch answers `Invalid configuration (.brownie/settings.json):` with the offending paths.
 

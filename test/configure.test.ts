@@ -179,6 +179,13 @@ describe("isConfigured", () => {
     expect(isConfigured(dir)).toBe(true);
   });
 
+  it("does not count the optional context file", async () => {
+    await seedProject(dir);
+    expect(isConfigured(dir)).toBe(true);
+    await seedProject(dir, { context: "# Workspace context\n" });
+    expect(isConfigured(dir)).toBe(true);
+  });
+
   it("returns false when settings.json is missing", async () => {
     await seedProject(dir, { settings: false });
     expect(isConfigured(dir)).toBe(false);

@@ -1,8 +1,7 @@
 import { defineCommand } from "citty";
-import { readFile } from "node:fs/promises";
 import {
   fail,
-  readStdinText,
+  readTextSource,
   requestControl,
   SOCKET_ENV_HINT,
   writerFor,
@@ -38,21 +37,6 @@ export async function runPromptGet(
   );
 }
 
-async function readPromptSource(
-  source: string | undefined,
-  options: ControlCommandIo,
-): Promise<string | null> {
-  if (source === undefined || source === "-") {
-    return (options.readStdin ?? readStdinText)();
-  }
-  try {
-    return await readFile(source, "utf8");
-  } catch {
-    fail(`Cannot read "${source}".`);
-    return null;
-  }
-}
-
 export async function runPromptSet(
   agentArg: string,
   source: string | undefined,
@@ -65,7 +49,7 @@ export async function runPromptSet(
   }
   let content: string | null;
   try {
-    content = await readPromptSource(source, options);
+    content = await readTextSource(source, options);
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
     return;

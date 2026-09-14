@@ -1,6 +1,7 @@
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
+import type { ContextFileAccess } from "./context-file.js";
 import type { AgentController } from "./control.js";
 import {
   parseControlRequest,
@@ -45,6 +46,7 @@ export interface ControlServerDeps {
   memory: MemoryReader;
   settings: Pick<SettingsController, "current" | "patch">;
   prompts: PromptFileAccess;
+  context: ContextFileAccess;
   waker: Pick<Waker, "notify">;
   signal: AbortSignal;
 }
@@ -187,6 +189,11 @@ async function handleRequest(
       };
     case "prompt.set":
       await deps.prompts.write(request.agent, request.content);
+      return { ok: true, data: undefined };
+    case "context.get":
+      return { ok: true, data: { content: await deps.context.read() } };
+    case "context.set":
+      await deps.context.write(request.content);
       return { ok: true, data: undefined };
   }
 }

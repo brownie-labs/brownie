@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -426,6 +426,21 @@ describe("CLI start (smoke E2E)", () => {
       const prompt = await runCommand(dir, env, ["prompt", "get", "monitor"]);
       expect(prompt.code).toBe(0);
       expect(prompt.stdout.trim()).toBe("observe");
+
+      const emptyContext = await runCommand(dir, env, ["context", "get"]);
+      expect(emptyContext.code).toBe(0);
+      expect(emptyContext.stdout).toBe("\n");
+
+      const contextSource = join(dir, "context-source.md");
+      await writeFile(contextSource, "# Workspace context\n\nacme-shop\n", "utf8");
+      const contextSet = await runCommand(dir, env, ["context", "set", contextSource]);
+      expect(contextSet.code).toBe(0);
+      const context = await runCommand(dir, env, ["context", "get"]);
+      expect(context.code).toBe(0);
+      expect(context.stdout).toBe("# Workspace context\n\nacme-shop\n");
+      expect(await readFile(join(dir, ".brownie", "prompts", "context.md"), "utf8")).toBe(
+        "# Workspace context\n\nacme-shop\n",
+      );
 
       const memory = await runCommand(dir, env, ["memory", "recent", "--json"]);
       expect(memory.code).toBe(0);

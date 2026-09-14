@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { detectAuthFailure } from "./auth-gate.js";
+import { createContextFileAccess } from "./context-file.js";
 import type { AgentController } from "./control.js";
 import type { LoopGates } from "./gates.js";
 import { writeMcpConfig } from "./mcp-config.js";
 import type { TaskSummarizer } from "./memory/summarizer.js";
+import { composePrompt } from "./prompt-compose.js";
 import { runSession } from "./runner.js";
 import type { ExecutorReporter } from "./status.js";
 import type { TaskStore } from "./tasks.js";
@@ -43,6 +45,7 @@ export async function runExecutorLoop(
   signal: AbortSignal,
 ): Promise<void> {
   const { executor } = config;
+  const contextFile = createContextFileAccess(config.contextFilePath);
   const aborted = (): boolean => signal.aborted;
 
   while (!aborted()) {
@@ -69,9 +72,10 @@ export async function runExecutorLoop(
     const start = Date.now();
 
     try {
-      const [prompt, systemPrompt, mcpConfigPath] = await Promise.all([
+      const [prompt, systemPrompt, context, mcpConfigPath] = await Promise.all([
         readFile(executor.promptPath, "utf8"),
         readFile(executor.systemPromptPath, "utf8"),
+        contextFile.read(),
         writeMcpConfig(config.dataDir, {
           role: "executor",
           servers: config.mcpServers,
@@ -88,7 +92,7 @@ export async function runExecutorLoop(
           model: executor.model,
           effort: executor.effort,
           systemPrompt,
-          prompt: composeTaskPrompt(prompt, task),
+          prompt: composeTaskPrompt(composePrompt(prompt, context), task),
           sessionTimeoutMs: executor.sessionTimeoutMs,
           streamPartial: config.streamPartial,
           mcpConfigPath,

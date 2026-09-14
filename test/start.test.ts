@@ -204,6 +204,10 @@ describe("startWorker", () => {
           read: expect.any(Function) as unknown,
           write: expect.any(Function) as unknown,
         }) as unknown,
+        context: expect.objectContaining({
+          read: expect.any(Function) as unknown,
+          write: expect.any(Function) as unknown,
+        }) as unknown,
         waker: expect.any(Waker) as unknown,
         signal,
       }),
@@ -442,6 +446,10 @@ describe("startWorker", () => {
           read: expect.any(Function) as unknown,
           write: expect.any(Function) as unknown,
         }) as unknown,
+        context: expect.objectContaining({
+          read: expect.any(Function) as unknown,
+          write: expect.any(Function) as unknown,
+        }) as unknown,
         waker: expect.any(Waker) as unknown,
         requestExit: expect.any(Function) as unknown,
       }),
@@ -452,6 +460,7 @@ describe("startWorker", () => {
       version: string;
       settings: unknown;
       prompts: unknown;
+      context: unknown;
       waker: unknown;
     };
     expect(mountProps.controls.monitor).toBe(monitorController);
@@ -459,10 +468,12 @@ describe("startWorker", () => {
     const serverDeps = mocks.startControlServer.mock.calls[0]?.[0] as {
       settings: unknown;
       prompts: unknown;
+      context: unknown;
       waker: unknown;
     };
     expect(serverDeps.settings).toBe(mountProps.settings);
     expect(serverDeps.prompts).toBe(mountProps.prompts);
+    expect(serverDeps.context).toBe(mountProps.context);
     expect(serverDeps.waker).toBe(mountProps.waker);
     expect(mountProps.version).not.toBe("unknown");
     mountProps.store.flush();

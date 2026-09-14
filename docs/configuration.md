@@ -110,7 +110,8 @@ your-project/
     ├── .gitignore                 # ignores data/ and logs/ (written once by the wizard)
     ├── prompts/
     │   ├── monitor.prompt.md      # what the monitor should check on every patrol
-    │   └── executor.prompt.md     # who the executor is and how it works
+    │   ├── executor.prompt.md     # who the executor is and how it works
+    │   └── context.md             # optional: what the workspace is, for both agents
     ├── data/
     │   ├── tasks.json             # task queue (atomic writes)
     │   ├── memory.db              # long-term memory (SQLite + FTS5)

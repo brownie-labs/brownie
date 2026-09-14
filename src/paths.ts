@@ -20,6 +20,7 @@ export interface ProjectPaths {
   promptsDir: string;
   monitorPromptFile: string;
   executorPromptFile: string;
+  contextFile: string;
   dataDir: string;
   tasksFile: string;
   memoryDbFile: string;
@@ -40,6 +41,7 @@ export function projectPaths(projectDir: string = process.cwd()): ProjectPaths {
     promptsDir,
     monitorPromptFile: join(promptsDir, "monitor.prompt.md"),
     executorPromptFile: join(promptsDir, "executor.prompt.md"),
+    contextFile: join(promptsDir, "context.md"),
     dataDir,
     tasksFile: join(dataDir, "tasks.json"),
     memoryDbFile: join(dataDir, "memory.db"),

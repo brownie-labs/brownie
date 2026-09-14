@@ -1,4 +1,5 @@
 import { defineCommand } from "citty";
+import { readFile } from "node:fs/promises";
 import { sendControlRequest } from "./control-client.js";
 import {
   CONTROL_TARGETS,
@@ -51,6 +52,21 @@ export function readStdinText(): Promise<string> {
     });
     process.stdin.once("error", reject);
   });
+}
+
+export async function readTextSource(
+  source: string | undefined,
+  io: ControlCommandIo,
+): Promise<string | null> {
+  if (source === undefined || source === "-") {
+    return (io.readStdin ?? readStdinText)();
+  }
+  try {
+    return await readFile(source, "utf8");
+  } catch {
+    fail(`Cannot read "${source}".`);
+    return null;
+  }
 }
 
 function describeRejection(cmd: string, error: string): string {

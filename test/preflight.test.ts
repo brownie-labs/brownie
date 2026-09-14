@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,6 +84,7 @@ describe("ensureReady", () => {
         summarizer: {
           systemPromptPath: join(systemPromptsDir, "summarizer.system.md"),
         },
+        contextPath: join(dir, ".brownie", "prompts", "context.md"),
       },
       claude: {
         version: "2.1.268",
@@ -91,6 +93,8 @@ describe("ensureReady", () => {
     });
     expect(logger.success).toHaveBeenCalledWith("Claude Code 2.1.268 (claude)");
     expect(logger.success).toHaveBeenCalledWith("Claude Code login (claude.ai)");
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(existsSync(join(dir, ".brownie", "prompts", "context.md"))).toBe(false);
   });
 
   it("reports an unknown CLI version and login when claude prints nothing", async () => {

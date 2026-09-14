@@ -73,6 +73,10 @@ export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z
     .object({ cmd: z.literal("prompt.set"), agent: promptAgentSchema, content: nonBlank })
     .strict(),
+  z.object({ cmd: z.literal("context.get") }).strict(),
+  z
+    .object({ cmd: z.literal("context.set"), content: z.string().max(1_000_000) })
+    .strict(),
 ]);
 
 export type ControlRequest = z.infer<typeof controlRequestSchema>;
@@ -84,6 +88,10 @@ export const CONTROL_COMMANDS: readonly ControlCommand[] =
 
 export interface PromptContent {
   agent: PromptAgent;
+  content: string;
+}
+
+export interface ContextContent {
   content: string;
 }
 
@@ -102,6 +110,8 @@ export interface ControlResponseData {
   "memory.recent": TaskSummaryRecord[];
   "prompt.get": PromptContent;
   "prompt.set": undefined;
+  "context.get": ContextContent;
+  "context.set": undefined;
 }
 
 export interface ControlSuccess<C extends ControlCommand> {

@@ -166,6 +166,7 @@ export interface WorkerPromptPaths {
   monitor: PromptPaths;
   executor: PromptPaths;
   summarizer: Pick<PromptPaths, "systemPromptPath">;
+  contextPath: string;
 }
 
 export function resolvePromptPaths(dirs: ConfigDirs = {}): WorkerPromptPaths {
@@ -183,6 +184,7 @@ export function resolvePromptPaths(dirs: ConfigDirs = {}): WorkerPromptPaths {
     summarizer: {
       systemPromptPath: system.summarizer,
     },
+    contextPath: project.contextFile,
   };
 }
 
@@ -198,6 +200,7 @@ export const PROMPT_FILE_LABELS = {
   summarizer: {
     systemPromptPath: "summarizer system prompt file (bundled with brownie)",
   },
+  contextPath: "context file (.brownie/prompts/context.md, optional)",
 } as const;
 
 async function assertPromptPathsReadable(paths: WorkerPromptPaths): Promise<void> {
@@ -257,6 +260,7 @@ export async function loadWorkerConfig(
     mcpServers: settings.mcpServers,
     cwd: project.projectDir,
     settingsFilePath: project.settingsFile,
+    contextFilePath: paths.contextPath,
     tasksFilePath: project.tasksFile,
     memoryDbPath: project.memoryDbFile,
     dataDir: project.dataDir,

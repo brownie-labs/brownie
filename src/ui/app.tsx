@@ -1,7 +1,9 @@
 import { Box, Text, useInput, useStdin } from "ink";
 import type { JSX } from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { PromptAgent, PromptFileAccess } from "../prompt-files.js";
+import { PROMPT_FILE_LABELS } from "../config.js";
+import type { ContextFileAccess } from "../context-file.js";
+import type { PromptFileAccess } from "../prompt-files.js";
 import type { SettingsController } from "../settings-controller.js";
 import type { WorkerStatusStore } from "../status.js";
 import type { WorkerConfig } from "../types.js";
@@ -126,6 +128,7 @@ export interface AppProps {
   memory: MemoryReader;
   settings: SettingsController;
   prompts: PromptFileAccess;
+  context: ContextFileAccess;
   waker: Pick<Waker, "notify">;
   requestExit: () => void;
   noticeTimeoutMs?: number | undefined;
@@ -140,6 +143,7 @@ export function App({
   memory,
   settings,
   prompts,
+  context,
   waker,
   requestExit,
   noticeTimeoutMs = NOTICE_TIMEOUT_MS,
@@ -195,26 +199,23 @@ export function App({
       memory,
       settings,
       prompts,
+      context,
       waker,
       requestExit,
       notice: (text, tone = "info") => {
         setNotice({ text, tone });
       },
     }),
-    [controls, tasks, memory, settings, prompts, waker, requestExit],
+    [controls, tasks, memory, settings, prompts, context, waker, requestExit],
   );
 
-  const editing = view.kind === "prompt";
+  const editing = view.kind === "prompt" || view.kind === "context";
 
-  const savePrompt = (agent: PromptAgent, value: string): void => {
-    void prompts
-      .write(agent, value)
+  const saveFile = (written: Promise<void>, savedText: string): void => {
+    void written
       .then(() => {
         setView({ kind: "dashboard" });
-        setNotice({
-          text: `${agent} prompt saved — applies from the next session`,
-          tone: "info",
-        });
+        setNotice({ text: savedText, tone: "info" });
       })
       .catch((err: unknown) => {
         setNotice({
@@ -401,7 +402,28 @@ export function App({
             initialValue={view.content}
             maxVisibleLines={Math.max(4, contentHeight - 4)}
             onSubmit={(value) => {
-              savePrompt(view.agent, value);
+              saveFile(
+                prompts.write(view.agent, value),
+                `${view.agent} prompt saved — applies from the next session`,
+              );
+            }}
+            onCancel={() => {
+              setView({ kind: "dashboard" });
+            }}
+          />
+        );
+      case "context":
+        return (
+          <PromptEditor
+            title={PROMPT_FILE_LABELS.contextPath}
+            hint="Enter: new line · Ctrl+D: save · Esc: close without saving"
+            initialValue={view.content}
+            maxVisibleLines={Math.max(4, contentHeight - 4)}
+            onSubmit={(value) => {
+              saveFile(
+                context.write(value),
+                "context saved — applies from the next session",
+              );
             }}
             onCancel={() => {
               setView({ kind: "dashboard" });
