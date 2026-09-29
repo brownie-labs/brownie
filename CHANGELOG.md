@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Docker image pins Claude Code 2.1.284 instead of 2.1.268. Its `opus` alias resolves to Claude Opus 5.5, so an agent on the default executor model moves to Opus 5.5 with this release.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added
