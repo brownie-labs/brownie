@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-29
+
 ### Changed
 
 - The Docker image pins Claude Code 2.1.284 instead of 2.1.268. Its `opus` alias resolves to Claude Opus 5.5, so an agent on the default executor model moves to Opus 5.5 with this release.
@@ -230,7 +232,8 @@ Initial release.
 - Non-interactive `kikimora init` for provisioning, plus a first-run wizard in the terminal.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
-[Unreleased]: https://github.com/kikimoradev/kikimora/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/kikimoradev/kikimora/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/kikimoradev/kikimora/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/kikimoradev/kikimora/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/kikimoradev/kikimora/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kikimoradev/kikimora/compare/v0.7.0...v0.8.0
