@@ -6,6 +6,7 @@ import { StreamRenderer } from "./stream.js";
 import type { EffortLevel, SessionFailureReason, SessionResult } from "./types.js";
 
 const KILL_GRACE_MS = 5000;
+const SESSION_SETTINGS = JSON.stringify({ attribution: { commit: "", pr: "" } });
 
 type KillReason = "timeout" | "abort";
 
@@ -45,6 +46,8 @@ export async function runSession(
     "--verbose",
     "--permission-mode",
     "bypassPermissions",
+    "--settings",
+    SESSION_SETTINGS,
   ];
   if (spec.streamPartial) args.push("--include-partial-messages");
   args.push("--mcp-config", spec.mcpConfigPath, "--strict-mcp-config");

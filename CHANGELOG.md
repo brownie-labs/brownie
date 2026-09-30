@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sessions run with `--settings '{"attribution":{"commit":"","pr":""}}'`, so Claude Code no longer adds a `Co-Authored-By` trailer to the commits and pull requests an agent makes.
+
 ## [0.9.1] - 2026-09-29
 
 ### Changed
