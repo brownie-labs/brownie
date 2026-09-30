@@ -147,6 +147,21 @@ describe("runSession (integration with fake claude)", () => {
     expect(args[flagIndex + 1]).toBe("bypassPermissions");
   }, 15_000);
 
+  it("turns off the attribution Claude Code adds to commits and pull requests", async () => {
+    const out = join(dir, "args-settings.json");
+    const spec = buildSessionSpec(collector.sink, {
+      childEnv: fakeClaudeEnv("ok", { FAKE_CLAUDE_ARGS_OUT: out }),
+    });
+    await runSession(spec, new AbortController().signal);
+
+    const args = JSON.parse(await readFile(out, "utf8")) as string[];
+    const flagIndex = args.indexOf("--settings");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    expect(JSON.parse(args[flagIndex + 1] ?? "")).toStrictEqual({
+      attribution: { commit: "", pr: "" },
+    });
+  }, 15_000);
+
   it("passes the effort from the spec as the --effort flag", async () => {
     const out = join(dir, "args-effort.json");
     const spec = buildSessionSpec(collector.sink, {
