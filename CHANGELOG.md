@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-01
+
 ### Added
 
 - `kikimora check`, the dashboard command `/check` and the control request `monitor.check` run a monitor cycle now instead of waiting for the interval, also outside the working hours. A paused or draining worker and a running usage limit refuse it; a cycle already in progress is reported instead of doubled.
@@ -242,7 +244,8 @@ Initial release.
 - Non-interactive `kikimora init` for provisioning, plus a first-run wizard in the terminal.
 - Reference `Dockerfile` and `docker-compose.yml`.
 
-[Unreleased]: https://github.com/kikimoradev/kikimora/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/kikimoradev/kikimora/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/kikimoradev/kikimora/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/kikimoradev/kikimora/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/kikimoradev/kikimora/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/kikimoradev/kikimora/compare/v0.8.1...v0.9.0
