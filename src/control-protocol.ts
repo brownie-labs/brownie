@@ -133,7 +133,10 @@ export interface DrainAck {
 }
 
 export type MonitorCheckAck =
-  { state: "requested" } | { state: "running"; cycle: number };
+  | { state: "requested" }
+  | { state: "running"; cycle: number }
+  | { state: "refused"; reason: "paused" | "draining" }
+  | { state: "refused"; reason: "limited"; until: string };
 
 export interface ControlResponseData {
   status: ControlStatus;

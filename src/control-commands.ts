@@ -15,6 +15,7 @@ import {
 } from "./control-protocol.js";
 import { DRAIN_TIMEOUT_MAX_MS } from "./drain.js";
 import { logger } from "./logger.js";
+import { describeMonitorCheckRefusal } from "./monitor-check.js";
 import { CONTROL_SOCKET_ENV, controlSocketPath } from "./paths.js";
 
 export interface ControlCommandIo {
@@ -258,11 +259,25 @@ export async function runCheck(
     writerFor(options)(JSON.stringify(ack, null, 2));
     return;
   }
-  if (ack.state === "running") {
-    logger.info(`Monitor cycle ${String(ack.cycle)} is already running.`);
-    return;
+  switch (ack.state) {
+    case "requested":
+      logger.success(
+        "Monitor cycle requested; it starts now, also outside active hours.",
+      );
+      return;
+    case "running":
+      logger.info(`Monitor cycle ${String(ack.cycle)} is already running.`);
+      return;
+    case "refused":
+      fail(
+        describeMonitorCheckRefusal(
+          ack.reason === "limited"
+            ? { reason: "limited", until: Date.parse(ack.until) }
+            : { reason: ack.reason },
+        ),
+      );
+      return;
   }
-  logger.success("Monitor cycle requested; it starts now, also outside active hours.");
 }
 
 export const statusCommand = defineCommand({

@@ -269,7 +269,7 @@ describe("dispatchCommand", () => {
     checkMonitor
       .mockReturnValueOnce({ kind: "requested" })
       .mockReturnValueOnce({ kind: "running", cycle: 4 })
-      .mockReturnValueOnce({ kind: "refused", reason: "The monitor is paused." });
+      .mockReturnValueOnce({ kind: "refused", reason: "paused" });
 
     await dispatchCommand("/check", ctx);
     await dispatchCommand("/check", ctx);
@@ -278,7 +278,7 @@ describe("dispatchCommand", () => {
     expect(notices).toEqual([
       { text: "monitor cycle requested", tone: "ok" },
       { text: "monitor cycle 4 is already running", tone: "info" },
-      { text: "The monitor is paused.", tone: "error" },
+      { text: "The monitor is paused. Resume it to run a cycle.", tone: "error" },
     ]);
   });
 

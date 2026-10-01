@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentController } from "../src/control.js";
 import {
-  CHECK_WHILE_DRAINING,
-  CHECK_WHILE_PAUSED,
+  describeMonitorCheckRefusal,
   requestMonitorCheck,
   type MonitorCheckDeps,
 } from "../src/monitor-check.js";
@@ -45,7 +44,8 @@ describe("requestMonitorCheck", () => {
 
     expect(requestMonitorCheck(deps)).toEqual({
       kind: "refused",
-      reason: "The monitor waits for the usage limit until 2026-10-01T12:00:00.000Z.",
+      reason: "limited",
+      until: resumeAt,
     });
     expect(deps.control.runRequested).toBe(false);
   });
@@ -54,10 +54,7 @@ describe("requestMonitorCheck", () => {
     const deps = depsWith({ kind: "sleeping", nextCycleAt: 1_000 });
     deps.control.pause();
 
-    expect(requestMonitorCheck(deps)).toEqual({
-      kind: "refused",
-      reason: CHECK_WHILE_PAUSED,
-    });
+    expect(requestMonitorCheck(deps)).toEqual({ kind: "refused", reason: "paused" });
     expect(deps.control.runRequested).toBe(false);
   });
 
@@ -65,10 +62,24 @@ describe("requestMonitorCheck", () => {
     const phase = vi.fn((): MonitorPhase => ({ kind: "sleeping", nextCycleAt: 1_000 }));
     const deps = depsWith({ kind: "starting" }, { phase, draining: () => true });
 
-    expect(requestMonitorCheck(deps)).toEqual({
-      kind: "refused",
-      reason: CHECK_WHILE_DRAINING,
-    });
+    expect(requestMonitorCheck(deps)).toEqual({ kind: "refused", reason: "draining" });
     expect(phase).not.toHaveBeenCalled();
+  });
+});
+
+describe("describeMonitorCheckRefusal", () => {
+  it("says why a cycle was refused, with the end of a usage limit", () => {
+    expect(describeMonitorCheckRefusal({ reason: "paused" })).toBe(
+      "The monitor is paused. Resume it to run a cycle.",
+    );
+    expect(describeMonitorCheckRefusal({ reason: "draining" })).toBe(
+      "The worker is draining and starts no new cycle.",
+    );
+    expect(
+      describeMonitorCheckRefusal({
+        reason: "limited",
+        until: Date.parse("2026-10-01T12:00:00.000Z"),
+      }),
+    ).toBe("The monitor waits for the usage limit until 2026-10-01T12:00:00.000Z.");
   });
 });

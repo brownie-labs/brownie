@@ -676,16 +676,30 @@ describe("runCheck", () => {
     expect(JSON.parse(lines.join("\n"))).toEqual({ state: "requested" });
   });
 
-  it("fails with exit code 1 when the worker refuses the cycle", async () => {
+  it("fails with exit code 1 and the reason when the worker refuses the cycle", async () => {
     mocks.sendControlRequest.mockResolvedValue({
-      ok: false,
-      error: "The monitor is paused. Resume it to run a cycle.",
+      ok: true,
+      data: { state: "refused", reason: "paused" },
     });
 
     await runCheck({ write });
 
     expect(logger.error).toHaveBeenCalledWith(
       "The monitor is paused. Resume it to run a cycle.",
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("names the end of the usage limit that refused the cycle", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "refused", reason: "limited", until: "2026-10-01T12:00:00.000Z" },
+    });
+
+    await runCheck({ write });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "The monitor waits for the usage limit until 2026-10-01T12:00:00.000Z.",
     );
     expect(process.exitCode).toBe(1);
   });

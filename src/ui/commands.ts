@@ -2,7 +2,10 @@ import type { ContextFileAccess } from "../context-file.js";
 import type { AgentController } from "../control.js";
 import type { DrainController } from "../drain.js";
 import type { TaskSummaryRecord } from "../memory/store.js";
-import type { MonitorCheckOutcome } from "../monitor-check.js";
+import {
+  describeMonitorCheckRefusal,
+  type MonitorCheckOutcome,
+} from "../monitor-check.js";
 import {
   PROMPT_AGENTS,
   type PromptAgent,
@@ -234,7 +237,7 @@ export const COMMANDS: readonly CommandSpec[] = [
           ctx.notice(`monitor cycle ${String(outcome.cycle)} is already running`, "info");
           return;
         case "refused":
-          ctx.notice(outcome.reason, "error");
+          ctx.notice(describeMonitorCheckRefusal(outcome), "error");
           return;
       }
     },

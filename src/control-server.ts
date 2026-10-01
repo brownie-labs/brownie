@@ -124,7 +124,17 @@ function checkMonitor(deps: ControlServerDeps): ControlResponse<"monitor.check">
     case "running":
       return { ok: true, data: { state: "running", cycle: outcome.cycle } };
     case "refused":
-      return { ok: false, error: outcome.reason };
+      return {
+        ok: true,
+        data:
+          outcome.reason === "limited"
+            ? {
+                state: "refused",
+                reason: "limited",
+                until: new Date(outcome.until).toISOString(),
+              }
+            : { state: "refused", reason: outcome.reason },
+      };
   }
 }
 

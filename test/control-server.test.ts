@@ -251,7 +251,12 @@ describe("startControlServer", () => {
     const outcomes: MonitorCheckOutcome[] = [
       { kind: "requested" },
       { kind: "running", cycle: 7 },
-      { kind: "refused", reason: "The monitor is paused. Resume it to run a cycle." },
+      { kind: "refused", reason: "paused" },
+      {
+        kind: "refused",
+        reason: "limited",
+        until: Date.parse("2026-10-01T12:00:00.000Z"),
+      },
     ];
     const checkMonitor = vi.fn(
       (): MonitorCheckOutcome => outcomes.shift() ?? { kind: "requested" },
@@ -267,10 +272,14 @@ describe("startControlServer", () => {
       data: { state: "running", cycle: 7 },
     });
     expect(await sendControlRequest(socketPath, { cmd: "monitor.check" })).toEqual({
-      ok: false,
-      error: "The monitor is paused. Resume it to run a cycle.",
+      ok: true,
+      data: { state: "refused", reason: "paused" },
     });
-    expect(checkMonitor).toHaveBeenCalledTimes(3);
+    expect(await sendControlRequest(socketPath, { cmd: "monitor.check" })).toEqual({
+      ok: true,
+      data: { state: "refused", reason: "limited", until: "2026-10-01T12:00:00.000Z" },
+    });
+    expect(checkMonitor).toHaveBeenCalledTimes(4);
   });
 
   it("acknowledges a drain with its start and deadline and pauses both agents", async () => {
