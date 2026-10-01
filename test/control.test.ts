@@ -124,6 +124,39 @@ describe("AgentController", () => {
       expect(done).toBe(true);
     });
 
+    it("wakes early on a run request", async () => {
+      let done = false;
+      void controller.sleep(60_000, abort.signal).then(() => (done = true));
+
+      await vi.advanceTimersByTimeAsync(10);
+      controller.requestRun();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(done).toBe(true);
+      expect(controller.state).toBe("running");
+    });
+
+    it("returns immediately while a run request is pending", async () => {
+      controller.requestRun();
+      let done = false;
+      void controller.sleep(60_000, abort.signal).then(() => (done = true));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(done).toBe(true);
+    });
+
+    it("sleeps again once the run request is taken", async () => {
+      controller.requestRun();
+      expect(controller.takeRunRequest()).toBe(true);
+      expect(controller.takeRunRequest()).toBe(false);
+      let done = false;
+      void controller.sleep(1_000, abort.signal).then(() => (done = true));
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(done).toBe(true);
+    });
+
     it("wakes early on abort", async () => {
       let done = false;
       void controller.sleep(60_000, abort.signal).then(() => (done = true));

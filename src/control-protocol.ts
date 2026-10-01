@@ -64,6 +64,7 @@ export const controlRequestSchema = z.discriminatedUnion("cmd", [
   z.object({ cmd: z.literal("version") }).strict(),
   z.object({ cmd: z.literal("pause"), agent: targetSchema }).strict(),
   z.object({ cmd: z.literal("resume"), agent: targetSchema }).strict(),
+  z.object({ cmd: z.literal("monitor.check") }).strict(),
   z
     .object({
       cmd: z.literal("drain"),
@@ -131,11 +132,15 @@ export interface DrainAck {
   until: string | undefined;
 }
 
+export type MonitorCheckAck =
+  { state: "requested" } | { state: "running"; cycle: number };
+
 export interface ControlResponseData {
   status: ControlStatus;
   version: WorkerIdentity;
   pause: undefined;
   resume: undefined;
+  "monitor.check": MonitorCheckAck;
   drain: DrainAck;
   "settings.get": Settings;
   "settings.patch": Settings;

@@ -2,6 +2,7 @@ import type { ContextFileAccess } from "../context-file.js";
 import type { AgentController } from "../control.js";
 import type { DrainController } from "../drain.js";
 import type { TaskSummaryRecord } from "../memory/store.js";
+import type { MonitorCheckOutcome } from "../monitor-check.js";
 import {
   PROMPT_AGENTS,
   type PromptAgent,
@@ -47,6 +48,7 @@ export interface CommandContext {
   monitorControl: AgentControls;
   executorControl: AgentControls;
   drain: DrainControls;
+  checkMonitor(): MonitorCheckOutcome;
   tasks: TaskControls;
   memory: MemoryReader;
   settings: SettingsController;
@@ -216,6 +218,25 @@ export const COMMANDS: readonly CommandSpec[] = [
       if (started.length > 0) parts.push(`started ${joinNames(started)}`);
       if (skipped.length > 0) parts.push(`${joinNames(skipped)} already running`);
       ctx.notice(parts.join(" · "), started.length > 0 ? "ok" : "info");
+    },
+  },
+  {
+    name: "check",
+    group: "Agents",
+    summary: "run a monitor cycle now, also outside active hours",
+    run: (_args, ctx) => {
+      const outcome = ctx.checkMonitor();
+      switch (outcome.kind) {
+        case "requested":
+          ctx.notice("monitor cycle requested", "ok");
+          return;
+        case "running":
+          ctx.notice(`monitor cycle ${String(outcome.cycle)} is already running`, "info");
+          return;
+        case "refused":
+          ctx.notice(outcome.reason, "error");
+          return;
+      }
     },
   },
   {

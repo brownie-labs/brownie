@@ -37,7 +37,9 @@ export async function runMonitorLoop(
     if (aborted()) break;
 
     const now = new Date();
-    const waitForWindow = msUntilActive(monitor.schedule, now);
+    const waitForWindow = controller.runRequested
+      ? 0
+      : msUntilActive(monitor.schedule, now);
     if (waitForWindow > 0) {
       reporter.offHours(new Date(now.getTime() + waitForWindow));
       await controller.sleep(waitForWindow, signal);
@@ -46,6 +48,7 @@ export async function runMonitorLoop(
 
     const limitWaitMs = gates.limit.msRemaining(now.getTime());
     if (limitWaitMs > 0) {
+      controller.takeRunRequest();
       reporter.usageLimit(new Date(now.getTime() + limitWaitMs));
       await controller.sleep(limitWaitMs, signal);
       continue;
@@ -69,6 +72,7 @@ export async function runMonitorLoop(
     if (aborted()) break;
     if (controller.state !== "running") continue;
 
+    controller.takeRunRequest();
     cycle += 1;
     reporter.cycleStarted(cycle);
 

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentController } from "../../src/control.js";
 import { DrainController } from "../../src/drain.js";
 import type { TaskSummaryRecord } from "../../src/memory/store.js";
+import type { MonitorCheckOutcome } from "../../src/monitor-check.js";
 import {
   argumentGhost,
   buildManualTask,
@@ -68,6 +69,7 @@ interface FakeContext {
   contextFile: ReturnType<typeof fakeContextFile>;
   notify: ReturnType<typeof vi.fn>;
   requestExit: ReturnType<typeof vi.fn>;
+  checkMonitor: ReturnType<typeof vi.fn<() => MonitorCheckOutcome>>;
 }
 
 function fakeContext(): FakeContext {
@@ -92,6 +94,7 @@ function fakeContext(): FakeContext {
   const contextFile = fakeContextFile();
   const notify = vi.fn();
   const requestExit = vi.fn();
+  const checkMonitor = vi.fn((): MonitorCheckOutcome => ({ kind: "requested" }));
   return {
     views,
     notices,
@@ -109,11 +112,13 @@ function fakeContext(): FakeContext {
     contextFile,
     notify,
     requestExit,
+    checkMonitor,
     ctx: {
       setView: (view) => views.push(view),
       monitorControl,
       executorControl,
       drain,
+      checkMonitor,
       tasks: { list: vi.fn().mockReturnValue([]), retry, cancel, addTasks },
       memory: { recent, search },
       settings,
@@ -257,6 +262,24 @@ describe("dispatchCommand", () => {
     expect(monitorControl.state).toBe("running");
     expect(executorControl.state).toBe("running");
     expect(notices[0]?.text).toBe("started monitor and executor");
+  });
+
+  it("/check reports a requested, a running and a refused monitor cycle", async () => {
+    const { ctx, notices, checkMonitor } = fakeContext();
+    checkMonitor
+      .mockReturnValueOnce({ kind: "requested" })
+      .mockReturnValueOnce({ kind: "running", cycle: 4 })
+      .mockReturnValueOnce({ kind: "refused", reason: "The monitor is paused." });
+
+    await dispatchCommand("/check", ctx);
+    await dispatchCommand("/check", ctx);
+    await dispatchCommand("/check", ctx);
+
+    expect(notices).toEqual([
+      { text: "monitor cycle requested", tone: "ok" },
+      { text: "monitor cycle 4 is already running", tone: "info" },
+      { text: "The monitor is paused.", tone: "error" },
+    ]);
   });
 
   it("/drain pauses both agents until they finish, and says so once", async () => {

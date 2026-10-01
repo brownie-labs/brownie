@@ -28,7 +28,7 @@ export async function runKikimora(options: RunKikimoraOptions = {}): Promise<voi
   if (positional !== undefined) {
     logger.error(
       `Unknown command "${positional}" — available commands: init, status, version, pause, ` +
-        "resume, drain, tasks, settings, prompt, context, memory, sessions, update, mcp; run plain kikimora to start the worker.",
+        "resume, check, drain, tasks, settings, prompt, context, memory, sessions, update, mcp; run plain kikimora to start the worker.",
     );
     process.exitCode = 1;
     return;

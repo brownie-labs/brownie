@@ -248,6 +248,23 @@ export async function runDrain(
   );
 }
 
+export async function runCheck(
+  options: { json?: boolean | undefined } & ControlCommandIo = {},
+): Promise<void> {
+  const response = await requestControl({ cmd: "monitor.check" }, options);
+  if (response === null) return;
+  const ack = response.data;
+  if (options.json === true) {
+    writerFor(options)(JSON.stringify(ack, null, 2));
+    return;
+  }
+  if (ack.state === "running") {
+    logger.info(`Monitor cycle ${String(ack.cycle)} is already running.`);
+    return;
+  }
+  logger.success("Monitor cycle requested; it starts now, also outside active hours.");
+}
+
 export const statusCommand = defineCommand({
   meta: {
     name: "status",
@@ -298,6 +315,18 @@ export const resumeCommand = defineCommand({
     },
   },
   run: ({ args }) => runControlAction("resume", args.agent),
+});
+
+export const checkCommand = defineCommand({
+  meta: {
+    name: "check",
+    description:
+      "Run a monitor cycle now instead of waiting for the interval, also outside active hours.",
+  },
+  args: {
+    json: { type: "boolean", description: "Print the acknowledgement as JSON" },
+  },
+  run: ({ args }) => runCheck({ json: args.json }),
 });
 
 export const drainCommand = defineCommand({

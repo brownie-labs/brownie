@@ -17,6 +17,7 @@ import {
   type ControlServerHandle,
 } from "../src/control-server.js";
 import { DrainController } from "../src/drain.js";
+import type { MonitorCheckOutcome } from "../src/monitor-check.js";
 import type { SessionRecord } from "../src/sessions/index.js";
 import { WorkerStatusStore } from "../src/status.js";
 import type { Task } from "../src/types.js";
@@ -175,6 +176,7 @@ describe("startControlServer", () => {
     buildStatus?: () => ControlStatus;
     controls?: ReturnType<typeof controls>;
     drain?: DrainController;
+    checkMonitor?: () => MonitorCheckOutcome;
     fakes?: FakeDeps;
   }
 
@@ -186,6 +188,9 @@ describe("startControlServer", () => {
       buildStatus: overrides.buildStatus ?? (() => buildStatus()),
       controls: agents,
       drain: overrides.drain ?? drainOf(agents),
+      checkMonitor:
+        overrides.checkMonitor ??
+        vi.fn((): MonitorCheckOutcome => ({ kind: "requested" })),
       ...(overrides.fakes ?? fakeDeps()),
       signal: abort.signal,
     };
@@ -240,6 +245,32 @@ describe("startControlServer", () => {
     expect(ctrl.executor.pause).toHaveBeenCalledTimes(1);
     expect(ctrl.executor.resume).toHaveBeenCalledTimes(1);
     expect(ctrl.monitor.resume).not.toHaveBeenCalled();
+  });
+
+  it("answers a monitor check with the outcome of the shared check", async () => {
+    const outcomes: MonitorCheckOutcome[] = [
+      { kind: "requested" },
+      { kind: "running", cycle: 7 },
+      { kind: "refused", reason: "The monitor is paused. Resume it to run a cycle." },
+    ];
+    const checkMonitor = vi.fn(
+      (): MonitorCheckOutcome => outcomes.shift() ?? { kind: "requested" },
+    );
+    await startServer({ checkMonitor });
+
+    expect(await sendControlRequest(socketPath, { cmd: "monitor.check" })).toEqual({
+      ok: true,
+      data: { state: "requested" },
+    });
+    expect(await sendControlRequest(socketPath, { cmd: "monitor.check" })).toEqual({
+      ok: true,
+      data: { state: "running", cycle: 7 },
+    });
+    expect(await sendControlRequest(socketPath, { cmd: "monitor.check" })).toEqual({
+      ok: false,
+      error: "The monitor is paused. Resume it to run a cycle.",
+    });
+    expect(checkMonitor).toHaveBeenCalledTimes(3);
   });
 
   it("acknowledges a drain with its start and deadline and pauses both agents", async () => {
