@@ -18,6 +18,7 @@ import { logger } from "./logger.js";
 import { MemoryStore } from "./memory/store.js";
 import { SessionSummarizer } from "./memory/summarizer.js";
 import { runMonitorLoop } from "./monitor.js";
+import { requestMonitorCheck, type MonitorCheckOutcome } from "./monitor-check.js";
 import { controlSocketPath, packageVersion, projectPaths } from "./paths.js";
 import { ensureReady } from "./preflight.js";
 import { createPromptFileAccess } from "./prompt-files.js";
@@ -185,6 +186,16 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
   });
   const context = createContextFileAccess(config.contextFilePath);
 
+  const checkMonitor = (): MonitorCheckOutcome =>
+    requestMonitorCheck({
+      control: monitorControl,
+      phase: () => {
+        status.flush();
+        return status.getSnapshot().monitor.phase;
+      },
+      draining: () => drain.snapshot !== undefined,
+    });
+
   let controlServer;
   try {
     controlServer = await startControlServer({
@@ -192,6 +203,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
       identity,
       controls: { monitor: monitorControl, executor: executorControl },
       drain,
+      checkMonitor,
       tasks: store,
       memory,
       sessions,
@@ -224,6 +236,7 @@ export async function startWorker(options: StartWorkerOptions = {}): Promise<voi
         version: identity.version,
         controls: { monitor: monitorControl, executor: executorControl },
         drain,
+        checkMonitor,
         tasks: store,
         memory,
         settings,

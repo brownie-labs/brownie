@@ -174,6 +174,7 @@ function buildHarness(initialControlState: "running" | "paused" = "running"): Ha
       version: "1.2.3",
       controls: { monitor: monitorControl, executor: executorControl },
       drain,
+      checkMonitor: () => ({ kind: "requested" }),
       tasks: { list, retry, cancel, addTasks },
       memory: { recent, search },
       settings,

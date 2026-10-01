@@ -2,6 +2,7 @@
 import { runMain } from "citty";
 import { contextCommand } from "./context-command.js";
 import {
+  checkCommand,
   drainCommand,
   pauseCommand,
   resumeCommand,
@@ -39,6 +40,9 @@ switch (first) {
     break;
   case "resume":
     void runMain(resumeCommand, { rawArgs: rest });
+    break;
+  case "check":
+    void runMain(checkCommand, { rawArgs: rest });
     break;
   case "drain":
     void runMain(drainCommand, { rawArgs: rest });

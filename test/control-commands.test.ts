@@ -21,6 +21,7 @@ const {
   drainCommand,
   readStdinText,
   requestControl,
+  runCheck,
   runControlAction,
   runDrain,
   runStatus,
@@ -618,5 +619,88 @@ describe("runDrain", () => {
       cmd: "drain",
       timeoutMs: 60_000,
     });
+  });
+});
+
+describe("runCheck", () => {
+  let lines: string[];
+  let savedExitCode: typeof process.exitCode;
+  const write = (line: string) => lines.push(line);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lines = [];
+    savedExitCode = process.exitCode;
+  });
+
+  afterEach(() => {
+    process.exitCode = savedExitCode;
+  });
+
+  it("asks for a monitor cycle and confirms the request", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "requested" },
+    });
+
+    await runCheck({ write });
+
+    expect(mocks.sendControlRequest).toHaveBeenCalledWith(expect.any(String), {
+      cmd: "monitor.check",
+    });
+    expect(logger.success).toHaveBeenCalledWith(
+      "Monitor cycle requested; it starts now, also outside active hours.",
+    );
+    expect(process.exitCode).toBe(savedExitCode);
+  });
+
+  it("says which cycle is already running", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "running", cycle: 9 },
+    });
+
+    await runCheck({ write });
+
+    expect(logger.info).toHaveBeenCalledWith("Monitor cycle 9 is already running.");
+  });
+
+  it("prints the acknowledgement as JSON with --json", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "requested" },
+    });
+
+    await runCheck({ write, json: true });
+
+    expect(JSON.parse(lines.join("\n"))).toEqual({ state: "requested" });
+  });
+
+  it("fails with exit code 1 and the reason when the worker refuses the cycle", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "refused", reason: "paused" },
+    });
+
+    await runCheck({ write });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "The monitor is paused. Resume it to run a cycle.",
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("names the end of the usage limit that refused the cycle", async () => {
+    mocks.sendControlRequest.mockResolvedValue({
+      ok: true,
+      data: { state: "refused", reason: "limited", until: "2026-10-01T12:00:00.000Z" },
+    });
+
+    await runCheck({ write });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "The monitor waits for the usage limit until 2026-10-01T12:00:00.000Z.",
+    );
+    expect(process.exitCode).toBe(1);
   });
 });

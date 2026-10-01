@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `kikimora check`, the dashboard command `/check` and the control request `monitor.check` run a monitor cycle now instead of waiting for the interval, also outside the working hours. A paused or draining worker and a running usage limit refuse it; a cycle already in progress is reported instead of doubled.
+
 ## [0.9.2] - 2026-09-30
 
 ### Changed

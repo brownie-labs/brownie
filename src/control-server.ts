@@ -13,6 +13,7 @@ import {
   type WorkerIdentity,
 } from "./control-protocol.js";
 import type { DrainController } from "./drain.js";
+import type { MonitorCheckOutcome } from "./monitor-check.js";
 import { CONTROL_SOCKET_ENV } from "./paths.js";
 import type { PromptAgent, PromptFileAccess } from "./prompt-files.js";
 import type { SettingsController } from "./settings-controller.js";
@@ -47,6 +48,7 @@ export interface ControlServerDeps {
     executor: Pick<AgentController, "pause" | "resume">;
   };
   drain: Pick<DrainController, "request" | "snapshot">;
+  checkMonitor(): MonitorCheckOutcome;
   tasks: TaskControls;
   memory: MemoryReader;
   sessions: SessionReader;
@@ -114,6 +116,28 @@ function applyControl(
   for (const agent of agents) deps.controls[agent][action]();
 }
 
+function checkMonitor(deps: ControlServerDeps): ControlResponse<"monitor.check"> {
+  const outcome = deps.checkMonitor();
+  switch (outcome.kind) {
+    case "requested":
+      return { ok: true, data: { state: "requested" } };
+    case "running":
+      return { ok: true, data: { state: "running", cycle: outcome.cycle } };
+    case "refused":
+      return {
+        ok: true,
+        data:
+          outcome.reason === "limited"
+            ? {
+                state: "refused",
+                reason: "limited",
+                until: new Date(outcome.until).toISOString(),
+              }
+            : { state: "refused", reason: outcome.reason },
+      };
+  }
+}
+
 function isMissingFile(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
@@ -167,6 +191,8 @@ async function handleRequest(
       }
       applyControl(deps, request.cmd, request.agent);
       return { ok: true, data: undefined };
+    case "monitor.check":
+      return checkMonitor(deps);
     case "drain":
       return {
         ok: true,

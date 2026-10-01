@@ -69,6 +69,7 @@ describe("parseControlRequest", () => {
       cmd: "resume",
       agent: "all",
     });
+    expect(accepted('{"cmd":"monitor.check"}')).toEqual({ cmd: "monitor.check" });
     expect(accepted('{"cmd":"drain"}')).toEqual({ cmd: "drain" });
     expect(accepted('{"cmd":"drain","timeoutMs":86400000}')).toEqual({
       cmd: "drain",
@@ -210,6 +211,7 @@ describe("parseControlRequest", () => {
         "version",
         "pause",
         "resume",
+        "monitor.check",
         "drain",
         "settings.get",
         "settings.patch",

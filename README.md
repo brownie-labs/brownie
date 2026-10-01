@@ -121,6 +121,7 @@ PgUp/PgDn scrolls the focused agent panel or any list view (`/tasks`, `/memory`,
 | `/memory [query]`             | browse long-term memory, optionally filtered by FTS search              |
 | `/start [monitor\|executor]`  | start paused agents                                                     |
 | `/pause [monitor\|executor]`  | pause agents after the current session finishes                         |
+| `/check`                      | run a monitor cycle now, also outside the working hours                 |
 | `/drain`                      | let the current sessions finish, then shut down                         |
 | `/task <description>`         | add a task by hand; an idle executor takes it at once                   |
 | `/retry <task-id>`            | requeue a failed task                                                   |

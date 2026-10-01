@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { PROMPT_FILE_LABELS } from "../config.js";
 import type { ContextFileAccess } from "../context-file.js";
+import type { MonitorCheckOutcome } from "../monitor-check.js";
 import type { PromptFileAccess } from "../prompt-files.js";
 import type { SettingsController } from "../settings-controller.js";
 import type { WorkerStatusStore } from "../status.js";
@@ -170,6 +171,7 @@ export interface AppProps {
   version: string;
   controls: { monitor: AgentControls; executor: AgentControls };
   drain: DrainControls;
+  checkMonitor: () => MonitorCheckOutcome;
   tasks: TaskControls;
   memory: MemoryReader;
   settings: SettingsController;
@@ -187,6 +189,7 @@ export function App({
   version,
   controls,
   drain,
+  checkMonitor,
   tasks,
   memory,
   settings,
@@ -250,6 +253,7 @@ export function App({
       monitorControl: controls.monitor,
       executorControl: controls.executor,
       drain,
+      checkMonitor,
       tasks,
       memory,
       settings,
@@ -261,7 +265,18 @@ export function App({
         setNotice({ text, tone });
       },
     }),
-    [controls, drain, tasks, memory, settings, prompts, context, waker, requestExit],
+    [
+      controls,
+      drain,
+      checkMonitor,
+      tasks,
+      memory,
+      settings,
+      prompts,
+      context,
+      waker,
+      requestExit,
+    ],
   );
 
   const editing = view.kind === "prompt" || view.kind === "context";

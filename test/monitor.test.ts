@@ -580,6 +580,109 @@ describe("runMonitorLoop", () => {
     await promise;
   });
 
+  it("a requested run outside active hours starts a cycle at once, then waits for the window", async () => {
+    vi.setSystemTime(new Date("2026-07-01T06:00:00"));
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const abort = new AbortController();
+    const control = noopController();
+    const base = buildConfig();
+    const config = buildConfig({
+      monitor: {
+        ...base.monitor,
+        schedule: { startMinute: 480, endMinute: 1080, days: [1, 2, 3, 4, 5] },
+      },
+    });
+
+    const promise = runMonitorLoop(
+      config,
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      buildGates(),
+      abort.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).not.toHaveBeenCalled();
+
+    control.requestRun();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+    expect(control.runRequested).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL + 1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+    expect(spy.offHours).toHaveBeenLastCalledWith(new Date("2026-07-01T08:00:00"));
+
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("a requested run during the interval sleep starts the next cycle at once", async () => {
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const abort = new AbortController();
+    const control = noopController();
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      buildGates(),
+      abort.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL / 2);
+    control.requestRun();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(INTERVAL - 2);
+    expect(mocks.runSession).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(mocks.runSession).toHaveBeenCalledTimes(3);
+
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
+  it("a run request during a usage-limit wait is dropped instead of spinning the loop", async () => {
+    mocks.runSession.mockResolvedValue(ok(report()));
+    const { store } = fakeStore();
+    const abort = new AbortController();
+    const control = noopController();
+    const gates = buildGates();
+    gates.limit.engage({ resetAt: new Date(Date.now() + 60 * 60_000) }, Date.now());
+
+    const promise = runMonitorLoop(
+      buildConfig(),
+      store,
+      new Waker(),
+      spy.reporter,
+      control,
+      gates,
+      abort.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    control.requestRun();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(mocks.runSession).not.toHaveBeenCalled();
+    expect(control.runRequested).toBe(false);
+    expect(spy.usageLimit.mock.calls.length).toBeLessThanOrEqual(2);
+
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    await promise;
+  });
+
   it("an exception from the cycle ends it with an error, the loop keeps going", async () => {
     mocks.runSession
       .mockRejectedValueOnce(new Error("crash"))

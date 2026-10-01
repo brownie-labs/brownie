@@ -15,6 +15,7 @@ import {
 } from "./control-protocol.js";
 import { DRAIN_TIMEOUT_MAX_MS } from "./drain.js";
 import { logger } from "./logger.js";
+import { describeMonitorCheckRefusal } from "./monitor-check.js";
 import { CONTROL_SOCKET_ENV, controlSocketPath } from "./paths.js";
 
 export interface ControlCommandIo {
@@ -248,6 +249,37 @@ export async function runDrain(
   );
 }
 
+export async function runCheck(
+  options: { json?: boolean | undefined } & ControlCommandIo = {},
+): Promise<void> {
+  const response = await requestControl({ cmd: "monitor.check" }, options);
+  if (response === null) return;
+  const ack = response.data;
+  if (options.json === true) {
+    writerFor(options)(JSON.stringify(ack, null, 2));
+    return;
+  }
+  switch (ack.state) {
+    case "requested":
+      logger.success(
+        "Monitor cycle requested; it starts now, also outside active hours.",
+      );
+      return;
+    case "running":
+      logger.info(`Monitor cycle ${String(ack.cycle)} is already running.`);
+      return;
+    case "refused":
+      fail(
+        describeMonitorCheckRefusal(
+          ack.reason === "limited"
+            ? { reason: "limited", until: Date.parse(ack.until) }
+            : { reason: ack.reason },
+        ),
+      );
+      return;
+  }
+}
+
 export const statusCommand = defineCommand({
   meta: {
     name: "status",
@@ -298,6 +330,18 @@ export const resumeCommand = defineCommand({
     },
   },
   run: ({ args }) => runControlAction("resume", args.agent),
+});
+
+export const checkCommand = defineCommand({
+  meta: {
+    name: "check",
+    description:
+      "Run a monitor cycle now instead of waiting for the interval, also outside active hours.",
+  },
+  args: {
+    json: { type: "boolean", description: "Print the acknowledgement as JSON" },
+  },
+  run: ({ args }) => runCheck({ json: args.json }),
 });
 
 export const drainCommand = defineCommand({

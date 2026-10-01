@@ -45,6 +45,8 @@ export class AgentController {
   private current: AgentControlState;
   private readonly gateOpened = new WaitList();
   private readonly pauseAsked = new WaitList();
+  private readonly runAsked = new WaitList();
+  private runWanted = false;
 
   constructor(
     private readonly onChange: (state: AgentControlState) => void,
@@ -77,27 +79,45 @@ export class AgentController {
     return this.gateOpened.wait(signal);
   }
 
+  get runRequested(): boolean {
+    return this.runWanted;
+  }
+
+  requestRun(): void {
+    this.runWanted = true;
+    this.runAsked.wake();
+  }
+
+  takeRunRequest(): boolean {
+    const wanted = this.runWanted;
+    this.runWanted = false;
+    return wanted;
+  }
+
   pauseRequested(signal: AbortSignal): Promise<void> {
     if (signal.aborted || this.current !== "running") return Promise.resolve();
     return this.pauseAsked.wait(signal);
   }
 
   async sleep(ms: number, signal: AbortSignal): Promise<void> {
-    if (signal.aborted || this.current !== "running") return;
+    if (signal.aborted || this.current !== "running" || this.runWanted) return;
     const linked = new AbortController();
     const wake = (): void => {
       linked.abort();
     };
     const onAbort = (): void => {
       this.pauseAsked.remove(wake);
+      this.runAsked.remove(wake);
       linked.abort();
     };
     this.pauseAsked.add(wake);
+    this.runAsked.add(wake);
     signal.addEventListener("abort", onAbort, { once: true });
     try {
       await sleep(ms, linked.signal);
     } finally {
       this.pauseAsked.remove(wake);
+      this.runAsked.remove(wake);
       signal.removeEventListener("abort", onAbort);
     }
   }
